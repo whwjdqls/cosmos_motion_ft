@@ -1,0 +1,7 @@
+=== step-100k jitter (cfg2.5 shift5 50steps) ===
+  gen_pickup: root=3.137  pose=0.238  totaldisp=2.27
+     gen_sit: root=2.726  pose=0.241  totaldisp=2.33
+    gen_turn: root=2.955  pose=0.243  totaldisp=2.18
+    gen_walk: root=0.304  pose=0.170  totaldisp=0.45
+    gen_wave: root=2.662  pose=0.245  totaldisp=2.24
+  AVG root-step=2.357 m  pose-jitter=0.228 m   (real: root 0.010 / pose 0.009; step-50k: root 0.28 / pose 0.11)
