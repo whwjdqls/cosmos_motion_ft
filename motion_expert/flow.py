@@ -46,3 +46,31 @@ def sample_x0(
         snext = sigmas[i + 1]
         x = (1.0 - snext) * x0_hat + snext * eps_hat
     return x
+
+
+@torch.no_grad()
+def sample_v(
+    model,
+    H_R: torch.Tensor, h_pad_mask: torch.Tensor, neutral_joints: torch.Tensor,
+    T: int, motion_dim: int,
+    steps: int = 50, guidance: float = 1.0,
+    H_null=None, null_pad_mask=None,
+    device="cuda", dtype=torch.float32, generator=None, sigma_eps: float = 1e-3,
+):
+    """Euler ODE sampler for a VELOCITY model (output v = eps - x0).
+
+    The path x_σ = σ·ε + (1−σ)·x0 has dx/dσ = ε − x0 = v, so integrating from σ=1 (noise) down to
+    σ=0 (clean) is the Euler step x ← x − dσ·v. CFG is applied on the velocity. Returns x0 [B,T,D].
+    """
+    B = H_R.shape[0]
+    x = torch.randn(B, T, motion_dim, device=device, dtype=dtype, generator=generator)
+    sigmas = torch.linspace(1.0, 0.0, steps + 1, device=device)
+    for i in range(steps):
+        s = sigmas[i].clamp(min=sigma_eps).expand(B)
+        v = model(x, s, H_R, h_pad_mask, neutral_joints).float()
+        if guidance != 1.0 and H_null is not None:
+            v_u = model(x, s, H_null, null_pad_mask, neutral_joints).float()
+            v = v_u + guidance * (v - v_u)
+        dsig = (sigmas[i] - sigmas[i + 1])
+        x = x - dsig * v
+    return x

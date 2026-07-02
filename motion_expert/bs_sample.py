@@ -205,7 +205,9 @@ def main():
                                   heads=a.get("heads", 8), ffn=a.get("ffn", 2048),
                                   text_dim=cache.dim, motion_dim=FEAT_DIM).to(dev)
     model.load_state_dict(ck["model"]); model.eval()
-    print(f"[sample] loaded {args.ckpt} (step {ck.get('step')})", flush=True)
+    pred = a.get("pred", "x0")
+    sampler = flow.sample_v if pred == "v" else flow.sample_x0
+    print(f"[sample] loaded {args.ckpt} (step {ck.get('step')}, pred={pred})", flush=True)
 
     os.makedirs(args.out, exist_ok=True)
     null_H = cache.null(1)
@@ -214,7 +216,7 @@ def main():
         nj_t = torch.from_numpy(nj_np).float().to(dev).unsqueeze(0)
         H = cache.batch([prompt]) if mode == "cond" else null_H
         g = torch.Generator(device=dev).manual_seed(args.seed)
-        x0 = flow.sample_x0(model, H, None, nj_t, T=args.T, motion_dim=FEAT_DIM,
+        x0 = sampler(model, H, None, nj_t, T=args.T, motion_dim=FEAT_DIM,
                             steps=args.steps, guidance=(args.guidance if mode == "cond" else 1.0),
                             H_null=null_H, null_pad_mask=None, device=dev,
                             dtype=torch.float32, generator=g)

@@ -96,6 +96,8 @@ def main():
     ap.add_argument("--heads", type=int, default=8)
     ap.add_argument("--ffn", type=int, default=2048)
     ap.add_argument("--cfg_dropout", type=float, default=0.10, help="text-drop prob for CFG (shape never dropped)")
+    ap.add_argument("--pred", choices=["x0", "v"], default="x0",
+                    help="prediction target: x0 (clean motion) or v (velocity = eps - x0)")
     ap.add_argument("--w_feat", type=float, default=1.0)
     ap.add_argument("--w_joint", type=float, default=1.0)
     ap.add_argument("--w_smooth", type=float, default=5.0)
@@ -170,10 +172,18 @@ def main():
         text_emb = cache.batch(texts)                        # [B,1,4096]
 
         sigma = flow.sample_sigma_logitnormal(x0.shape[0], dev)
-        x_sigma, _ = flow.add_noise(x0, sigma)
-        x0_hat = model(x_sigma, sigma, text_emb, None, nj, motion_pad_mask=pad)
+        x_sigma, eps = flow.add_noise(x0, sigma)
+        out = model(x_sigma, sigma, text_emb, None, nj, motion_pad_mask=pad)
 
-        l_feat = masked_mse(x0_hat, x0, valid)
+        if args.pred == "v":
+            # velocity target v = eps - x0; feat loss is velocity-MSE. Reconstruct clean motion
+            # x0_hat = x_sigma - sigma*v_hat for the decoded (pose/smooth) losses.
+            v_target = eps - x0
+            l_feat = masked_mse(out, v_target, valid)
+            x0_hat = x_sigma - sigma.view(-1, 1, 1) * out
+        else:
+            x0_hat = out
+            l_feat = masked_mse(x0_hat, x0, valid)
         if args.w_joint == 0.0 and args.w_smooth == 0.0:
             # feature-only: skip the decode entirely (no decode fwd/bwd, and avoids the
             # 0*inf=NaN trap if a degenerate decode produced inf).
@@ -199,6 +209,8 @@ def main():
         viz_items = load_viz_items(args.viz_split, cache, args.viz_n, dev, args.viz_frames)
         print(f"[train] {len(viz_items)} viz captions (GT|gen side-by-side)", flush=True)
 
+    sampler = flow.sample_v if args.pred == "v" else flow.sample_x0
+
     @torch.no_grad()
     def do_viz(step):
         model.eval()
@@ -207,10 +219,10 @@ def main():
         for i, it in enumerate(viz_items):
             H = cache.batch([it["caption"]])                 # [1,1,4096]
             g = torch.Generator(device=dev).manual_seed(0)
-            x0 = flow.sample_x0(model, H, None, it["nj"].unsqueeze(0), T=it["length"],
-                                motion_dim=FEAT_DIM, steps=args.viz_steps, guidance=args.viz_guidance,
-                                H_null=null_H, null_pad_mask=None, device=dev,
-                                dtype=torch.float32, generator=g)
+            x0 = sampler(model, H, None, it["nj"].unsqueeze(0), T=it["length"],
+                         motion_dim=FEAT_DIM, steps=args.viz_steps, guidance=args.viz_guidance,
+                         H_null=null_H, null_pad_mask=None, device=dev,
+                         dtype=torch.float32, generator=g)
             gen_joints = decode_joints((x0[0] * std + mean).unsqueeze(0))[0].cpu().numpy()
             render_pair(it["gt_joints"], gen_joints, parents,
                         os.path.join(vdir, f"{i}_{it['caption'][:30].replace(' ', '_')}.mp4"),
