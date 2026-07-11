@@ -1,0 +1,37 @@
+# Native-compatible cached-latent Phase 1 camera/video LoRA training.
+
+[job]
+task       = "vfm"
+experiment = "world_camera_nymeria_latent_nano"
+project    = "cosmos3_camera"
+group      = "camera_world"
+name       = "world_camera_nymeria_latent"
+wandb_mode = "disabled"
+
+[model]
+precision = "bfloat16"
+
+[model.parallelism]
+data_parallel_shard_degree     = 1
+data_parallel_replicate_degree = 8
+context_parallel_shard_degree  = 1
+cfg_parallel_shard_degree      = 1
+
+[model.activation_checkpointing]
+mode = "full"
+save_ops_regex = ["fmha"]
+
+[model.tokenizer]
+vae_path = "${oc.env:WAN_VAE_PATH}"
+
+[scheduler]
+cycle_lengths = [100000]
+
+[trainer]
+max_iter     = 100000
+logging_iter = 50
+
+[checkpoint]
+load_path = "${oc.env:BASE_CHECKPOINT_PATH}"
+save_iter = 5000
+

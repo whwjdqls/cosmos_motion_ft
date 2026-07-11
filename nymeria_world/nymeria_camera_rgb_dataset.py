@@ -20,7 +20,7 @@ backward_framewise).
 Wrap with ActionSFTDataset(base, ActionTransformPipeline(cfg_dropout_rate=0.1, ...), resolution).
 """
 from __future__ import annotations
-import functools, json, os, random
+import functools, json, os, random, signal
 from typing import Any
 import numpy as np
 import torch
@@ -28,6 +28,20 @@ from torch.utils.data import Dataset
 
 from cosmos_framework.data.vfm.action.pose_utils import pose_abs_to_rel
 from camera_to_action import DOMAIN_ID  # camera_pose -> 2
+
+# A single corrupt/undecodable video makes one rank's PyAV worker hang -> stalls the
+# collective on every rank -> distributed deadlock (0% GPU util, no crash). Guard the
+# per-window decode with a hard timeout + skip-to-next-window so no sample can stall a rank.
+_DECODE_TIMEOUT = int(os.environ.get("NYMERIA_DECODE_TIMEOUT", "120"))  # seconds per window
+_MAX_SKIP = int(os.environ.get("NYMERIA_MAX_SKIP", "64"))               # consecutive bad windows to skip
+
+
+class _DecodeTimeout(Exception):
+    pass
+
+
+def _on_alarm(signum, frame):
+    raise _DecodeTimeout(f"decode exceeded {_DECODE_TIMEOUT}s")
 from nymeria_camera_dataset import decode_window_pyav
 
 # 4-task mixture (weights). inverse_dynamics has no text; others use 10% CFG dropout.
@@ -124,27 +138,45 @@ class NymeriaCameraRGBDataset(Dataset):
         return self._rng.choices(self._modes, weights=self._mw, k=1)[0]
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
-        it = self._index[idx]; s, T = it["s"], self._num_frames
         mode = self._choose_mode()
-
-        frames = decode_window_pyav(it["vis"], s, T, self._fps)        # (T,H,W,3) uint8
-        video = torch.from_numpy(frames).permute(3, 0, 1, 2).contiguous()
-
-        pos, rot = _load_rgb_cam(it["rgb"])
-        act = rel_action_from_window(pos[s:s + T], rot[s:s + T])        # (T-1,9)
-
-        # text: inverse_dynamics has no instruction; others carry caption (pipeline drops 10% for CFG)
-        caption = "" if mode == "inverse_dynamics" else it["cap"]
-
-        return {
-            "video": video,
-            "action": torch.from_numpy(act).float(),
-            "ai_caption": caption,
-            "conditioning_fps": torch.tensor(int(round(self._fps)), dtype=torch.long),
-            "mode": mode,
-            "domain_id": torch.tensor(DOMAIN_ID, dtype=torch.long),
-            "viewpoint": "ego_view",
-        }
+        n = len(self._index)
+        # Deterministically skip to the next window on any decode failure/timeout (corrupt video,
+        # short camera npz, NaN action). Runs in the DataLoader worker's main thread, so SIGALRM works.
+        has_alarm = hasattr(signal, "SIGALRM")
+        last_err = None
+        for attempt in range(_MAX_SKIP):
+            j = (idx + attempt) % n
+            it = self._index[j]; s, T = it["s"], self._num_frames
+            try:
+                if has_alarm:
+                    _old = signal.signal(signal.SIGALRM, _on_alarm); signal.alarm(_DECODE_TIMEOUT)
+                frames = decode_window_pyav(it["vis"], s, T, self._fps)     # (T,H,W,3) uint8
+                pos, rot = _load_rgb_cam(it["rgb"])
+                if has_alarm:
+                    signal.alarm(0); signal.signal(signal.SIGALRM, _old)
+                act = rel_action_from_window(pos[s:s + T], rot[s:s + T])    # (T-1,9)
+                if frames.shape[0] != T or act.shape[0] != T - 1 or not np.isfinite(act).all():
+                    raise ValueError(f"bad shapes/NaN: frames {frames.shape} act {act.shape}")
+            except Exception as e:  # noqa: BLE001 — skip ANY bad window so it can't stall the collective
+                if has_alarm:
+                    signal.alarm(0)
+                last_err = e
+                if attempt < 3 or attempt % 16 == 0:
+                    print(f"[NymeriaCameraRGB] skip bad window {it['vis']}@{s} "
+                          f"({type(e).__name__}: {e}); attempt {attempt + 1}/{_MAX_SKIP}", flush=True)
+                continue
+            video = torch.from_numpy(frames).permute(3, 0, 1, 2).contiguous()
+            caption = "" if mode == "inverse_dynamics" else it["cap"]
+            return {
+                "video": video,
+                "action": torch.from_numpy(act).float(),
+                "ai_caption": caption,
+                "conditioning_fps": torch.tensor(int(round(self._fps)), dtype=torch.long),
+                "mode": mode,
+                "domain_id": torch.tensor(DOMAIN_ID, dtype=torch.long),
+                "viewpoint": "ego_view",
+            }
+        raise RuntimeError(f"no decodable window after {_MAX_SKIP} attempts from idx {idx}: {last_err}")
 
 
 def get_nymeria_camera_sft_dataset(

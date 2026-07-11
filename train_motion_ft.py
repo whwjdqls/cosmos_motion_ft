@@ -8,7 +8,7 @@ I/O heads (motion2llm / llm2motion / motion_modality_embed), same two-way packed
 forward, same rectified-flow loss v = noise - x0. The new pieces here are:
 
   1. A real Dataset over the exported (text, motion[T,369]) pairs
-     (features.npy mmap + index.json), per DESIGN.md's data contract. Falls back
+     (features.npy mmap + index.json), per the legacy root contract summarized in AGENTS_ALL.md. Falls back
      to a tiny synthetic dataset in the SAME format if the export is not ready.
   2. Real text tokenization via the Cosmos3-Nano processor (build_processor_lazy,
      repository="nvidia/Cosmos3-Nano"); token ids flow through the FROZEN
@@ -116,7 +116,7 @@ def _is_rank0():
 # Dataset: mmap features.npy + index.json  ->  (text:str, motion:[T,369] float32)
 # --------------------------------------------------------------------------------------
 class TextMotionDataset(torch.utils.data.Dataset):
-    """Reads the exported pair format from DESIGN.md, single-dir OR multi-shard.
+    """Reads the exported legacy root pair format, single-dir OR multi-shard.
 
     Single-dir (subset export):
       <data_dir>/features.npy : float32 memmap [total_frames, 369] (normalized)
@@ -202,7 +202,7 @@ class TextMotionDataset(torch.utils.data.Dataset):
 
 
 def make_synthetic_dataset(out_dir: str, n: int = 64, seed: int = 0):
-    """Write a tiny synthetic dataset in the EXACT export format (DESIGN.md)."""
+    """Write a tiny synthetic dataset in the exact legacy root export format."""
     rng = np.random.default_rng(seed)
     os.makedirs(out_dir, exist_ok=True)
     lengths = rng.integers(40, 201, size=n).astype(np.int64)
@@ -261,7 +261,7 @@ def build_text_processor():
 # --------------------------------------------------------------------------------------
 # build the real network (verbatim from the PoC)
 # --------------------------------------------------------------------------------------
-def build_network(tiny: bool, dtype=torch.bfloat16):
+def build_network(tiny: bool, dtype=torch.bfloat16, action_gen: bool = False):
     with torch.device("meta"):
         base_config = Qwen3VLMoTConfig.from_json_file(json_file=QWEN_JSON)
         base_config.freeze_und = False
@@ -282,7 +282,13 @@ def build_network(tiny: bool, dtype=torch.bfloat16):
             position_embedding_type="unified_3d_mrope",
             joint_attn_implementation="two_way",
             vision_gen=True,
-            action_gen=False,
+            action_gen=action_gen,
+            # Action-support fields (mirror NANO_MODEL_CONFIG's max_action_dim=64,
+            # num_embodiment_domains=32). When action_gen=False these are inert:
+            # the network only reads them inside `if config.action_gen:` blocks, so
+            # the root experiment (action_gen=False) is byte-for-byte unchanged.
+            action_dim=64,
+            num_embodiment_domains=32,
             sound_gen=False,
             timestep_scale=TIMESTEP_SCALE,
         )
@@ -334,6 +340,23 @@ def _diffusers_to_net_key(name: str):
     n = re.sub(r"\.self_attn\.to_add_out\.", ".self_attn.o_proj_moe_gen.", n)
     n = re.sub(r"\.self_attn\.norm_added_q\.", ".self_attn.q_norm_moe_gen.", n)
     n = re.sub(r"\.self_attn\.norm_added_k\.", ".self_attn.k_norm_moe_gen.", n)
+    # REASONER (understanding-pathway) attention. The snapshot stores it in diffusers
+    # naming (to_q/to_k/to_v/to_out + norm_q/norm_k, projecting the und sequence per
+    # diffusers_cosmos3/transformer.py); the net names are q_proj/... (unified_mot.py:464).
+    # These rules were MISSING originally, so all 36 layers' reasoner attention (216
+    # tensors) silently ran at RANDOM init in every diffusers-loaded run ("skipped=226").
+    # Order matters: the add_* / norm_added_* gen rules above must run first.
+    n = re.sub(r"\.self_attn\.to_q\.", ".self_attn.q_proj.", n)
+    n = re.sub(r"\.self_attn\.to_k\.", ".self_attn.k_proj.", n)
+    n = re.sub(r"\.self_attn\.to_v\.", ".self_attn.v_proj.", n)
+    n = re.sub(r"\.self_attn\.to_out\.", ".self_attn.o_proj.", n)
+    n = re.sub(r"\.self_attn\.norm_q\.", ".self_attn.q_norm.", n)
+    n = re.sub(r"\.self_attn\.norm_k\.", ".self_attn.k_norm.", n)
+    # Pretrained camera ACTION I/O heads (DomainAwareLinear: .fc + .bias submodules).
+    # Also missing originally -> action2llm/llm2action were fresh-init, not the base's
+    # zero-shot camera heads. action_modality_embed matches by name already.
+    n = re.sub(r"^action_proj_in\.", "action2llm.", n)
+    n = re.sub(r"^action_proj_out\.", "llm2action.", n)
     n = re.sub(r"^proj_in\.", "vae2llm.", n)
     n = re.sub(r"^proj_out\.", "llm2vae.", n)
     n = re.sub(r"^time_embedder\.linear_1\.", "time_embedder.mlp.0.", n)

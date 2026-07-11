@@ -12,7 +12,8 @@ Three native modes (Cosmos §2.1.3 / §4.2.2):
 - **forward_dynamics** — image + (text) + camera → video
 - **inverse_dynamics** — video → camera
 
-Plan: [`../PLAN_ego_video_camera_world_model.md`](../PLAN_ego_video_camera_world_model.md).
+Note: this is older native-camera work. Current joint-attention context lives in
+[`../AGENTS_ALL.md`](../AGENTS_ALL.md).
 
 ---
 

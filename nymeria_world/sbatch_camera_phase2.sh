@@ -23,7 +23,14 @@ export PYTHONPATH=/home/jungbin_cho/cosmos-framework:/home/jungbin_cho/cosmos_mo
 export BASE_CHECKPOINT_PATH=/weka/jungbin/cosmos3_nano_dcp
 export WAN_VAE_PATH=/weka/jungbin/wan22_vae/Wan2.2_VAE.pth
 export IMAGINAIRE_OUTPUT_ROOT=/weka/jungbin/cosmos_motion_ft_runs
-export SAVE_TRAINABLE_ONLY=1   # LoRA run: save only adapters + action heads (~MBs), not the 16B base
+export SAVE_TRAINABLE_ONLY=1   # save only trainable params, not the 16B base
+# which trainable keys to save (lora_A/lora_B always kept). Set INTERNALLY (commas can't go through
+# sbatch --export, which splits on them). FULL-GEN must also save moe_gen + gen/vae heads.
+if [ -n "${NYMERIA_FULL_FT:-}" ]; then
+  export SAVE_TRAINABLE_KEYS="moe_gen,time_embedder,vae2llm,llm2vae,action2llm,llm2action,action_modality_embed"
+else
+  export SAVE_TRAINABLE_KEYS="action2llm,llm2action,action_modality_embed"
+fi
 
 MAX_ITER=${MAX_ITER:-100000}
 SAVE_ITER=${SAVE_ITER:-5000}

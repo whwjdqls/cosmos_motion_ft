@@ -65,12 +65,15 @@ def main():
     ap.add_argument("--eval_root", required=True, help="nymeria_eval[_33] with samples/<name>/{gt_clip.mp4,gt_camera_cosmos.npz}")
     ap.add_argument("--tag", default="")
     ap.add_argument("--ncam", type=int, default=6)
+    ap.add_argument("--max_seqs", type=int, default=0, help="cap frustum subplots (0=all)")
     args = ap.parse_args()
     viz = os.path.join(args.samples, "viz"); os.makedirs(viz, exist_ok=True)
 
-    # ---- inverse_dynamics: camera frusta ----
+    # ---- inverse_dynamics: camera frusta (only if invdyn_out exists) ----
     names = sorted(os.path.basename(os.path.dirname(p))
                    for p in glob.glob(os.path.join(args.samples, "invdyn_out", "*", "sample_outputs.json")))
+    if args.max_seqs and len(names) > args.max_seqs:
+        names = names[:args.max_seqs]
     fig = plt.figure(figsize=(5.4 * len(names), 5.2))
     for i, n in enumerate(names):
         pr = np.array(json.load(open(os.path.join(args.samples, "invdyn_out", n, "sample_outputs.json")))

@@ -8,7 +8,7 @@ with the on-disk-real ``/weka/jungbin/seed/...`` paths substituted for the
 dataset and writes a packed format the cosmos env can mmap:
 
   features.npy  -- float32 [total_frames, 369], all clips concatenated along time
-  index.json    -- offsets/texts/lengths/filenames/sources/meta (see DESIGN.md)
+  index.json    -- offsets/texts/lengths/filenames/sources/meta
 
 Sample i is recovered as ``features[offsets[i]:offsets[i+1]]`` -> [T_i, 369].
 
@@ -47,7 +47,7 @@ MULTI_TIMELINE_PATH = "/weka/jungbin/seed/multi_timeline.jsonl"
 # submit script uses /home/.../Kimodo-Motion-Gen-Benchmark/splits/train_split_paths.txt;
 # real location on weka:
 TRAIN_SPLIT_PATH = "/weka/jungbin/Kimodo-Motion-Gen-Benchmark/splits/train_split_paths.txt"
-# DESIGN.md normalization stats (also what the task specifies):
+# Legacy root 369-d normalization stats:
 STATS_PATH = "/weka/jungbin/seed/stats/soma_uniform_motions_20fps/"
 
 # Numeric dataset args -- straight from bones_seed_full.yaml.
