@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import functools
 import json
 import math
 import os
@@ -26,6 +27,7 @@ import torch
 from torch.utils.data import DataLoader
 
 import flow
+import bs_native_flow
 from bs_dataset import (BonesSeedUniegoDataset, collate, DATA_ROOT, NATURAL_CSV,
                         SPLIT_DIR, MEAN_PATH, STD_PATH)
 from bs_model import MotionExpertInContext
@@ -86,7 +88,7 @@ def load_viz_items(split_path, cache, n, dev, viz_frames):
     return items
 
 
-def main():
+def main(argv=None, parser_defaults=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--steps", type=int, default=150000)
     ap.add_argument("--batch_size", type=int, default=128)
@@ -98,6 +100,15 @@ def main():
     ap.add_argument("--cfg_dropout", type=float, default=0.10, help="text-drop prob for CFG (shape never dropped)")
     ap.add_argument("--pred", choices=["x0", "v"], default="x0",
                     help="prediction target: x0 (clean motion) or v (velocity = eps - x0)")
+    ap.add_argument("--schedule", choices=["legacy", "native"], default="legacy",
+                    help="legacy uses unshifted logit-normal training sigma and a linear 1->0 "
+                         "sampler. native uses Cosmos shifted logit-normal sigma and its shifted "
+                         "0.999->0 inference ladder. Native mode currently requires --pred x0.")
+    ap.add_argument("--native_shift", type=float, default=bs_native_flow.DEFAULT_SHIFT,
+                    help="Cosmos rational flow shift for --schedule native (Phase-2 default: 3).")
+    ap.add_argument("--native_num_train_timesteps", type=int,
+                    default=bs_native_flow.DEFAULT_NUM_TRAIN_TIMESTEPS,
+                    help="native discrete timestep range used by the inference ladder.")
     ap.add_argument("--w_feat", type=float, default=1.0)
     ap.add_argument("--w_joint", type=float, default=1.0)
     ap.add_argument("--w_smooth", type=float, default=5.0)
@@ -116,9 +127,20 @@ def main():
     ap.add_argument("--mean", default=MEAN_PATH)
     ap.add_argument("--std", default=STD_PATH)
     ap.add_argument("--cache_path", default=DEFAULT_CACHE)
+    ap.add_argument("--index_cache", default=None,
+                    help="optional existing BONES segment-index JSON. Reusing the baseline index "
+                         "avoids rebuilding a several-hundred-MB cache for schedule ablations.")
     ap.add_argument("--run_name", default=None)
     ap.add_argument("--smoke", action="store_true")
-    args = ap.parse_args()
+    if parser_defaults:
+        ap.set_defaults(**parser_defaults)
+    args = ap.parse_args(argv)
+    if args.schedule == "native" and args.pred != "x0":
+        ap.error("--schedule native is the clean-x0 Phase-2 POC and requires --pred x0")
+    if args.native_shift <= 0:
+        ap.error("--native_shift must be positive")
+    if args.native_num_train_timesteps <= 1:
+        ap.error("--native_num_train_timesteps must be greater than one")
     dev = "cuda"
     torch.manual_seed(0)
 
@@ -131,14 +153,22 @@ def main():
                                   ffn=args.ffn, text_dim=cache.dim, motion_dim=FEAT_DIM).to(dev)
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"[train] MotionExpertInContext trainable = {n_train/1e6:.2f}M", flush=True)
+    print(
+        f"[train] schedule={args.schedule} pred={args.pred} "
+        f"native_shift={args.native_shift:g} "
+        f"native_num_train_timesteps={args.native_num_train_timesteps}",
+        flush=True,
+    )
 
     if args.smoke:
-        out, tb, idx_cache = None, None, os.path.join(HERE, "_smoke_bs_index.json")
+        out, tb = None, None
+        idx_cache = args.index_cache or os.path.join(HERE, "_smoke_bs_index.json")
     else:
-        name = args.run_name or f"bs_incontext_{time.strftime('%Y%m%d_%H%M%S')}"
+        default_prefix = "bs_native_x0" if args.schedule == "native" else "bs_incontext"
+        name = args.run_name or f"{default_prefix}_{time.strftime('%Y%m%d_%H%M%S')}"
         out = os.path.join(RUN_ROOT, name); os.makedirs(out, exist_ok=True)
         json.dump({**vars(args), "trainable_M": n_train}, open(os.path.join(out, "config.json"), "w"), indent=2)
-        idx_cache = os.path.join(out, "bs_train_index.json")
+        idx_cache = args.index_cache or os.path.join(out, "bs_train_index.json")
         try:
             from torch.utils.tensorboard import SummaryWriter
             tb = SummaryWriter(out)
@@ -171,7 +201,12 @@ def main():
         texts = [t if k else "" for t, k in zip(texts, keep.tolist())]
         text_emb = cache.batch(texts)                        # [B,1,4096]
 
-        sigma = flow.sample_sigma_logitnormal(x0.shape[0], dev)
+        if args.schedule == "native":
+            sigma = bs_native_flow.sample_train_sigma(
+                x0.shape[0], dev, shift=args.native_shift, dtype=x0.dtype
+            )
+        else:
+            sigma = flow.sample_sigma_logitnormal(x0.shape[0], dev)
         x_sigma, eps = flow.add_noise(x0, sigma)
         out = model(x_sigma, sigma, text_emb, None, nj, motion_pad_mask=pad)
 
@@ -200,7 +235,7 @@ def main():
             vmask = valid[:, 1:] & valid[:, :-1]
             l_smooth = masked_mse(j_hat[:, 1:] - j_hat[:, :-1], j_gt[:, 1:] - j_gt[:, :-1], vmask)
             loss = args.w_feat * l_feat + args.w_joint * l_joint + args.w_smooth * l_smooth
-        return loss, l_feat, l_joint, l_smooth
+        return loss, l_feat, l_joint, l_smooth, sigma.detach()
 
     # ---- held-out viz items (caption + GT joints + actor skeleton) ----
     parents, skip = load_skeleton()
@@ -209,7 +244,14 @@ def main():
         viz_items = load_viz_items(args.viz_split, cache, args.viz_n, dev, args.viz_frames)
         print(f"[train] {len(viz_items)} viz captions (GT|gen side-by-side)", flush=True)
 
-    sampler = flow.sample_v if args.pred == "v" else flow.sample_x0
+    if args.schedule == "native":
+        sampler = functools.partial(
+            bs_native_flow.sample_x0,
+            native_shift=args.native_shift,
+            native_num_train_timesteps=args.native_num_train_timesteps,
+        )
+    else:
+        sampler = flow.sample_v if args.pred == "v" else flow.sample_x0
 
     @torch.no_grad()
     def do_viz(step):
@@ -236,14 +278,16 @@ def main():
         for s, batch in enumerate(dl):
             for g in opt.param_groups:
                 g["lr"] = lr_at(s)                      # mirror the real loop (warmup)
-            loss, lf, lj, ls = step_loss(batch)
+            loss, lf, lj, ls, sigma = step_loss(batch)
             opt.zero_grad(set_to_none=True); loss.backward()
             gn = torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
             fin = bool(torch.isfinite(loss)) and bool(torch.isfinite(gn))
             if fin:
                 opt.step()
             print(f"[smoke] {s} loss={loss.item():.4f} feat={lf.item():.4f} joint={lj.item():.4f} "
-                  f"smooth={ls.item():.4f} grad_norm={float(gn):.2f} finite={fin} "
+                  f"smooth={ls.item():.4f} sigma={sigma.mean().item():.3f} "
+                  f"[{sigma.min().item():.3f},{sigma.max().item():.3f}] "
+                  f"grad_norm={float(gn):.2f} finite={fin} "
                   f"mem={torch.cuda.max_memory_allocated()/1e9:.1f}GB", flush=True)
             ok = ok and fin
             if s >= 4:
@@ -256,7 +300,7 @@ def main():
         for batch in dl:
             for g in opt.param_groups:
                 g["lr"] = lr_at(step)
-            loss, lf, lj, ls = step_loss(batch)
+            loss, lf, lj, ls, sigma = step_loss(batch)
             opt.zero_grad(set_to_none=True); loss.backward()
             gn = torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
             # Skip the update on a non-finite grad (a degenerate batch can NaN the decoded-joint
@@ -267,11 +311,15 @@ def main():
             if step % args.log_every == 0:
                 print(f"step {step:6d} loss={loss.item():.4f} feat={lf.item():.4f} joint={lj.item():.4f} "
                       f"smooth={ls.item():.4f} grad_norm={float(gn):.2f}{' SKIP' if skipped else ''} "
+                      f"sigma={sigma.mean().item():.3f} "
                       f"lr={lr_at(step):.2e} {(time.time()-t0)/(step+1):.3f}s/it", flush=True)
                 if tb:
                     for k, v in [("loss", loss), ("feat", lf), ("joint", lj), ("smooth", ls)]:
                         tb.add_scalar(k, v.item(), step)
                     tb.add_scalar("grad_norm", float(gn) if torch.isfinite(gn) else 0.0, step)
+                    tb.add_scalar("sigma/mean", sigma.mean().item(), step)
+                    tb.add_scalar("sigma/min", sigma.min().item(), step)
+                    tb.add_scalar("sigma/max", sigma.max().item(), step)
             if step > 0 and step % args.save_every == 0:
                 torch.save({"model": model.state_dict(), "step": step, "args": vars(args)},
                            os.path.join(out, f"ckpt_step{step:06d}.pt"))

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import functools
 import json
 import os
 import random
@@ -21,6 +22,7 @@ import numpy as np
 import torch
 
 import flow
+import bs_native_flow
 from bs_dataset import (DATA_ROOT, NATURAL_CSV, TEMPORAL_JSONL, MULTI_JSONL,
                         SPLIT_DIR, MEAN_PATH, STD_PATH)
 from bs_model import MotionExpertInContext
@@ -111,8 +113,24 @@ def main():
     model = MotionExpertInContext(d=a.get("d", 512), n_layers=a.get("layers", 8), heads=a.get("heads", 8),
                                   ffn=a.get("ffn", 2048), text_dim=cache.dim, motion_dim=FEAT_DIM).to(dev)
     model.load_state_dict(ck["model"]); model.eval()
-    pred = a.get("pred", "x0"); sampler = flow.sample_v if pred == "v" else flow.sample_x0
-    print(f"[eval] {args.ckpt} (step {ck.get('step')}, pred={pred})", flush=True)
+    pred = a.get("pred", "x0")
+    schedule = a.get("schedule", "legacy")
+    if schedule == "native":
+        if pred != "x0":
+            raise ValueError("native schedule checkpoints must predict x0")
+        sampler = functools.partial(
+            bs_native_flow.sample_x0,
+            native_shift=float(a.get("native_shift", bs_native_flow.DEFAULT_SHIFT)),
+            native_num_train_timesteps=int(
+                a.get("native_num_train_timesteps", bs_native_flow.DEFAULT_NUM_TRAIN_TIMESTEPS)
+            ),
+        )
+    else:
+        sampler = flow.sample_v if pred == "v" else flow.sample_x0
+    print(
+        f"[eval] {args.ckpt} (step {ck.get('step')}, pred={pred}, schedule={schedule})",
+        flush=True,
+    )
     null_H = cache.null(1)
 
     print(f"[eval] split={os.path.basename(args.eval_split)} sources={args.sources}", flush=True)
@@ -187,7 +205,16 @@ def main():
 
     if args.out:
         os.makedirs(os.path.dirname(args.out), exist_ok=True)
-        json.dump({"ckpt": args.ckpt, "split": args.eval_split, "per_source": summary}, open(args.out, "w"), indent=2)
+        json.dump({
+            "ckpt": args.ckpt,
+            "split": args.eval_split,
+            "schedule": schedule,
+            "native_shift": a.get("native_shift") if schedule == "native" else None,
+            "native_num_train_timesteps": (
+                a.get("native_num_train_timesteps") if schedule == "native" else None
+            ),
+            "per_source": summary,
+        }, open(args.out, "w"), indent=2)
         print(f"[eval] wrote {args.out}", flush=True)
     print("[eval] DONE", flush=True)
 

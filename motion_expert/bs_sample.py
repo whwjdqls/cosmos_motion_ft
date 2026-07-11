@@ -19,6 +19,7 @@ Run (kimodo env, 1 GPU via srun):
 from __future__ import annotations
 
 import argparse
+import functools
 import glob
 import json
 import os
@@ -28,6 +29,7 @@ import numpy as np
 import torch
 
 import flow
+import bs_native_flow
 from bs_dataset import DATA_ROOT, MEAN_PATH, STD_PATH, NATURAL_CSV, SPLIT_DIR
 from bs_model import MotionExpertInContext
 from bs_text_cache import LLM2VecCache, DEFAULT_CACHE
@@ -144,7 +146,7 @@ def rest_pose_motion(nj: np.ndarray, T: int) -> np.ndarray:
     return np.repeat(g[None], int(T), axis=0)
 
 
-def main():
+def main(argv=None, parser_defaults=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt")
     ap.add_argument("--out", default=None)
@@ -154,6 +156,13 @@ def main():
     ap.add_argument("--T", type=int, default=120)
     ap.add_argument("--steps", type=int, default=50)
     ap.add_argument("--guidance", type=float, default=2.0)
+    ap.add_argument("--sampler", choices=["auto", "legacy", "native"], default="auto",
+                    help="auto follows the checkpoint schedule; legacy uses the original linear "
+                         "1->0 sampler; native uses the shifted Cosmos 0.999->0 ladder.")
+    ap.add_argument("--native_shift", type=float, default=None,
+                    help="override the native shift recorded in the checkpoint")
+    ap.add_argument("--native_num_train_timesteps", type=int, default=None,
+                    help="override the native timestep range recorded in the checkpoint")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--mean", default=MEAN_PATH)
     ap.add_argument("--std", default=STD_PATH)
@@ -170,7 +179,9 @@ def main():
                     help="NON-uniform skeletons (long_legs / long_arms / gibbon / stilts) — tests per-limb shape")
     ap.add_argument("--ref_npz", default=None, help="reference skeleton npz for --shape_scales/--shape_morph")
     ap.add_argument("--sanity", default=None, help="decode+render a REAL uniego npz (no model)")
-    args = ap.parse_args()
+    if parser_defaults:
+        ap.set_defaults(**parser_defaults)
+    args = ap.parse_args(argv)
 
     parents, skip = load_skeleton()
 
@@ -206,8 +217,41 @@ def main():
                                   text_dim=cache.dim, motion_dim=FEAT_DIM).to(dev)
     model.load_state_dict(ck["model"]); model.eval()
     pred = a.get("pred", "x0")
-    sampler = flow.sample_v if pred == "v" else flow.sample_x0
-    print(f"[sample] loaded {args.ckpt} (step {ck.get('step')}, pred={pred})", flush=True)
+    schedule = a.get("schedule", "legacy")
+    sampler_name = args.sampler
+    if sampler_name == "auto":
+        sampler_name = "native" if schedule == "native" else "legacy"
+    native_shift = (
+        args.native_shift if args.native_shift is not None
+        else float(a.get("native_shift", bs_native_flow.DEFAULT_SHIFT))
+    )
+    native_num_train_timesteps = (
+        args.native_num_train_timesteps if args.native_num_train_timesteps is not None
+        else int(a.get("native_num_train_timesteps", bs_native_flow.DEFAULT_NUM_TRAIN_TIMESTEPS))
+    )
+    if sampler_name == "native":
+        if pred != "x0":
+            raise SystemExit("the native BONES sampler requires an x0-prediction checkpoint")
+        sampler = functools.partial(
+            bs_native_flow.sample_x0,
+            native_shift=native_shift,
+            native_num_train_timesteps=native_num_train_timesteps,
+        )
+    else:
+        sampler = flow.sample_v if pred == "v" else flow.sample_x0
+    sample_meta = {
+        "training_schedule": schedule,
+        "sampler": sampler_name,
+        "native_shift": native_shift if sampler_name == "native" else None,
+        "native_num_train_timesteps": (
+            native_num_train_timesteps if sampler_name == "native" else None
+        ),
+    }
+    print(
+        f"[sample] loaded {args.ckpt} (step {ck.get('step')}, pred={pred}, "
+        f"training_schedule={schedule}, sampler={sampler_name}, shift={native_shift:g})",
+        flush=True,
+    )
 
     os.makedirs(args.out, exist_ok=True)
     null_H = cache.null(1)
@@ -255,7 +299,8 @@ def main():
                 render_pair(jts["long_legs"], jts["long_arms"], parents,
                             os.path.join(args.out, f"{slug}__legs_vs_arms.mp4"),
                             caption=f"{prompt[:26]} | L=long-legs R=long-arms (both gen)", skip_joints=skip)
-        json.dump({"ckpt": args.ckpt, "morphs": {k: MORPHS[k] for k in morphs}, "samples": manifest},
+        json.dump({"ckpt": args.ckpt, **sample_meta,
+                   "morphs": {k: MORPHS[k] for k in morphs}, "samples": manifest},
                   open(os.path.join(args.out, "shape_morph_manifest.json"), "w"), indent=2)
         print(f"[sample] shape_morph -> {args.out}")
         return
@@ -289,7 +334,8 @@ def main():
             lo, hi = scales[0], scales[-1]
             render_pair(jts[lo], jts[hi], parents, os.path.join(args.out, f"{slug}__extremes.mp4"),
                         caption=f"{prompt[:32]} | L=x{lo:g} R=x{hi:g} (both gen)", skip_joints=skip)
-        json.dump({"ckpt": args.ckpt, "ref_stature_m": ref_stat, "scales": scales, "samples": manifest},
+        json.dump({"ckpt": args.ckpt, **sample_meta, "ref_stature_m": ref_stat,
+                   "scales": scales, "samples": manifest},
                   open(os.path.join(args.out, "shape_scales_manifest.json"), "w"), indent=2)
         print(f"[sample] shape_scales -> {args.out}")
         return
@@ -319,7 +365,8 @@ def main():
                             caption=f"{name}  |  L=input skeleton  R=generated", skip_joints=skip, camera="fixed")
             render_pair(jts["tall"], jts["short"], parents, os.path.join(args.out, f"{slug}__tall_vs_short.mp4"),
                         caption=f"{prompt[:42]} | L=tall R=short (both gen)", skip_joints=skip)
-        json.dump({"ckpt": args.ckpt, "tall": tall, "short": short, "samples": manifest},
+        json.dump({"ckpt": args.ckpt, **sample_meta, "tall": tall, "short": short,
+                   "samples": manifest},
                   open(os.path.join(args.out, "shape_swap_manifest.json"), "w"), indent=2)
         print(f"[sample] shape_swap -> {args.out}")
         return
@@ -348,7 +395,7 @@ def main():
             render_pair(None, jts[modes[0]], parents, os.path.join(args.out, f"{slug}__{modes[0]}.mp4"),
                         caption=f"{prompt[:50]} [{modes[0]}]", skip_joints=skip)
     json.dump({"n_joints": N_JOINTS, "feat_dim": FEAT_DIM, "ckpt": args.ckpt,
-               "step": ck.get("step"), "samples": manifest},
+               "step": ck.get("step"), **sample_meta, "samples": manifest},
               open(os.path.join(args.out, "samples_manifest.json"), "w"), indent=2)
     print(f"[sample] wrote {len(manifest)} samples to {args.out}")
 

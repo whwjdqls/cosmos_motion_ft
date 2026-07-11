@@ -60,6 +60,10 @@ Important POC lessons: v1 velocity + feature MSE crumpled/spun; v2 fixed quality
 
 BONES-only `bs_*` POC: uses BONES-SEED proportional 283-d UniEgo, cached LLM2Vec pooled text embeddings, an in-context text token plus shape token, no Cosmos and no reasoner. Runs in `kimodo`, not `cosmos`. It uses `SOMABonesSeedDataset` indexing by subclassing and overriding motion I/O. Text is dropped to the cached `""` embedding for CFG; shape is never dropped. This POC is intentionally different from the Cosmos raw-text runs.
 
+Native-schedule BONES Phase-2 POC: `motion_expert/bs_native_flow.py`, `bs_native_train.py`, and `bs_native_sample.py` keep the BONES model/data/x0/loss recipe fixed while replacing the unshifted schedule with Cosmos's action-like shifted logit-normal training sigma and shifted 1000-step inference ladder. Default motion shift is 3. `bs_native_flow.py` is dependency-free because the `kimodo` env has no `cosmos_framework` or `diffusers`; its formulas are pinned to NVIDIA Cosmos Framework commit `3d9c0878fd0dde76eac98161aed0493d85a036fd`. Sampling is x0 DDIM/straight-path integration on the exact native ladder with native integer timestep quantization, not a local UniPC implementation. Legacy `bs_train.py`/`bs_sample.py` behavior remains the default; checkpoint metadata selects the matching sampler automatically. Launch through `motion_expert/sbatch_bs_native_phase2.sh`, never on the login CPU.
+
+Native-schedule POC launch status on 2026-07-11: Slurm smoke job `10386` passed five real-data optimizer steps on one A100 with finite losses/gradients, shifted sigma mean about `0.70-0.74`, and 10.3 GB peak memory. Production job `10387` runs `bs_native_x0_logitnormal_shift3_w1_1_5_200k` for 200k steps, batch 128, loss weights `1/1/5`, reusing `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_incontext_v1/bs_train_index.json`. Its run directory is `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_native_x0_logitnormal_shift3_w1_1_5_200k` and Slurm log is `/home/jungbin_cho/cosmos_motion_ft/slurm-bsnatp2-10387.out`.
+
 ### `nymeria_world/` Camera World Model
 
 Files: `nymeria_world/*`.

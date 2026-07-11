@@ -272,3 +272,45 @@ natural-pool rebuild, then `sbatch -p a2 … --wrap "bash bs_run.sh bs_train.py 
 - Removed smoke leftovers (`_smoke_split.txt`, `_smoke_bs_index.json`). The pre-existing **nymeria**
   motion_expert files (`train.py`, `sample.py`, `viz.py`, `reasoner.py`, …) are a separate experiment and
   were left intact.
+
+## 15. Native-schedule x0 Phase-2 POC (2026-07-11)
+
+This is a controlled schedule ablation before moving the motion expert behind the Cosmos reasoner.
+Architecture, proportional 283-D representation, shape token, cached LLM2Vec conditioning, CFG dropout,
+optimizer, LR schedule, and `1/1/5` feature/joint/smooth losses stay identical to `bs_incontext_v1`.
+
+The only training change is:
+
+```text
+raw sigma ~ sigmoid(N(0,1))
+sigma = shift * raw_sigma / (1 + (shift - 1) * raw_sigma)
+shift = 3
+x_sigma = sigma * epsilon + (1 - sigma) * x0
+target = x0
+```
+
+The sampler uses Cosmos's native inference ladder construction: start from `(N-1)/N = 0.999` for
+`N=1000`, linearly select the requested number of base sigmas, apply the same rational shift, quantize
+the model timestep to `int64(sigma * 1000)`, and append a final sigma of exactly zero. The model still
+predicts x0; the update uses the induced flow velocity `(x_sigma - x0_hat) / sigma`. This is native-ladder
+x0 DDIM/straight-path integration, not a local UniPC copy.
+
+Files:
+
+- `bs_native_flow.py`: dependency-free native training sampler and inference ladder.
+- `bs_native_train.py`: controlled native defaults over the shared `bs_train.py` loop.
+- `bs_native_sample.py`: forces native-ladder sampling through the shared evaluation UI.
+- `test_bs_native_flow.py`: formula, ladder, timestep, and oracle-x0 CPU tests.
+- `sbatch_bs_native_phase2.sh`: one-GPU `a2` smoke/production launcher.
+
+Legacy checkpoints remain backward compatible: `bs_train.py` defaults to `--schedule legacy`, and
+`bs_sample.py --sampler auto` dispatches from the checkpoint's recorded schedule. The full controlled
+run is configured as `bs_native_x0_logitnormal_shift3_w1_1_5_200k`, batch 128, 200k steps, reusing the
+baseline's existing `bs_train_index.json`.
+
+Launch status:
+
+- GPU smoke job `10386`: completed five finite optimizer steps, sigma mean `0.70-0.74`, peak 10.3 GB.
+- Production job `10387`: submitted on `a2`; run directory
+  `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_native_x0_logitnormal_shift3_w1_1_5_200k`.
+- Slurm log: `/home/jungbin_cho/cosmos_motion_ft/slurm-bsnatp2-10387.out`.

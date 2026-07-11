@@ -13,6 +13,7 @@ Run (kimodo env, 1 GPU):
 from __future__ import annotations
 
 import argparse
+import functools
 import glob
 import json
 import os
@@ -22,6 +23,7 @@ import numpy as np
 import torch
 
 import flow
+import bs_native_flow
 from bs_dataset import MEAN_PATH, STD_PATH
 from bs_model import MotionExpertInContext
 from bs_text_cache import LLM2VecCache, DEFAULT_CACHE
@@ -57,8 +59,25 @@ def main():
     model = MotionExpertInContext(d=a.get("d", 512), n_layers=a.get("layers", 8), heads=a.get("heads", 8),
                                   ffn=a.get("ffn", 2048), text_dim=cache.dim, motion_dim=FEAT_DIM).to(dev)
     model.load_state_dict(ck["model"]); model.eval()
-    pred = a.get("pred", "x0"); sampler = flow.sample_v if pred == "v" else flow.sample_x0
-    print(f"[eval] {args.ckpt} (step {ck.get('step')}, pred={pred}) on nymeria split={args.split}", flush=True)
+    pred = a.get("pred", "x0")
+    schedule = a.get("schedule", "legacy")
+    if schedule == "native":
+        if pred != "x0":
+            raise ValueError("native schedule checkpoints must predict x0")
+        sampler = functools.partial(
+            bs_native_flow.sample_x0,
+            native_shift=float(a.get("native_shift", bs_native_flow.DEFAULT_SHIFT)),
+            native_num_train_timesteps=int(
+                a.get("native_num_train_timesteps", bs_native_flow.DEFAULT_NUM_TRAIN_TIMESTEPS)
+            ),
+        )
+    else:
+        sampler = flow.sample_v if pred == "v" else flow.sample_x0
+    print(
+        f"[eval] {args.ckpt} (step {ck.get('step')}, pred={pred}, schedule={schedule}) "
+        f"on nymeria split={args.split}",
+        flush=True,
+    )
     null_H = cache.null(1)
 
     sp = json.load(open(os.path.join(NYMERIA, "train_test_split.json")))
@@ -117,6 +136,9 @@ def main():
 
     g = np.array(gen_mae) * 100; t = np.array(gt_mae) * 100
     res = {"dataset": "nymeriaplus_proportional", "split": args.split, "n": used,
+           "schedule": schedule,
+           "native_shift": a.get("native_shift") if schedule == "native" else None,
+           "native_num_train_timesteps": a.get("native_num_train_timesteps") if schedule == "native" else None,
            "gen_bone_mae_cm_mean": round(float(g.mean()), 3), "gen_bone_mae_cm_std": round(float(g.std()), 3),
            "gen_bone_mae_cm_p90": round(float(np.percentile(g, 90)), 3),
            "gt_bone_mae_cm_mean": round(float(t.mean()), 3),
