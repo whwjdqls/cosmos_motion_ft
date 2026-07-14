@@ -163,6 +163,9 @@ def main(argv=None, parser_defaults=None):
                     help="override the native shift recorded in the checkpoint")
     ap.add_argument("--native_num_train_timesteps", type=int, default=None,
                     help="override the native timestep range recorded in the checkpoint")
+    ap.add_argument("--native_solver", choices=["euler", "heun", "unipc"], default="euler",
+                    help="native-ladder solver; unipc calls the original Cosmos-3 "
+                         "FlowUniPC scheduler, whose native default is 35 steps")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--mean", default=MEAN_PATH)
     ap.add_argument("--std", default=STD_PATH)
@@ -232,8 +235,13 @@ def main(argv=None, parser_defaults=None):
     if sampler_name == "native":
         if pred != "x0":
             raise SystemExit("the native BONES sampler requires an x0-prediction checkpoint")
+        native_sampler = {
+            "euler": bs_native_flow.sample_x0,
+            "heun": bs_native_flow.sample_x0_heun,
+            "unipc": bs_native_flow.sample_x0_unipc,
+        }[args.native_solver]
         sampler = functools.partial(
-            bs_native_flow.sample_x0,
+            native_sampler,
             native_shift=native_shift,
             native_num_train_timesteps=native_num_train_timesteps,
         )
@@ -242,6 +250,7 @@ def main(argv=None, parser_defaults=None):
     sample_meta = {
         "training_schedule": schedule,
         "sampler": sampler_name,
+        "native_solver": args.native_solver if sampler_name == "native" else None,
         "native_shift": native_shift if sampler_name == "native" else None,
         "native_num_train_timesteps": (
             native_num_train_timesteps if sampler_name == "native" else None
@@ -249,7 +258,9 @@ def main(argv=None, parser_defaults=None):
     }
     print(
         f"[sample] loaded {args.ckpt} (step {ck.get('step')}, pred={pred}, "
-        f"training_schedule={schedule}, sampler={sampler_name}, shift={native_shift:g})",
+        f"training_schedule={schedule}, sampler={sampler_name}, "
+        f"native_solver={args.native_solver if sampler_name == 'native' else 'n/a'}, "
+        f"shift={native_shift:g})",
         flush=True,
     )
 
