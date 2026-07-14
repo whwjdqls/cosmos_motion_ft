@@ -12,7 +12,7 @@ This is a sibling of the original `motion_expert/` POC (nymeria, frozen-Cosmos-r
 |---|---|---|
 | Text conditioning | Cosmos reasoner `H_R [B,Ttext,4096]` via **cross-attention** | cached **llm2vec** pooled `[B,1,4096]`, **in-context** (prepend one token) |
 | Data | NymeriaPlus uniego (`pairs_*.jsonl`, SLAM height → grounded) | **BONES-SEED** proportional uniego (already floor-grounded) |
-| Env / deps | `cosmos` env + `cosmos-framework` + H_R cache | **`kimodo` env only** (torch 2.4); no Cosmos at all |
+| Env / deps | `cosmos` env + `cosmos-framework` + H_R cache | **A100 `kimodo` env** (torch 2.4); no Cosmos model, but audited Cosmos Framework + diffusers are used by official UniPC |
 
 Everything else — rectified-flow x0-prediction, AdaLN-zero DiT blocks, the `ShapeEncoder` in-context
 shape token, decoded-joint losses, x0 DDIM sampler, CFG — is reused.
@@ -21,9 +21,18 @@ shape token, decoded-joint losses, x0 DDIM sampler, CFG — is reused.
 
 ## 0. What runs where (this A100 box)
 
-- **All steps run in the `kimodo` conda env** (`/home/jungbin_cho/miniconda3/envs/kimodo/bin/python`,
-  torch 2.4). Verified present: torch, numpy, imageio, matplotlib, tensorboard. No `cosmos` env, no
-  `cosmos-framework`, no `train_motion_ft` import, no H_R precompute.
+> **Machine boundary:** all `motion_expert/bs_*` training, sampling, and evaluation belongs on this
+> A100 machine. Do not run or validate it on the H200 `a3ultra` machines. The H200 `kimodo`
+> environment lacks the BONES POC's expected Cosmos/UniPC dependencies and its local Cosmos source
+> uses the newer `model.vfm` namespace instead of the older `model.generator` namespace expected by
+> the pulled BONES UniPC path. The A100 environment is the authoritative working environment for
+> this POC. This does not constrain `motion_expert_joint_attention/` jobs on H200.
+
+- **All steps run in the A100 `kimodo` conda env**
+  (`/home/jungbin_cho/miniconda3/envs/kimodo/bin/python`, torch 2.4). Verified present: torch,
+  numpy, imageio, matplotlib, tensorboard, and the audited Cosmos Framework/diffusers versions used
+  only by official UniPC. There is no Cosmos reasoner/generator model, `train_motion_ft` import, or
+  H_R precompute in this POC.
 - **GPUs via Slurm** (`srun`/`sbatch`) — this is a head node (`nvidia-smi` fails here by design).
 - Decode/render uses `decode_uniego_torch.py` (pure-torch, bit-exact) — no kimodo import needed, but
   kimodo is available if wanted.
