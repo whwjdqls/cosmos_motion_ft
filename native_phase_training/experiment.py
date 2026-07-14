@@ -40,6 +40,10 @@ _FULL_FT = bool(os.environ.get("NYMERIA_FULL_FT", ""))
 _LORA_LR = float(os.environ.get("NATIVEP1_LORA_LR", "5.0e-05"))
 _FULL_FT_LR = float(os.environ.get("NATIVEP1_FULL_FT_LR", "1.0e-04"))
 _ACTION_LR_MULT = float(os.environ.get("NATIVEP1_ACTION_LR_MULT", "4.0"))
+_CLIPS_PER_GPU = int(os.environ.get("NATIVEP1_CLIPS_PER_GPU", "4"))
+if _CLIPS_PER_GPU < 0:
+    raise ValueError("NATIVEP1_CLIPS_PER_GPU must be >= 0 (use 0 for native token-budget packing)")
+_USE_TOKEN_BUDGET_PACKING = _CLIPS_PER_GPU == 0
 _MAX_SAMPLES_ENV = os.environ.get("NYMERIA_MAX_SAMPLES", "")
 _MAX_SAMPLES = int(_MAX_SAMPLES_ENV) if _MAX_SAMPLES_ENV else None
 _AUTO_EVAL = os.environ.get("NATIVEP1_AUTO_EVAL", "0").lower() in {"1", "true", "yes"}
@@ -225,8 +229,10 @@ world_camera_nymeria_latent_nano = LazyDict(
         ),
         dataloader_train=L(LatentAwareIterativeJointDataLoader)(
             audio_sample_rate=48000,
-            max_samples_per_batch=None,
-            max_sequence_length="${model.config.max_num_tokens_after_packing}",
+            max_samples_per_batch=None if _USE_TOKEN_BUDGET_PACKING else _CLIPS_PER_GPU,
+            max_sequence_length=(
+                "${model.config.max_num_tokens_after_packing}" if _USE_TOKEN_BUDGET_PACKING else None
+            ),
             patch_spatial=2,
             sound_latent_fps=0,
             tokenizer_spatial_compression_factor=16,

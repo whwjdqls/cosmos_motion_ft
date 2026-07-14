@@ -11,10 +11,12 @@ from types import SimpleNamespace
 from unittest import mock
 
 import torch
+from torch.utils.data import DataLoader
 
 from cosmos_framework.data.vfm.action.json_formatter import ActionPromptJsonFormatter
 from cosmos_framework.data.vfm.augmentors.duration_fps_text_timestamps import DEFAULT_TEMPLATE as DURATION_TEMPLATE
 from cosmos_framework.data.vfm.augmentors.resolution_text_info import DEFAULT_VIDEO_TEMPLATE as RESOLUTION_TEMPLATE
+from cosmos_framework.data.vfm.joint_dataloader import custom_collate_fn
 from cosmos_framework.inference.action import _format_prompt as format_official_action_prompt
 from cosmos_framework.inference.inference import _format_prompt_with_template
 
@@ -113,6 +115,33 @@ class PackingContractTest(unittest.TestCase):
             "video": [torch.empty(3, NUM_FRAMES, 256, 256)],
         }
         self.assertEqual(self.loader._compute_num_tokens_per_sample(sample), 3 + 1 + 1600 + 2)
+
+    def test_fixed_sample_cap_yields_exactly_four(self) -> None:
+        sample = {
+            "text_token_ids": torch.arange(11),
+            "video": torch.empty(3, NUM_FRAMES, 1, 1),
+            "video_latents": torch.empty(48, 25, 16, 16),
+            "action": torch.empty(ACTION_CHUNK_SIZE, 64),
+        }
+        child = DataLoader(
+            dataset=[sample] * 8,
+            batch_size=1,
+            num_workers=0,
+            collate_fn=custom_collate_fn,
+        )
+        loader = LatentAwareIterativeJointDataLoader(
+            dataloaders={"test": {"dataloader": child, "ratio": 1}},
+            tokenizer_spatial_compression_factor=16,
+            tokenizer_temporal_compression_factor=4,
+            patch_spatial=2,
+            max_sequence_length=None,
+            max_samples_per_batch=4,
+            prewarm=False,
+        )
+
+        batch = next(iter(loader))
+        self.assertEqual(batch["_num_samples"], 4)
+        self.assertEqual(len(batch["video_latents"]), 4)
 
 
 class EvaluationContractTest(unittest.TestCase):

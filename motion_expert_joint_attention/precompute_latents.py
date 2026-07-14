@@ -190,25 +190,51 @@ def out_path(root: str, uuid: str, start: int) -> str:
 # VAE: load the SAME Wan2.2 tokenizer the Nano model uses, then encode one
 # resized+padded window exactly as omni_mot_model.get_data_and_condition would.
 # ----------------------------------------------------------------------------
-def load_vae(vae_path: str, resolution: str, num_frames: int, device: str):
+def load_vae(
+    vae_path: str,
+    resolution: str,
+    num_frames: int,
+    device: str,
+    *,
+    rank_local: bool = False,
+):
     """Instantiate Wan2pt2VAEInterface with the NANO tokenizer config, pinned to
     encode this window length exactly (encode_exact_durations=[T], mirroring
-    world_camera_nymeria_nano which sets the same on the model tokenizer)."""
-    from cosmos_framework.model.vfm.tokenizers.wan2pt2_vae_4x16x16 import (
-        Wan2pt2VAEInterface,
+    world_camera_nymeria_nano which sets the same on the model tokenizer).
+
+    ``rank_local=True`` is reserved for rank-0-only checkpoint visualization.
+    Wan's constructor normally broadcasts the newly loaded VAE to every rank,
+    which deadlocks or mismatches collectives when only rank 0 is visualizing.
+    Rank 0 already loads the complete local checkpoint, so that one broadcast
+    can be disabled safely for this case.  All regular callers retain the
+    framework's synchronized construction.
+    """
+    from cosmos_framework.model.vfm.tokenizers import (
+        wan2pt2_vae_4x16x16 as wan_vae_module,
     )
 
-    vae = Wan2pt2VAEInterface(
-        bucket_name="",                       # local file (skip s3:// prefix)
-        vae_path=vae_path,
-        chunk_duration=93,
-        keep_decoder_cache=False,
-        use_streaming_encode=False,
-        encode_chunk_frames={"256": 68, "480": 24, "720": 12},  # NANO default
-        encode_exact_durations=[num_frames],  # encode T=33 at exact length, no padding inflation
-        spatial_compression_factor=16,
-        temporal_compression_factor=4,
-    )
+    original_sync = None
+    if rank_local:
+        if torch.distributed.is_initialized() and torch.distributed.get_rank() != 0:
+            raise RuntimeError("rank-local VAE construction is only valid on global rank 0")
+        original_sync = wan_vae_module.sync_model_states
+        wan_vae_module.sync_model_states = lambda *_args, **_kwargs: None
+
+    try:
+        vae = wan_vae_module.Wan2pt2VAEInterface(
+            bucket_name="",                       # local file (skip s3:// prefix)
+            vae_path=vae_path,
+            chunk_duration=93,
+            keep_decoder_cache=False,
+            use_streaming_encode=False,
+            encode_chunk_frames={"256": 68, "480": 24, "720": 12},  # NANO default
+            encode_exact_durations=[num_frames],  # exact length, no padding inflation
+            spatial_compression_factor=16,
+            temporal_compression_factor=4,
+        )
+    finally:
+        if original_sync is not None:
+            wan_vae_module.sync_model_states = original_sync
     return vae
 
 

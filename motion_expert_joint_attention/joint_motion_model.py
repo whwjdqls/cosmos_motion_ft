@@ -101,7 +101,9 @@ class JointMotionModel(nn.Module):
         motion_dim: motion feature dim (283-d uniego).
         objective: the MOTION-pathway flow objective ('velocity' | 'x0'); the head always
             emits 283-d and train.py / flow.py interpret it as v-hat or x0-hat. Drives
-            `self.sample`'s sampler dispatch (sample_velocity vs sample_x0). PER-MODALITY
+            `self.sample`'s sampler dispatch. ``motion_schedule='native'`` keeps x0 prediction
+            but uses Cosmos's shifted logit-normal training sigma and native inference ladder.
+            PER-MODALITY
             design: vision/camera are ALWAYS velocity regardless (Cosmos-native rectified
             flow); this knob never touches the gen pathway.
         motion_intermediate_size: FFN width of the motion expert (the only size knob; the head
@@ -154,8 +156,21 @@ class JointMotionModel(nn.Module):
         cosmos: FrozenCosmos,
         motion_dim: int = FEAT_DIM,
         objective: str = "velocity",
+        motion_schedule: str = "legacy",
+        motion_shift: float = 3.0,
+        motion_num_train_timesteps: int = 1000,
+        motion_native_solver: str = "euler",
+        gen_schedule: str = "legacy",
+        gen_shift: float = 3.0,
+        gen_num_train_timesteps: int = 1000,
+        gen_native_solver: str = "unipc",
+        gen_packing: str = "legacy",
+        gen_fps: float = 20.0,
+        gen_temporal_margin: float = 15000.0,
         motion_intermediate_size: int = 3072,
         gen_lora: bool = False,
+        gen_lora_rank: int = 16,
+        gen_lora_alpha: int = 16,
         reasoner_lora: bool = False,
         gen_full: bool = False,
         freeze_gen: bool = False,
@@ -164,6 +179,7 @@ class JointMotionModel(nn.Module):
         motion_mrope: str = "legacy",
         coupling: str = "joint",
         textimg_condition: str = "reasoner",
+        reasoner_image_size: int = 256,
     ):
         super().__init__()
         if gen_lora and gen_full:
@@ -173,8 +189,65 @@ class JointMotionModel(nn.Module):
             )
         self.cosmos = cosmos
         self.motion_dim = motion_dim
+        if objective not in ("velocity", "x0"):
+            raise ValueError(f"objective must be 'velocity' or 'x0', got {objective!r}")
+        if motion_schedule not in ("legacy", "native"):
+            raise ValueError(
+                f"motion_schedule must be 'legacy' or 'native', got {motion_schedule!r}"
+            )
+        if motion_schedule == "native" and objective != "x0":
+            raise ValueError("motion_schedule='native' requires objective='x0'")
+        if float(motion_shift) <= 0.0:
+            raise ValueError(f"motion_shift must be positive, got {motion_shift}")
+        if int(motion_num_train_timesteps) <= 1:
+            raise ValueError(
+                "motion_num_train_timesteps must be greater than one, got "
+                f"{motion_num_train_timesteps}"
+            )
+        if motion_native_solver not in ("euler", "unipc"):
+            raise ValueError(
+                f"motion_native_solver must be 'euler' or 'unipc', got {motion_native_solver!r}"
+            )
+        if gen_schedule not in ("legacy", "native"):
+            raise ValueError(f"gen_schedule must be 'legacy' or 'native', got {gen_schedule!r}")
+        if float(gen_shift) <= 0.0:
+            raise ValueError(f"gen_shift must be positive, got {gen_shift}")
+        if int(gen_num_train_timesteps) <= 1:
+            raise ValueError(
+                "gen_num_train_timesteps must be greater than one, got "
+                f"{gen_num_train_timesteps}"
+            )
+        if gen_native_solver not in ("euler", "unipc"):
+            raise ValueError(
+                f"gen_native_solver must be 'euler' or 'unipc', got {gen_native_solver!r}"
+            )
+        if gen_packing not in ("legacy", "native"):
+            raise ValueError(f"gen_packing must be 'legacy' or 'native', got {gen_packing!r}")
+        if float(gen_fps) <= 0.0:
+            raise ValueError(f"gen_fps must be positive, got {gen_fps}")
+        if float(gen_temporal_margin) < 0.0:
+            raise ValueError(
+                f"gen_temporal_margin must be non-negative, got {gen_temporal_margin}"
+            )
+        if int(gen_lora_rank) <= 0 or int(gen_lora_alpha) <= 0:
+            raise ValueError(
+                f"gen_lora_rank/alpha must be positive, got {gen_lora_rank}/{gen_lora_alpha}"
+            )
         self.objective = objective
+        self.motion_schedule = motion_schedule
+        self.motion_shift = float(motion_shift)
+        self.motion_num_train_timesteps = int(motion_num_train_timesteps)
+        self.motion_native_solver = motion_native_solver
+        self.gen_schedule = gen_schedule
+        self.gen_shift = float(gen_shift)
+        self.gen_num_train_timesteps = int(gen_num_train_timesteps)
+        self.gen_native_solver = gen_native_solver
+        self.gen_packing = gen_packing
+        self.gen_fps = float(gen_fps)
+        self.gen_temporal_margin = float(gen_temporal_margin)
         self.gen_lora = gen_lora
+        self.gen_lora_rank = int(gen_lora_rank)
+        self.gen_lora_alpha = int(gen_lora_alpha)
         self.reasoner_lora = reasoner_lora
         self.gen_full = gen_full
         self.freeze_gen = freeze_gen
@@ -186,6 +259,11 @@ class JointMotionModel(nn.Module):
             )
         self.coupling = coupling
         self.textimg_condition = textimg_condition
+        if int(reasoner_image_size) <= 0:
+            raise ValueError(
+                f"reasoner_image_size must be positive, got {reasoner_image_size}"
+            )
+        self.reasoner_image_size = int(reasoner_image_size)
         if motion_mrope not in ("legacy", "cosmos3d"):
             raise ValueError(f"motion_mrope must be 'legacy' or 'cosmos3d', got {motion_mrope!r}")
         self.motion_mrope = motion_mrope
@@ -362,8 +440,8 @@ class JointMotionModel(nn.Module):
 
         inject_lora_pre_fsdp(
             self.cosmos.net,
-            lora_rank=getattr(self.cosmos, "lora_rank", 16),
-            lora_alpha=getattr(self.cosmos, "lora_alpha", 16),
+            lora_rank=self.gen_lora_rank,
+            lora_alpha=self.gen_lora_alpha,
             lora_target_modules="q_proj_moe_gen,k_proj_moe_gen,v_proj_moe_gen,o_proj_moe_gen",
         )
         self._materialize_injected_lora()
@@ -835,12 +913,19 @@ class JointMotionModel(nn.Module):
                     mode, t_lat=t_lat, n_camera=n_camera,
                     motion_valid_mask=mvm, has_shape_token=plan.motion.present,
                 )
+                native_gen_pack = self.gen_packing == "native"
+                gen_temporal_offset = (
+                    float(T_text_s) + self.gen_temporal_margin
+                    if native_gen_pack
+                    else T_text_s
+                )
                 seg = self.gen.build_gen_segment(
                     resolved,
                     video_latents=vlat,
                     camera_action=cam,
                     sigma=t_or_sigma[s:s + 1].reshape(1),
-                    temporal_offset=T_text_s,
+                    temporal_offset=gen_temporal_offset,
+                    fps=self.gen_fps if native_gen_pack else None,
                 )
             gen_segments.append(seg)
             resolved_list.append(resolved)
@@ -848,7 +933,7 @@ class JointMotionModel(nn.Module):
             if seg is not None:
                 gen_rows.append(seg.tokens.to(dtype))
                 any_3d_positions = True
-                gen_mrope = seg.mrope_ids.to(device).long()                    # [3, N_gen]
+                gen_mrope = seg.mrope_ids.to(device)                           # [3, N_gen]
                 next_off = seg.next_temporal_offset
                 g_frames = torch.full((seg.tokens.shape[0],), -1, device=device, dtype=torch.long)
                 for pname, (rs, re) in seg.offsets.items():
@@ -1098,6 +1183,8 @@ class JointMotionModel(nn.Module):
             pos3_parts = []
             for p in positions_list:
                 pos3_parts.append(p if p.dim() == 2 else p.view(1, -1).expand(3, -1))
+            if any(p.dtype.is_floating_point for p in pos3_parts):
+                pos3_parts = [p.float() for p in pos3_parts]
             positions = torch.cat(pos3_parts, dim=1)                          # [3, N_total]
         else:
             positions = torch.cat(positions_list, dim=0)                      # [N_total]
@@ -1311,6 +1398,7 @@ class JointMotionModel(nn.Module):
         tokenizer=None,
         device=None,
         objective: str | None = None,
+        seed: int | None = None,
     ) -> torch.Tensor:
         """Sample one motion clip for a single caption (used by train.py's in-train viz).
 
@@ -1326,6 +1414,9 @@ class JointMotionModel(nn.Module):
         if device is None:
             device = neutral_joints.device
         obj = objective or self.objective
+        generator = None
+        if seed is not None:
+            generator = torch.Generator(device=device).manual_seed(int(seed))
 
         motion_pad_mask = torch.zeros(1, T, dtype=torch.bool, device=device)
         noisy_frame_mask = torch.ones(1, T, dtype=torch.bool, device=device)
@@ -1343,11 +1434,23 @@ class JointMotionModel(nn.Module):
             noisy_frame_mask=noisy_frame_mask,
         )
 
-        sampler = flow.sample_velocity if obj == "velocity" else flow.sample_x0
+        sampler = flow.motion_sampler(
+            obj,
+            schedule=self.motion_schedule,
+            native_solver=self.motion_native_solver,
+        )
+        native_kwargs = {}
+        if self.motion_schedule == "native":
+            native_kwargs = {
+                "native_shift": self.motion_shift,
+                "native_num_train_timesteps": self.motion_num_train_timesteps,
+            }
         x = sampler(
             predict_cond, T=T, motion_dim=self.motion_dim, steps=steps,
             guidance=guidance, predict_null=predict_null,
             batch=1, device=device, dtype=torch.float32,
+            generator=generator,
+            **native_kwargs,
         )
         return x
 

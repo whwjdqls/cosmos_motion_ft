@@ -49,13 +49,20 @@ class LocalModalityBridge(nn.Module):
         self.gate_m = nn.Parameter(torch.zeros(()))
 
     def _local_pair_mask(self, gen_frame: torch.Tensor, motion_frame: torch.Tensor) -> torch.Tensor:
-        """Return [N_gen, N_mot] True where video latent frame and motion frame are aligned."""
+        """Return pairs aligned by the causal Wan-VAE 4x temporal layout.
+
+        For a 97-frame clip the 25 latent frames represent source-frame groups
+        ``{0}, {1..4}, {5..8}, ..., {93..96}``.  Equivalently, source motion
+        frame ``m`` belongs to latent frame ``ceil(m / 4)``.  The historical
+        ``[4*g, 4*g+3]`` rule was shifted by three frames, assigned frames 1..3
+        to latent 0, and left source frames 94..96 without a bridge edge.
+        """
         if gen_frame.numel() == 0 or motion_frame.numel() == 0:
             return torch.zeros((gen_frame.numel(), motion_frame.numel()), device=gen_frame.device, dtype=torch.bool)
         gf = gen_frame.view(-1, 1)
         mf = motion_frame.view(1, -1)
         valid = (gf >= 0) & (mf >= 0)
-        return valid & (mf >= gf * 4) & (mf < gf * 4 + 4)
+        return valid & (torch.div(mf + 3, 4, rounding_mode="floor") == gf)
 
     def _attention_mask(self, meta: BridgeMeta) -> torch.Tensor:
         device = meta.gen_frame.device

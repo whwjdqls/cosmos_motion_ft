@@ -179,9 +179,9 @@ TRAIN_DEFAULTS = {
 
     # rectified-flow objective -- PER-MODALITY: this knob is the MOTION objective only
     # ('x0' default = the proven bs_train recipe: logit-normal sigma, net predicts clean
-    # x0; 'velocity' stays selectable for ablation). VISION/CAMERA are ALWAYS velocity
-    # (the pretrained Cosmos generator's native rectified flow); no flag touches the gen
-    # pathway. (train.py's argparse carries the literal default; kept in sync here.)
+    # x0; 'velocity' stays selectable for ablation). VISION/CAMERA are ALWAYS velocity;
+    # train.py's separate --gen_schedule selects historical uniform/Euler or native
+    # shifted-Waver/UniPC time handling. (The motion objective never changes gen targets.)
     "objective": "x0",
 
     # loss weights (PoC-tuned recipe; geometric terms skipped when weight == 0)

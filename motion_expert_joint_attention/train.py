@@ -10,8 +10,8 @@ and the packed forward (real ``gen_idx`` + per-modality encode/decode + dict out
   per batch -> read ``mode`` + every present modality -> per sample noise each NOISED modality
   with its PER-MODALITY objective (motion: ``flow.add_noise_x0_masked`` by default -- logit-
   normal sigma, target = x0; ``--objective velocity`` selects the old velocity noiser for
-  ablation. vision/camera: ALWAYS ``flow.add_noise_velocity_masked`` -- uniform t, target =
-  eps - x0, the pretrained Cosmos generator's native rectified flow; clean condition frames
+  ablation. vision/camera: ALWAYS ``flow.add_noise_velocity_masked`` -- velocity target
+  ``eps - x0`` with checkpointed legacy-uniform or native shifted-Waver time; clean condition frames
   pass through untouched either way) -> call ``model.forward(modes=..., x_t=noised_motion,
   video_latents=noised_latents, camera_action=noised_action, ...)`` -> the model encodes via
   gen_heads + motion_heads, runs the shared joint attention, decodes each SUPERVISED modality
@@ -47,10 +47,12 @@ Resume a run (weights + optimizer + step; LR schedule continues at the resumed s
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import math
 import os
 import time
+from datetime import timedelta
 
 import numpy as np
 import torch
@@ -59,6 +61,7 @@ from torch.utils.data import DataLoader
 import config
 import flow
 import task_plan as TP
+from checkpoint_utils import load_gen_init_state, load_joint_pt
 from cosmos_loader import FrozenCosmos
 from decode_uniego_torch import decode_joints
 from joint_motion_model import JointMotionModel
@@ -179,6 +182,42 @@ def main():
                          "VISION/CAMERA targets are ALWAYS velocity (uniform t, target = "
                          "eps - x0) regardless of this flag -- that matches the pretrained "
                          "Cosmos generator's native rectified-flow objective and never changes.")
+    ap.add_argument("--motion_schedule", choices=["legacy", "native"], default="legacy",
+                    help="noise-time schedule for x0 MOTION targets. legacy keeps the historical "
+                         "unshifted logit-normal training sigma and linear 1->0 DDIM ladder. "
+                         "native uses Cosmos's shifted logit-normal sigma and shifted 1000-step "
+                         "inference ladder. Explicitly select native for new aligned Phase-2 runs; "
+                         "legacy remains the default so old launchers/checkpoints do not drift.")
+    ap.add_argument("--motion_shift", type=float, default=flow.NATIVE_MOTION_SHIFT,
+                    help="rational flow shift for --motion_schedule native (default: 3).")
+    ap.add_argument("--motion_num_train_timesteps", type=int,
+                    default=flow.NATIVE_NUM_TRAIN_TIMESTEPS,
+                    help="native motion scheduler timestep scale/quantization range (default: 1000).")
+    ap.add_argument("--motion_native_solver", choices=["euler", "unipc"], default="euler",
+                    help="inference/viz solver for native-schedule x0 checkpoints. euler is the "
+                         "straight-path solver validated by bs_native_flow; unipc converts x0 "
+                         "predictions to velocity and runs NVIDIA's official Phase-1 UniPC solver.")
+    ap.add_argument("--gen_schedule", choices=["legacy", "native"], default="legacy",
+                    help="noise-time schedule for VIDEO/CAMERA velocity targets. legacy is the "
+                         "historical uniform-time training plus linear Euler sampler. native "
+                         "uses Cosmos-3 Waver training time, resolution shift, and the official "
+                         "UniPC inference contract. New Phase-3 bridge runs from native Phase 1 "
+                         "must select native; legacy remains the old-checkpoint default.")
+    ap.add_argument("--gen_shift", type=float, default=flow.NATIVE_MOTION_SHIFT,
+                    help="native Cosmos video resolution shift (256px Phase 1 uses 3).")
+    ap.add_argument("--gen_num_train_timesteps", type=int,
+                    default=flow.NATIVE_NUM_TRAIN_TIMESTEPS,
+                    help="native generator scheduler timestep scale (default: 1000).")
+    ap.add_argument("--gen_native_solver", choices=["unipc"], default="unipc",
+                    help="native generator inference solver; NVIDIA Cosmos-3 uses UniPC.")
+    ap.add_argument("--gen_packing", choices=["legacy", "native"], default="legacy",
+                    help="generator reasoner/mRoPE packing. native uses [BOS,text,EOS,SOG], "
+                         "FPS-modulated float 3D-mRoPE, and the Cosmos temporal modality margin; "
+                         "legacy preserves historical joint checkpoints.")
+    ap.add_argument("--gen_fps", type=float, default=20.0,
+                    help="source FPS for native generator 3D-mRoPE modulation.")
+    ap.add_argument("--gen_temporal_margin", type=float, default=15000.0,
+                    help="native Cosmos text-to-generator temporal mRoPE margin.")
     ap.add_argument("--motion_intermediate", type=int, default=config.MOTION_INTERMEDIATE_SIZE,
                     help="motion-expert FFN width (the only size knob; smaller=lighter expert). "
                          "The motion expert is always randomly initialized, never from the generator.")
@@ -200,10 +239,18 @@ def main():
                          "the Qwen-VL reasoner image path and packs no generator rows for "
                          "textimg2motion. generator is deprecated and retained only for old "
                          "checkpoint/run compatibility.")
+    ap.add_argument("--reasoner_image_size", type=int, default=256,
+                    help="square pixel size presented to the frozen Qwen visual tower for "
+                         "reasoner-side textimg2motion. 256 is the released processor's minimum "
+                         "image area and yields 64 visual tokens (640 would yield 400).")
     ap.add_argument("--batch_size", type=int, default=config.TRAIN_DEFAULTS["batch_size"])
     ap.add_argument("--steps", type=int, default=config.TRAIN_DEFAULTS["steps"])
     ap.add_argument("--T", type=int, default=config.VIDEO_NUM_FRAMES,
                     help="shared window length (4N+1 for the Wan VAE); default 33.")
+    ap.add_argument("--ti2m_frames", type=int, default=None,
+                    help="valid aligned Nymeria frames for reasoner-side textimg2motion. When "
+                         "set below --T, TI2M is padded/loss-masked to --T while T2M retains the "
+                         "full output capacity (production Phase-2: --T 200 --ti2m_frames 97).")
     # optimization
     ap.add_argument("--lr", type=float, default=config.TRAIN_DEFAULTS["lr"])
     ap.add_argument("--warmup", type=int, default=config.TRAIN_DEFAULTS["warmup"])
@@ -220,6 +267,11 @@ def main():
     # train scope toggles (DESIGN_7TASK.md section 5)
     ap.add_argument("--gen_lora", action="store_true",
                     help="inject LoRA on q/k/v/o_proj_moe_gen (generator base stays frozen).")
+    ap.add_argument("--gen_lora_rank", type=int, default=16,
+                    help="generator LoRA rank; native Phase 1 used rank 16.")
+    ap.add_argument("--gen_lora_alpha", type=int, default=16,
+                    help="generator LoRA alpha. Set 32 when loading native Phase-1 rank16/alpha32; "
+                         "the historical joint-training default was 16.")
     ap.add_argument("--gen_full", action="store_true",
                     help="full generator FT: all _moe_gen + gen I/O heads (excl. with --gen_lora).")
     ap.add_argument("--freeze_gen", action="store_true",
@@ -238,6 +290,9 @@ def main():
                     help="Phase-3 warm-start: load ONLY the generator/gen-LoRA params (the "
                          "cosmos.net lora_/_moe_gen/gen-IO-head keys) from a Phase-1 checkpoint "
                          "(latest.pt / ckpt_step*.pt) by name, strict=False.")
+    ap.add_argument("--init_gen_dcp_weights", choices=["ema", "regular"], default="ema",
+                    help="when --init_gen is a native Cosmos DCP directory, load net_ema "
+                         "(official inference/default) or the non-EMA net tensors.")
     ap.add_argument("--init_motion", default=None,
                     help="Phase-3 warm-start: load ONLY the motion pathway (_moe_motion + motion "
                          "heads + norm_moe_motion) from a Phase-2 checkpoint by name, strict=False.")
@@ -251,6 +306,15 @@ def main():
     ap.add_argument("--viz_n", type=int, default=4)
     ap.add_argument("--viz_steps", type=int, default=50)
     ap.add_argument("--viz_guidance", type=float, default=2.0)
+    ap.add_argument("--require_viz", action="store_true",
+                    help="fail the run if held-out visualization setup, sampling, or rendering "
+                         "fails. Use for production runs where checkpoint visuals are required.")
+    ap.add_argument("--viz_only", action="store_true",
+                    help="build the configured specialists and held-out visualization set, write "
+                         "step-0 visualizations, then exit without training or checkpoint saving.")
+    ap.add_argument("--viz_frame_stride", type=int, default=2,
+                    help="render every Nth motion frame and divide MP4 fps by N so duration is "
+                         "preserved (default 2 halves matplotlib rendering cost).")
     ap.add_argument("--log_every", type=int, default=config.TRAIN_DEFAULTS["log_every"])
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--ddp", action="store_true",
@@ -284,9 +348,9 @@ def main():
     #                    normal sigma, target = x0 itself, geometric losses on x0_hat =
     #                    prediction directly (the proven motion_expert/bs_train.py recipe).
     #                    "velocity" stays selectable for ablation / older velocity-motion runs.
-    #   VISION/CAMERA -> ALWAYS velocity (flow.add_noise_velocity_masked, uniform t, target =
-    #                    eps - x0), matching the pretrained Cosmos generator's native rectified
-    #                    flow. args.objective NEVER touches the gen pathway.
+    #   VISION/CAMERA -> ALWAYS velocity (flow.add_noise_velocity_masked, target = eps - x0).
+    #                    --gen_schedule selects legacy uniform time or native shifted-Waver time;
+    #                    args.objective NEVER touches the gen pathway.
     # This split is well-defined because NO task noises motion AND vision/camera in the same
     # sample (task_plan.py: motion-target tasks keep video/image clean; gen-target tasks keep
     # motion clean/absent), so each sample carries exactly ONE noised-objective semantics and
@@ -297,6 +361,36 @@ def main():
     # gen samplers are velocity unconditionally.
     if args.objective not in ("velocity", "x0"):
         raise SystemExit(f"--objective {args.objective!r} not implemented (choices: velocity, x0)")
+    if args.motion_schedule == "native" and args.objective != "x0":
+        ap.error("--motion_schedule native requires --objective x0")
+    if args.motion_shift <= 0.0:
+        ap.error("--motion_shift must be positive")
+    if args.motion_num_train_timesteps <= 1:
+        ap.error("--motion_num_train_timesteps must be greater than one")
+    if args.gen_shift <= 0.0:
+        ap.error("--gen_shift must be positive")
+    if args.gen_num_train_timesteps <= 1:
+        ap.error("--gen_num_train_timesteps must be greater than one")
+    if args.gen_lora_rank <= 0 or args.gen_lora_alpha <= 0:
+        ap.error("--gen_lora_rank and --gen_lora_alpha must be positive")
+    if args.gen_fps <= 0.0:
+        ap.error("--gen_fps must be positive")
+    if args.gen_temporal_margin < 0.0:
+        ap.error("--gen_temporal_margin must be non-negative")
+    if args.gen_schedule == "native" and args.gen_packing != "native":
+        ap.error("--gen_schedule native requires --gen_packing native for Phase-1 parity")
+    if args.reasoner_image_size <= 0:
+        ap.error("--reasoner_image_size must be positive")
+    if args.viz_frame_stride <= 0:
+        ap.error("--viz_frame_stride must be positive")
+    if args.require_viz and args.viz_n <= 0:
+        ap.error("--require_viz requires --viz_n > 0")
+    if args.viz_only and args.viz_n <= 0:
+        ap.error("--viz_only requires --viz_n > 0")
+    if args.viz_n > 0 and args.viz_every <= 0:
+        ap.error("--viz_every must be positive when --viz_n > 0")
+    if not 0.0 <= args.bones_frac <= 1.0:
+        ap.error("--bones_frac must be in [0,1]")
     motion_x0 = args.objective == "x0"
 
     # ---- mutually-exclusive gen scope ----
@@ -307,6 +401,12 @@ def main():
         import torch.distributed as dist
         dist.init_process_group(backend="nccl")
         torch.cuda.set_device(local)
+    # Rank 0 can spend tens of minutes sampling and rendering while peer ranks wait. Keep that
+    # control-plane wait off the 10-minute NCCL training group: a CPU/Gloo group with an explicit
+    # long timeout carries only the tiny visualization setup/status flags.
+    viz_sync_group = None
+    if args.ddp and world > 1 and args.viz_n > 0:
+        viz_sync_group = dist.new_group(backend="gloo", timeout=timedelta(hours=2))
     dev = f"cuda:{local}" if torch.cuda.is_available() else "cpu"
     torch.manual_seed(0 + rank)
 
@@ -323,12 +423,46 @@ def main():
         if unknown:
             raise ValueError(f"--tasks has unknown modes {unknown}; expected {TP.TASKS}")
         task_weights = {t: task_weights.get(t, 0.0) for t in args.tasks}
+    negative_weights = {m: w for m, w in task_weights.items() if w < 0.0}
+    if negative_weights:
+        raise ValueError(f"task weights must be non-negative, got {negative_weights}")
     task_weights = {m: w for m, w in task_weights.items() if w > 0.0}
     if not task_weights:
         raise ValueError("no active tasks (empty positive-weight mixture)")
     active_tasks = list(task_weights)
+    aligned_frames = args.T if args.ti2m_frames is None else int(args.ti2m_frames)
+    if not 1 <= aligned_frames <= args.T:
+        ap.error(f"--ti2m_frames must be in [1, --T]; got {aligned_frames} with --T {args.T}")
+    if aligned_frames != args.T:
+        if set(active_tasks) - {"text2motion", "textimg2motion"}:
+            ap.error("--ti2m_frames < --T is only supported for Phase-2 T2M+TI2M")
+        if "textimg2motion" not in active_tasks or args.textimg_condition != "reasoner":
+            ap.error("--ti2m_frames < --T requires reasoner-side textimg2motion")
     log(f"[tasks] active={active_tasks}")
     log(f"[tasks] weights={ {k: round(v, 4) for k, v in task_weights.items()} }")
+    weight_total = sum(task_weights.values())
+    t2m_prob = task_weights.get("text2motion", 0.0) / weight_total
+    log(
+        f"[tasks] effective source mass: nymeria_t2m={t2m_prob * (1.0 - args.bones_frac):.4f} "
+        f"bones_t2m={t2m_prob * args.bones_frac:.4f} "
+        f"nymeria_ti2m={task_weights.get('textimg2motion', 0.0) / weight_total:.4f}"
+    )
+    log(
+        f"[motion_flow] objective={args.objective} schedule={args.motion_schedule} "
+        f"shift={args.motion_shift:g} timesteps={args.motion_num_train_timesteps} "
+        f"native_solver={args.motion_native_solver}"
+    )
+    log(
+        f"[gen_flow] objective=velocity schedule={args.gen_schedule} "
+        f"distribution={'waver' if args.gen_schedule == 'native' else 'uniform'} "
+        f"shift={args.gen_shift:g} timesteps={args.gen_num_train_timesteps} "
+        f"native_solver={args.gen_native_solver} packing={args.gen_packing} "
+        f"fps={args.gen_fps:g} temporal_margin={args.gen_temporal_margin:g}"
+    )
+    log(
+        f"[motion_lengths] output_T={args.T} ti2m_aligned_T={aligned_frames} "
+        f"reasoner_image={args.reasoner_image_size}x{args.reasoner_image_size}"
+    )
     if args.textimg_condition == "generator" and "textimg2motion" in active_tasks:
         log("[DEPRECATED] --textimg_condition generator packs the TI2M image as a clean generator "
             "latent frame. Use --textimg_condition reasoner for new TI2M training; generator mode "
@@ -346,12 +480,26 @@ def main():
     model = JointMotionModel(
         cosmos,
         objective=args.objective,
+        motion_schedule=args.motion_schedule,
+        motion_shift=args.motion_shift,
+        motion_num_train_timesteps=args.motion_num_train_timesteps,
+        motion_native_solver=args.motion_native_solver,
+        gen_schedule=args.gen_schedule,
+        gen_shift=args.gen_shift,
+        gen_num_train_timesteps=args.gen_num_train_timesteps,
+        gen_native_solver=args.gen_native_solver,
+        gen_packing=args.gen_packing,
+        gen_fps=args.gen_fps,
+        gen_temporal_margin=args.gen_temporal_margin,
         motion_intermediate_size=args.motion_intermediate,
         motion_layer_stride=args.motion_layer_stride,
         motion_mrope=args.motion_mrope,
         coupling=args.coupling,
         textimg_condition=args.textimg_condition,
+        reasoner_image_size=args.reasoner_image_size,
         gen_lora=args.gen_lora,
+        gen_lora_rank=args.gen_lora_rank,
+        gen_lora_alpha=args.gen_lora_alpha,
         gen_full=args.gen_full,
         freeze_gen=args.freeze_gen,
         reasoner_lora=args.reasoner_lora,
@@ -369,20 +517,17 @@ def main():
             "(may still be warm-started by --init_gen)")
 
     # ---- curriculum warm-start: load prior-checkpoint params by SUBSET (strict=False) --------
-    def _load_ckpt_sd(path):
-        """Return the name->tensor param dict from a train.py checkpoint (the trainable_state_dict
-        under the ``model`` key; tolerant of a bare state_dict)."""
-        payload = torch.load(path, map_location="cpu", weights_only=False)
-        sd = payload.get("model", payload) if isinstance(payload, dict) else payload
-        return sd
-
     if args.init_gen:
-        gsd = _load_ckpt_sd(args.init_gen)
+        gsd = load_gen_init_state(
+            args.init_gen,
+            native_weights=args.init_gen_dcp_weights,
+        )
         n_load, n_miss, n_shape = model.load_gen_subset(gsd)
         log(f"[init_gen] {args.init_gen}: loaded {n_load} gen keys "
-            f"(skipped missing={n_miss} shape-mismatch={n_shape}) from {len(gsd)} ckpt tensors")
+            f"(skipped missing={n_miss} shape-mismatch={n_shape}) from {len(gsd)} ckpt tensors "
+            f"(native_dcp_weights={args.init_gen_dcp_weights})")
     if args.init_motion:
-        msd = _load_ckpt_sd(args.init_motion)
+        msd = load_joint_pt(args.init_motion)
         n_load, n_miss, n_shape = model.load_motion_subset(msd)
         log(f"[init_motion] {args.init_motion}: loaded {n_load} motion keys "
             f"(skipped missing={n_miss} shape-mismatch={n_shape}) from {len(msd)} ckpt tensors")
@@ -511,17 +656,35 @@ def main():
     # `_lat_root` (the T-specific precomputed-latent root) is computed above, next to the cache
     # probe. If the per-T cache is absent, the dataset emits raw frames and the trainer
     # VAE-encodes live.
-    def build_ds(split, train, cfg_dropout, max_samples=None):
+    def build_ds(
+        split,
+        train,
+        cfg_dropout,
+        max_samples=None,
+        *,
+        task_weights_override=None,
+        bones_frac_override=None,
+    ):
         return NymeriaJointDataset(
-            split=split, num_frames=args.T, task_weights=task_weights,
-            bones_text2motion_frac=args.bones_frac, cfg_dropout=cfg_dropout,
+            split=split, num_frames=args.T, aligned_num_frames=aligned_frames,
+            task_weights=task_weights if task_weights_override is None else task_weights_override,
+            bones_text2motion_frac=(
+                args.bones_frac if bones_frac_override is None else bones_frac_override
+            ),
+            cfg_dropout=cfg_dropout,
             prefer_latents=args.precomputed_latents, latent_root=_lat_root,
             force_on_the_fly=args.force_on_the_fly, train=train,
             reasoner_image_for_textimg=(args.textimg_condition == "reasoner"),
+            reasoner_image_size=args.reasoner_image_size,
             max_samples=max_samples, seed=rank,
         )
 
     ds = build_ds("train", train=True, cfg_dropout=args.cfg_dropout)
+    if args.bones_frac > 0.0 and "text2motion" in active_tasks and not ds.has_bones:
+        raise RuntimeError(
+            "BONES was requested by --bones_frac but failed to load; refusing to silently "
+            "change the Phase-2 source mixture"
+        )
     sampler = None
     if args.ddp and world > 1:
         sampler = torch.utils.data.distributed.DistributedSampler(
@@ -531,7 +694,10 @@ def main():
         num_workers=args.num_workers, collate_fn=collate_joint, drop_last=True, pin_memory=True,
         persistent_workers=args.num_workers > 0,
     )
-    log(f"[data] dataset={len(ds)} aligned T={args.T} windows  has_bones={ds.has_bones}")
+    log(
+        f"[data] dataset={len(ds)} output_T={args.T} aligned_T={aligned_frames} "
+        f"has_bones={ds.has_bones}"
+    )
 
     # ---- optimizer ----
     # fused AdamW works on plain tensors (single-GPU + pure DDP); it can't mix DTensors, so
@@ -541,12 +707,41 @@ def main():
 
     # ---- run dir / logging ----
     out, tb = None, None
+    data_policy = {
+        "nymeria_text2motion_window": "native_caption_span_up_to_T",
+        "nymeria_textimg2motion_window": (
+            f"{aligned_frames}_frame_video_aligned_motion_with_first_frame_reasoner_image"
+            if args.textimg_condition == "reasoner"
+            else "T_frame_video_aligned_generator_image"
+        ),
+        "caption_dropout": float(args.cfg_dropout),
+        "reasoner_image_dropout": 0.0,
+        "reasoner_image_size": int(args.reasoner_image_size),
+        "ti2m_frames": int(aligned_frames),
+        "bones_overview_caption": "content_natural_desc_4",
+        "motion_schedule": args.motion_schedule,
+        "motion_shift": float(args.motion_shift),
+        "motion_num_train_timesteps": int(args.motion_num_train_timesteps),
+        "motion_native_solver": args.motion_native_solver,
+        "gen_schedule": args.gen_schedule,
+        "gen_train_time_distribution": (
+            "waver" if args.gen_schedule == "native" else "uniform"
+        ),
+        "gen_shift": float(args.gen_shift),
+        "gen_num_train_timesteps": int(args.gen_num_train_timesteps),
+        "gen_native_solver": args.gen_native_solver,
+        "gen_packing": args.gen_packing,
+        "gen_fps": float(args.gen_fps),
+        "gen_temporal_margin": float(args.gen_temporal_margin),
+        "init_gen_dcp_weights": args.init_gen_dcp_weights,
+    }
     if not args.smoke and _is_rank0(rank):
         name = args.out or f"joint7_{time.strftime('%Y%m%d_%H%M%S')}"
         out = os.path.join(RUN_ROOT, name)
         os.makedirs(out, exist_ok=True)
         json.dump({**vars(args), "trainable_M": n_train / 1e6, "world": world,
-                   "active_tasks": active_tasks, "task_weights": task_weights},
+                   "active_tasks": active_tasks, "task_weights": task_weights,
+                   "data_policy": data_policy},
                   open(os.path.join(out, "config.json"), "w"), indent=2, default=str)
         try:
             from torch.utils.tensorboard import SummaryWriter
@@ -582,7 +777,14 @@ def main():
             ckpt = torch.load(resume_path, map_location="cpu", weights_only=False)
             # config-drift guard: resuming across a --T/--tasks/--objective change is usually wrong.
             prev_args = ckpt.get("args", {}) if isinstance(ckpt, dict) else {}
-            for key in ("T", "tasks", "objective", "motion_mrope", "coupling", "textimg_condition"):
+            for key in (
+                "T", "tasks", "objective", "motion_schedule", "motion_shift",
+                "motion_num_train_timesteps", "motion_native_solver", "motion_mrope",
+                "gen_schedule", "gen_shift", "gen_num_train_timesteps", "gen_native_solver",
+                "gen_packing", "gen_fps", "gen_temporal_margin",
+                "gen_lora_rank", "gen_lora_alpha", "init_gen_dcp_weights",
+                "coupling", "textimg_condition", "reasoner_image_size", "ti2m_frames",
+            ):
                 prev = prev_args.get(key)
                 cur = getattr(args, key)
                 if prev is not None and prev != cur:
@@ -628,7 +830,14 @@ def main():
         modes = batch["mode"]                                   # List[str] length B
         B = len(modes)
         captions = batch["caption"]
-        input_ids_list = [cosmos.tokenize(c) for c in captions]
+        input_ids_list = [
+            (
+                cosmos.tokenize_generation(c)
+                if args.gen_packing == "native" and TP.build_task_plan(modes[s]).has_gen
+                else cosmos.tokenize(c)
+            )
+            for s, c in enumerate(captions)
+        ]
         reasoner_inputs = [None] * B
         if args.textimg_condition == "reasoner":
             for s, mode_s in enumerate(modes):
@@ -640,7 +849,9 @@ def main():
                         "textimg_condition=reasoner needs batch['reasoner_image'] for "
                         "textimg2motion. Enable dataset reasoner-image frames or force raw frames."
                     )
-                r = cosmos.encode_reasoner_image_text(captions[s], img)
+                r = cosmos.encode_reasoner_image_text(
+                    captions[s], img, image_size=args.reasoner_image_size
+                )
                 reasoner_inputs[s] = r
                 input_ids_list[s] = r["input_ids"].view(1, -1)
 
@@ -653,16 +864,53 @@ def main():
         #   motion-noised samples (text2motion/textimg2motion/video2motion): the MOTION
         #     objective's schedule -- logit-normal sigma for x0 (bs_train recipe), uniform t
         #     for velocity.
-        #   gen-noised samples (fwd/inv/policy/motimg2video): ALWAYS uniform t (velocity).
+        #   gen-noised samples (fwd/inv/policy/motimg2video): velocity with either the legacy
+        #     uniform schedule or native shifted-Waver schedule.
         # Samples whose modality is condition-only get sigma_eff=0 per-token in the noisers,
         # so their t_sample value is inert there.
+        motion_noised = torch.tensor(
+            [TP.build_task_plan(m).motion.supervised for m in modes],
+            dtype=torch.bool,
+            device=dev,
+        )
+        gen_noised = torch.tensor(
+            [
+                TP.build_task_plan(m).video.supervised
+                or TP.build_task_plan(m).camera.supervised
+                for m in modes
+            ],
+            dtype=torch.bool,
+            device=dev,
+        )
+        if (motion_noised & gen_noised).any():
+            bad_idx = torch.nonzero(motion_noised & gen_noised).view(-1).cpu().tolist()
+            bad_modes = [modes[i] for i in bad_idx]
+            raise RuntimeError(
+                "one sample cannot use both motion-x0 and generator-velocity schedules; "
+                f"got {bad_modes}"
+            )
+
         t_sample = torch.rand(B, device=dev)
         if motion_x0:
-            motion_noised = torch.tensor(
-                [TP.build_task_plan(m).motion.supervised for m in modes],
-                dtype=torch.bool, device=dev)
+            if args.motion_schedule == "native":
+                sampled_motion_sigma = flow.sample_sigma_native_logitnormal(
+                    B,
+                    dev,
+                    shift=args.motion_shift,
+                    dtype=t_sample.dtype,
+                )
+            else:
+                sampled_motion_sigma = flow.sample_sigma_logitnormal(B, dev)
             t_sample = torch.where(
-                motion_noised, flow.sample_sigma_logitnormal(B, dev), t_sample)
+                motion_noised, sampled_motion_sigma, t_sample)
+        if args.gen_schedule == "native" and gen_noised.any():
+            sampled_gen_sigma = flow.sample_sigma_native_waver(
+                B,
+                dev,
+                shift=args.gen_shift,
+                dtype=t_sample.dtype,
+            )
+            t_sample = torch.where(gen_noised, sampled_gen_sigma, t_sample)
 
         # ---- motion modality (dense [B,Tm,283]; None if no sample carries motion) --------
         motion = batch["motion"]
@@ -801,6 +1049,16 @@ def main():
         )
 
         scalars = {}
+        if motion_x0 and motion_noised.any():
+            active_sigma = t_sample[motion_noised]
+            scalars["motion_sigma_mean"] = float(active_sigma.mean())
+            scalars["motion_sigma_min"] = float(active_sigma.min())
+            scalars["motion_sigma_max"] = float(active_sigma.max())
+        if gen_noised.any():
+            active_gen_sigma = t_sample[gen_noised]
+            scalars["gen_sigma_mean"] = float(active_gen_sigma.mean())
+            scalars["gen_sigma_min"] = float(active_gen_sigma.min())
+            scalars["gen_sigma_max"] = float(active_gen_sigma.max())
         total = torch.zeros((), device=dev)
         per_task = {m: torch.zeros((), device=dev) for m in set(modes)}
 
@@ -837,19 +1095,30 @@ def main():
                             l_smooth = masked_mse(j_hat[:, 1:] - j_hat[:, :-1],
                                                   j_gt[:, 1:] - j_gt[:, :-1], vmask)
                 m_total = args.w_feat * l_feat + args.w_joint * l_joint + args.w_smooth * l_smooth
-                total = total + m_total
-                scalars["motion_feat"] = float(l_feat)
-                scalars["motion_joint"] = float(l_joint)
-                scalars["motion_smooth"] = float(l_smooth)
+                # ``m_total`` is already a mean over all active motion-target rows. Scale it
+                # by the fraction of batch samples carrying a motion target so every sample
+                # has weight 1/B in a mixed V2M/M2V batch. This is exactly unchanged for the
+                # all-motion Phase-2 case (n_motion == B).
+                motion_counts = {
+                    m: sum(
+                        1
+                        for s in range(B)
+                        if modes[s] == m and TP.build_task_plan(modes[s]).motion.supervised
+                    )
+                    for m in set(modes)
+                }
+                n_motion = sum(motion_counts.values())
+                motion_contrib = m_total * (float(n_motion) / float(B))
+                total = total + motion_contrib
+                scalars["motion_feat"] = float(l_feat.detach())
+                scalars["motion_joint"] = float(l_joint.detach())
+                scalars["motion_smooth"] = float(l_smooth.detach())
                 # Logging only: attribute the batch-level motion loss once per active
                 # motion-target mode. Do not add it once per sample, which inflates
                 # loss/task/<mode> by batch size in single-task Phase-2 runs.
-                motion_modes = sorted({
-                    modes[s] for s in range(B)
-                    if TP.build_task_plan(modes[s]).motion.supervised
-                })
-                for m in motion_modes:
-                    per_task[m] = per_task[m] + m_total / max(1, len(motion_modes))
+                for m, count in motion_counts.items():
+                    if count:
+                        per_task[m] = per_task[m] + m_total * (float(count) / float(B))
 
         # ---- VISION loss (per-sample latent flow MSE on noised frames) -----------------
         video_pred = out.get("video_pred") or [None] * B
@@ -873,10 +1142,11 @@ def main():
             lv = flow.vision_flow_loss(p_flat, t_flat, noised_frames.view(1, T_lat),
                                        weight=args.w_vision)
             vis_accum.append(lv)
-            total = total + lv
-            per_task[modes[s]] = per_task[modes[s]] + lv
+            batch_lv = lv / float(B)
+            total = total + batch_lv
+            per_task[modes[s]] = per_task[modes[s]] + batch_lv
         if vis_accum:
-            scalars["vision"] = float(sum(vis_accum) / len(vis_accum))
+            scalars["vision"] = float((sum(vis_accum) / len(vis_accum)).detach())
 
         # ---- CAMERA loss (per-sample flow MSE on chan[:9], noised frames) --------------
         camera_pred = out.get("camera_pred") or [None] * B
@@ -897,13 +1167,22 @@ def main():
             lc = flow.camera_flow_loss(cp.unsqueeze(0), tgt[:n].unsqueeze(0), noised_mask,
                                        weight=args.w_camera)
             cam_accum.append(lc)
-            total = total + lc
-            per_task[modes[s]] = per_task[modes[s]] + lc
+            batch_lc = lc / float(B)
+            total = total + batch_lc
+            per_task[modes[s]] = per_task[modes[s]] + batch_lc
         if cam_accum:
-            scalars["camera"] = float(sum(cam_accum) / len(cam_accum))
+            scalars["camera"] = float((sum(cam_accum) / len(cam_accum)).detach())
+
+        if args.coupling == "bridge_local":
+            gates_g = torch.stack([b.gate_g.detach().float() for b in model.bridges.values()])
+            gates_m = torch.stack([b.gate_m.detach().float() for b in model.bridges.values()])
+            scalars["bridge_gate_g_abs_mean"] = float(gates_g.abs().mean())
+            scalars["bridge_gate_m_abs_mean"] = float(gates_m.abs().mean())
+            scalars["bridge_gate_g_abs_max"] = float(gates_g.abs().max())
+            scalars["bridge_gate_m_abs_max"] = float(gates_m.abs().max())
 
         for m, v in per_task.items():
-            scalars[f"task/{m}"] = float(v)
+            scalars[f"task/{m}"] = float(v.detach())
         return total, scalars
 
     # ----------------------------------------------------------------------------------
@@ -938,7 +1217,8 @@ def main():
             plan = TP.build_task_plan(tmode)
             no_video = (all(v is None for v in batch["video_latents"])
                         and all(f is None for f in batch["video_frames"]))
-            if plan.has_gen and no_video and batch["camera_action"] is None:
+            needs_generator_payload = _task_needs_generator_vision(tmode) or plan.camera.present
+            if needs_generator_payload and no_video and batch["camera_action"] is None:
                 logline(f"[smoke] '{tmode}' needs gen modalities but none present; skipping")
                 continue
             try:
@@ -974,92 +1254,467 @@ def main():
         return
 
     # ----------------------------------------------------------------------------------
-    # in-train viz: held-out captions -> text2motion sample -> decode -> .npy + manifest
+    # In-train held-out visualization. Motion pretraining balances T2M/TI2M. Bridge training
+    # balances V2M/M2V: V2M writes the source video plus GT|pred motion, while M2V writes
+    # GT|generated RGB video. Samples are fixed for the entire run so checkpoints are comparable.
     # ----------------------------------------------------------------------------------
     viz_items = []
-    if args.viz_n > 0 and out is not None and "text2motion" in active_tasks:
+    viz_modes = [
+        m for m in (
+            "text2motion", "textimg2motion", "video2motion", "motimg2video"
+        ) if m in active_tasks
+    ]
+    viz_vae = wan_vae
+    viz_vae_is_temporary = False
+    viz_setup_error = ""
+    if args.viz_n > 0 and out is not None and viz_modes:
         try:
-            # held-out split: Nymeria uses "test"; BONES uses its val pairs via train=False.
-            vds = build_ds("test", train=False, cfg_dropout=0.0, max_samples=4096)
-            seen = set()
-            half = max(1, args.viz_n // 2)
-            # BALANCE across sources so the viz always shows BOTH the Nymeria-test and BONES-test
-            # sets: first pass caps each source at `half`, second pass tops up to viz_n.
-            for strict in (True, False):
+            n_total = max(args.viz_n, len(viz_modes))
+            quotas = {mode: n_total // len(viz_modes) for mode in viz_modes}
+            for mode in viz_modes[: n_total % len(viz_modes)]:
+                quotas[mode] += 1
+
+            def _viz_record(item, mode):
+                gt_motion = torch.as_tensor(item["motion"]).float()
+                pad_mask = item.get("motion_pad_mask")
+                if pad_mask is not None:
+                    gt_motion = gt_motion[~torch.as_tensor(pad_mask)]
+                video_latents_v = item.get("video_latents")
+                return {
+                    "mode": mode,
+                    "caption": item["caption"],
+                    "source": item.get("source", "nymeria"),
+                    "gt_motion": gt_motion,
+                    "sample_T": (
+                        int(gt_motion.shape[0]) if mode == "textimg2motion" else args.T
+                    ),
+                    "neutral_joints": torch.as_tensor(item["neutral_joints"]).float(),
+                    "reasoner_image": (
+                        torch.as_tensor(item["reasoner_image"]).clone()
+                        if item.get("reasoner_image") is not None
+                        else None
+                    ),
+                    "video_latents": (
+                        torch.as_tensor(video_latents_v).float().clone()
+                        if video_latents_v is not None
+                        else None
+                    ),
+                }
+
+            if quotas.get("text2motion", 0) > 0:
+                target = quotas["text2motion"]
+                vds = build_ds(
+                    "test",
+                    train=False,
+                    cfg_dropout=0.0,
+                    max_samples=4096,
+                    task_weights_override={"text2motion": 1.0},
+                )
+                selected = []
+                seen = set()
+                per_source = max(1, target // 2)
+                for strict in (True, False):
+                    for i in range(len(vds)):
+                        if len(selected) >= target:
+                            break
+                        item = vds[i]
+                        cap = item.get("caption", "")
+                        src = item.get("source", "nymeria")
+                        if not cap or cap in seen or item.get("motion") is None:
+                            continue
+                        if strict and sum(v["source"] == src for v in selected) >= per_source:
+                            continue
+                        seen.add(cap)
+                        selected.append(_viz_record(item, "text2motion"))
+                    if len(selected) >= target:
+                        break
+                viz_items.extend(selected)
+
+            if quotas.get("textimg2motion", 0) > 0:
+                target = quotas["textimg2motion"]
+                vds = build_ds(
+                    "test",
+                    train=False,
+                    cfg_dropout=0.0,
+                    max_samples=4096,
+                    task_weights_override={"textimg2motion": 1.0},
+                    bones_frac_override=0.0,
+                )
+                seen = set()
                 for i in range(len(vds)):
-                    if len(viz_items) >= args.viz_n:
+                    if sum(v["mode"] == "textimg2motion" for v in viz_items) >= target:
                         break
                     item = vds[i]
-                    if item["mode"] != "text2motion" or item.get("motion") is None:
-                        continue
-                    cap = item["caption"]
-                    src = item.get("source", "nymeria")
-                    if not cap or cap in seen:
-                        continue
-                    if strict and sum(v["source"] == src for v in viz_items) >= half:
+                    cap = item.get("caption", "")
+                    if (
+                        not cap
+                        or cap in seen
+                        or item.get("motion") is None
+                        or item.get("reasoner_image") is None
+                    ):
                         continue
                     seen.add(cap)
-                    # keep the held-out GT motion (z-scored, pad rows stripped) so do_viz can
-                    # render kimodo-style GT|gen side-by-side (single panel when absent).
-                    gt_m = torch.as_tensor(item["motion"]).float()
-                    pm = item.get("motion_pad_mask")
-                    if pm is not None:
-                        gt_m = gt_m[~torch.as_tensor(pm)]
-                    viz_items.append({"caption": cap, "source": src, "gt_motion": gt_m,
-                                      "neutral_joints": torch.as_tensor(item["neutral_joints"]).float()})
-                if len(viz_items) >= args.viz_n:
-                    break
-            srcs = {}
-            for v in viz_items:
-                srcs[v["source"]] = srcs.get(v["source"], 0) + 1
-            logline(f"[viz] setup: {len(viz_items)} held-out captions by source = {srcs}")
+                    viz_items.append(_viz_record(item, "textimg2motion"))
+
+            for mode in ("video2motion", "motimg2video"):
+                target = quotas.get(mode, 0)
+                if target <= 0:
+                    continue
+                vds = build_ds(
+                    "test",
+                    train=False,
+                    cfg_dropout=0.0,
+                    max_samples=4096,
+                    task_weights_override={mode: 1.0},
+                    bones_frac_override=0.0,
+                )
+                selected = 0
+                for i in range(len(vds)):
+                    if selected >= target:
+                        break
+                    item = vds[i]
+                    if (
+                        item.get("motion") is None
+                        or item.get("neutral_joints") is None
+                        or item.get("video_latents") is None
+                    ):
+                        continue
+                    viz_items.append(_viz_record(item, mode))
+                    selected += 1
+
+            counts = {}
+            for item in viz_items:
+                key = f"{item['mode']}:{item['source']}"
+                counts[key] = counts.get(key, 0) + 1
+            mode_counts = {
+                mode: sum(item["mode"] == mode for item in viz_items)
+                for mode in viz_modes
+            }
+            missing = {
+                mode: (mode_counts.get(mode, 0), quotas[mode])
+                for mode in viz_modes
+                if mode_counts.get(mode, 0) < quotas[mode]
+            }
+            if missing:
+                raise RuntimeError(f"could not build required held-out viz samples: {missing}")
+            logline(f"[viz] setup: {len(viz_items)} held-out samples = {counts}")
         except Exception as e:
-            logline(f"[viz] setup skipped: {type(e).__name__}: {str(e)[:120]}")
+            viz_setup_error = f"{type(e).__name__}: {str(e)[:240]}"
+            logline(f"[viz] setup skipped: {viz_setup_error}")
+
+    # Setup is rank-0-only because only rank 0 owns `out`. Broadcast its status so a required
+    # visualization failure terminates every DDP rank coherently instead of stranding peers in
+    # the next gradient collective.
+    viz_setup_failed = int(bool(viz_setup_error))
+    if args.ddp and world > 1 and args.viz_n > 0:
+        import torch.distributed as dist
+
+        setup_flag = torch.tensor(viz_setup_failed, dtype=torch.int32)
+        dist.broadcast(setup_flag, src=0, group=viz_sync_group)
+        viz_setup_failed = int(setup_flag.item())
+    if viz_setup_failed and args.require_viz:
+        raise RuntimeError(
+            "required held-out visualization setup failed"
+            + (f": {viz_setup_error}" if viz_setup_error else " on rank 0")
+        )
+
+    def _get_viz_vae():
+        nonlocal viz_vae, viz_vae_is_temporary
+        if viz_vae is None:
+            from precompute_latents import load_vae
+
+            logline(
+                "[viz] loading rank-local Wan2.2-VAE for V2M/M2V checkpoint videos..."
+            )
+            viz_vae = load_vae(
+                args.wan_vae_path,
+                args.vae_resolution,
+                args.T,
+                dev,
+                rank_local=True,
+            )
+            viz_vae_is_temporary = True
+            logline("[viz] Wan2.2-VAE loaded")
+        return viz_vae
+
+    def _release_temporary_viz_vae():
+        nonlocal viz_vae, viz_vae_is_temporary
+        if not viz_vae_is_temporary:
+            return
+        viz_vae = None
+        viz_vae_is_temporary = False
+        gc.collect()
+        torch.cuda.empty_cache()
+        logline("[viz] released rank-local Wan2.2-VAE")
+
+    def _write_latent_video(latents, path, *, frame_stride=1):
+        import eval_camera as EC
+
+        vae = _get_viz_vae()
+        lat_np = (
+            latents.detach().float().cpu().numpy()
+            if torch.is_tensor(latents)
+            else np.asarray(latents, dtype=np.float32)
+        )
+        frames = EC.latent_to_frames(vae, lat_np, dev)
+        frames = frames[::frame_stride]
+        fps = max(1, round(20 / frame_stride))
+        EC.frames_to_mp4(frames, path, fps)
+        return frames
+
+    def _hstack_videos(left_path, right_path, out_path, left_label, right_label):
+        """Best-effort labeled comparison; the two component MP4s remain authoritative."""
+        import subprocess
+
+        fc = (
+            f"[0:v]scale=-2:400,pad=iw:ih+26:0:26:black,drawtext=text='{left_label}':"
+            "x=6:y=3:fontcolor=yellow:fontsize=18[a];"
+            f"[1:v]scale=-2:400,pad=iw:ih+26:0:26:black,drawtext=text='{right_label}':"
+            "x=6:y=3:fontcolor=yellow:fontsize=18[b];"
+            "[a][b]hstack=inputs=2:shortest=1"
+        )
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", left_path, "-i", right_path,
+             "-filter_complex", fc, out_path],
+            check=False,
+        )
+        return out_path if result.returncode == 0 else None
 
     @torch.no_grad()
     def do_viz(step):
         if not viz_items or out is None:
             return
         model.eval()
-        vdir = os.path.join(out, f"viz_step{step:06d}")
-        os.makedirs(vdir, exist_ok=True)
-        manifest = []
-        for i, it in enumerate(viz_items):
-            nj_v = it["neutral_joints"].to(dev).unsqueeze(0)
-            x0v = model.sample(
-                caption=it["caption"], neutral_joints=nj_v, T=args.T,
-                steps=args.viz_steps, guidance=args.viz_guidance,
-                tokenizer=cosmos.tokenize, device=dev,
-            )                                            # [1,T,283] normalized
-            feat = (x0v[0].float() * std + mean)
-            joints = decode_joints(feat.unsqueeze(0))[0].cpu().numpy()  # [T,30,3]
-            src = it.get("source", "nymeria")
-            tag = it["caption"][:28].replace(" ", "_").replace("/", "_")
-            npy_path = os.path.join(vdir, f"{i}_{src}_{tag}.npy")
-            np.save(npy_path, joints)
-            # decode the held-out GT window (when carried) for the side-by-side left panel.
-            gt_joints = gt_path = None
-            gtm = it.get("gt_motion")
-            if gtm is not None and gtm.numel() > 0:
-                try:
+        try:
+            vdir = os.path.join(out, f"viz_step{step:06d}")
+            os.makedirs(vdir, exist_ok=True)
+            manifest = []
+            for i, it in enumerate(viz_items):
+                mode = it["mode"]
+                nj_v = it["neutral_joints"].to(dev).unsqueeze(0)
+                sample_T = int(it["sample_T"])
+                src = it.get("source", "nymeria")
+                tag = it["caption"][:28].replace(" ", "_").replace("/", "_") or "no_text"
+                stem = f"{i}_{mode}_{src}_{tag}"
+
+                if mode == "motimg2video":
+                    from sample import sample_motimg2video
+
+                    vlat = it["video_latents"].to(dev)
+                    gen_latents = sample_motimg2video(
+                        model,
+                        caption=it["caption"],
+                        image_latent=vlat[:, 0],
+                        motion=it["gt_motion"].to(dev).unsqueeze(0),
+                        neutral_joints=nj_v,
+                        T_lat=int(vlat.shape[1]),
+                        steps=args.viz_steps,
+                        guidance=args.viz_guidance,
+                        device=dev,
+                        seed=i,
+                    )
+                    gt_npz = os.path.join(vdir, stem + "_gt_latents.npz")
+                    gen_npz = os.path.join(vdir, stem + "_generated_latents.npz")
+                    np.savez(gt_npz, latents=vlat.float().cpu().numpy().astype(np.float16))
+                    np.savez(gen_npz, latents=gen_latents.astype(np.float16))
+                    gt_mp4 = os.path.join(vdir, stem + "_gt.mp4")
+                    gen_mp4 = os.path.join(vdir, stem + "_generated.mp4")
+                    _write_latent_video(vlat, gt_mp4)
+                    _write_latent_video(gen_latents, gen_mp4)
+                    comparison_mp4 = os.path.join(vdir, stem + ".mp4")
+                    comparison = _hstack_videos(
+                        gt_mp4, gen_mp4, comparison_mp4, "GT video", "generated video"
+                    )
+                    if comparison is None:
+                        logline(f"[viz] ffmpeg M2V comparison failed; kept {gt_mp4} and {gen_mp4}")
+                    manifest.append({
+                        "i": i,
+                        "mode": mode,
+                        "source": src,
+                        "caption": it["caption"],
+                        "gt_latents_npz": gt_npz,
+                        "generated_latents_npz": gen_npz,
+                        "gt_video": gt_mp4,
+                        "generated_video": gen_mp4,
+                        "comparison_video": comparison,
+                        "T": sample_T,
+                        "gen_schedule": args.gen_schedule,
+                        "gen_shift": args.gen_shift,
+                        "gen_native_solver": args.gen_native_solver,
+                        "sampling_steps": args.viz_steps,
+                        "guidance": args.viz_guidance,
+                    })
+                    continue
+
+                if mode == "textimg2motion":
+                    from sample import sample_textimg2motion
+
+                    x0_np = sample_textimg2motion(
+                        model,
+                        caption=it["caption"],
+                        neutral_joints=nj_v,
+                        T=sample_T,
+                        reasoner_image=it["reasoner_image"],
+                        steps=args.viz_steps,
+                        guidance=args.viz_guidance,
+                        device=dev,
+                        seed=i,
+                    )
+                    x0v = torch.from_numpy(x0_np).to(dev).unsqueeze(0)
+                elif mode == "video2motion":
+                    from sample import sample_video2motion
+
+                    vlat = it["video_latents"].to(dev)
+                    x0_np = sample_video2motion(
+                        model,
+                        neutral_joints=nj_v,
+                        T=sample_T,
+                        video_latents=vlat,
+                        steps=args.viz_steps,
+                        guidance=args.viz_guidance,
+                        device=dev,
+                        seed=i,
+                    )
+                    x0v = torch.from_numpy(x0_np).to(dev).unsqueeze(0)
+                else:
+                    x0v = model.sample(
+                        caption=it["caption"], neutral_joints=nj_v, T=sample_T,
+                        steps=args.viz_steps, guidance=args.viz_guidance,
+                        tokenizer=cosmos.tokenize, device=dev, seed=i,
+                    )
+                feat = x0v[0].float() * std + mean
+                joints = decode_joints(feat.unsqueeze(0))[0].cpu().numpy()
+                npy_path = os.path.join(vdir, stem + ".npy")
+                np.save(npy_path, joints)
+
+                gt_joints = gt_path = None
+                gtm = it.get("gt_motion")
+                if gtm is not None and gtm.numel() > 0:
                     gt_feat = gtm.to(dev) * std + mean
                     gt_joints = decode_joints(gt_feat.unsqueeze(0))[0].cpu().numpy()
-                    gt_path = npy_path.replace(".npy", "_gt.npy")
+                    gt_path = os.path.join(vdir, stem + "_gt.npy")
                     np.save(gt_path, gt_joints)
-                except Exception as e:  # noqa: BLE001 -- GT decode is best-effort
-                    logline(f"[viz] GT decode skipped: {type(e).__name__}: {str(e)[:100]}")
-                    gt_joints = gt_path = None
-            try:  # render mp4 IN-ENV (kimodo-style renderer; GT|gen side-by-side when GT exists)
-                from render_motion import render_motion_mp4
-                render_motion_mp4(joints, npy_path.replace(".npy", ".mp4"), caption=it["caption"],
-                                  fps=20, gt_joints=gt_joints)
-            except Exception as e:  # noqa: BLE001 -- viz mp4 is best-effort; never break training
-                logline(f"[viz] mp4 render skipped: {type(e).__name__}: {str(e)[:100]}")
-            manifest.append({"i": i, "source": src, "caption": it["caption"], "joints_npy": npy_path,
-                             "gt_joints_npy": gt_path, "T": int(joints.shape[0])})
-        json.dump(manifest, open(os.path.join(vdir, "manifest.json"), "w"), indent=2)
-        model.train()
-        logline(f"[viz] step {step} -> {vdir} ({len(manifest)} clips, decode npy + manifest)")
+
+                condition_path = None
+                comparison_path = None
+                motion_mp4_path = None
+                try:
+                    from render_motion import render_conditioned_motion_mp4, render_motion_mp4
+
+                    motion_mp4_path = os.path.join(
+                        vdir, stem + ("_gt_pred_motion.mp4" if mode == "video2motion" else ".mp4")
+                    )
+                    render_fps = max(1, round(20 / args.viz_frame_stride))
+                    if mode == "textimg2motion":
+                        condition_path = os.path.join(vdir, stem + "_condition.png")
+                        render_conditioned_motion_mp4(
+                            condition_image=it["reasoner_image"],
+                            gen_joints=joints,
+                            gt_joints=gt_joints,
+                            out_path=motion_mp4_path,
+                            condition_out_path=condition_path,
+                            caption=it["caption"],
+                            fps=render_fps,
+                            frame_stride=args.viz_frame_stride,
+                        )
+                    else:
+                        render_motion_mp4(
+                            joints, motion_mp4_path, caption=it["caption"], fps=render_fps,
+                            gt_joints=gt_joints,
+                            frame_stride=args.viz_frame_stride,
+                        )
+                    if mode == "video2motion":
+                        condition_path = os.path.join(vdir, stem + "_condition_video.mp4")
+                        _write_latent_video(
+                            it["video_latents"],
+                            condition_path,
+                            frame_stride=args.viz_frame_stride,
+                        )
+                        requested_comparison = os.path.join(vdir, stem + ".mp4")
+                        comparison_path = _hstack_videos(
+                            condition_path,
+                            motion_mp4_path,
+                            requested_comparison,
+                            "condition video",
+                            "GT | predicted motion",
+                        )
+                        if comparison_path is None:
+                            logline(
+                                f"[viz] ffmpeg V2M comparison failed; kept {condition_path} "
+                                f"and {motion_mp4_path}"
+                            )
+                except Exception as e:  # noqa: BLE001 -- rendering must never break training
+                    if args.require_viz:
+                        raise
+                    logline(f"[viz] mp4 render skipped: {type(e).__name__}: {str(e)[:120]}")
+
+                manifest.append({
+                    "i": i,
+                    "mode": it["mode"],
+                    "source": src,
+                    "caption": it["caption"],
+                    "joints_npy": npy_path,
+                    "gt_joints_npy": gt_path,
+                    "motion_video": motion_mp4_path,
+                    "condition_media": condition_path,
+                    "comparison_video": comparison_path,
+                    "T": int(joints.shape[0]),
+                    "motion_schedule": args.motion_schedule,
+                    "motion_shift": args.motion_shift,
+                    "motion_native_solver": args.motion_native_solver,
+                    "render_frame_stride": args.viz_frame_stride,
+                    "render_fps": max(1, round(20 / args.viz_frame_stride)),
+                })
+            json.dump(manifest, open(os.path.join(vdir, "manifest.json"), "w"), indent=2)
+            logline(
+                f"[viz] step {step} -> {vdir} "
+                f"({len(manifest)} held-out records; modes="
+                f"{sorted({row['mode'] for row in manifest})})"
+            )
+        finally:
+            model.train()
+
+    def run_checkpoint_viz(step):
+        """Run rank-0 visualization and synchronize success/failure across DDP ranks."""
+        if args.viz_n <= 0:
+            return
+        if args.ddp and world > 1:
+            import torch.distributed as dist
+
+            dist.barrier(group=viz_sync_group)
+        failed = 0
+        error_text = ""
+        if _is_rank0(rank):
+            try:
+                do_viz(step)
+            except Exception as e:  # noqa: BLE001 -- propagate coherently after broadcast
+                failed = 1
+                error_text = f"{type(e).__name__}: {str(e)[:240]}"
+                logline(f"[viz] step {step} failed: {error_text}")
+            finally:
+                _release_temporary_viz_vae()
+        if args.ddp and world > 1:
+            flag = torch.tensor(failed, dtype=torch.int32)
+            dist.broadcast(flag, src=0, group=viz_sync_group)
+            failed = int(flag.item())
+        if failed and args.require_viz:
+            raise RuntimeError(
+                f"required checkpoint visualization failed at step {step}"
+                + (f": {error_text}" if error_text else " on rank 0")
+            )
+
+    if args.viz_only:
+        run_checkpoint_viz(0)
+        logline("[viz_only] done; no optimizer step or checkpoint save was performed")
+        if tb is not None:
+            tb.close()
+        if logf is not None:
+            logf.close()
+        if args.ddp:
+            import torch.distributed as dist
+
+            dist.destroy_process_group()
+        return
 
     def save_ckpt(step):
         if out is None:
@@ -1075,7 +1730,8 @@ def main():
         # step. Under --fsdp the state is sharded/DTensor -> skip it (resume restores weights+step).
         payload = {"model": sd,
                    "optimizer": None if fsdp_sharded else opt.state_dict(),
-                   "step": step, "args": vars(args), "task_weights": task_weights}
+                   "step": step, "args": vars(args), "task_weights": task_weights,
+                   "data_policy": data_policy}
         torch.save(payload, os.path.join(out, f"ckpt_step{step:06d}.pt"))
         torch.save(payload, os.path.join(out, "latest.pt"))
         logline(f"[ckpt] step {step}")
@@ -1110,7 +1766,14 @@ def main():
             if not math.isfinite(_l) or _l > max(50.0, 25.0 * _ema):
                 logline(f"[bomb-guard] step {step}: batch loss {_l:.1f} > "
                         f"max(50, 25x ema {_ema:.2f}) — zeroing this rank's contribution")
-                loss = loss * 0.0
+                # Multiplying NaN/Inf by zero remains NaN. `where` gives a graph-connected,
+                # finite zero with zero derivative for non-finite losses; ordinary finite spikes
+                # can use the cheaper multiply-by-zero path.
+                loss = (
+                    loss * 0.0
+                    if math.isfinite(_l)
+                    else torch.where(torch.isfinite(loss), loss, torch.zeros_like(loss))
+                )
             else:
                 main._loss_ema = 0.99 * _ema + 0.01 * _l
 
@@ -1141,7 +1804,16 @@ def main():
             if args.grad_clip > 0:
                 clip_grads(trainable, args.grad_clip)
 
-            if torch.isfinite(loss) and grads_finite(trainable):
+            step_ok = bool(torch.isfinite(loss.detach()).item()) and grads_finite(trainable)
+            if args.ddp and world > 1:
+                # Every rank must either step or skip. This is essential for FSDP shards, where a
+                # non-finite gradient can be local to one rank; rank-local optimizer decisions
+                # would permanently diverge replicas/shards.
+                import torch.distributed as dist
+                ok_flag = torch.tensor(1 if step_ok else 0, device=dev, dtype=torch.int32)
+                dist.all_reduce(ok_flag, op=dist.ReduceOp.MIN)
+                step_ok = bool(ok_flag.item())
+            if step_ok:
                 opt.step()
             else:
                 n_skipped += 1
@@ -1180,17 +1852,18 @@ def main():
 
             if step > 0 and step % args.save_every == 0:
                 save_ckpt(step)
-            if step > 0 and step % args.viz_every == 0 and _is_rank0(rank):
-                try:
-                    do_viz(step)
-                except Exception as e:
-                    logline(f"[viz] step {step} failed: {type(e).__name__}: {str(e)[:160]}")
+            if step > 0 and step % args.viz_every == 0:
+                # Rank 0 samples/renders while other ranks block in the synchronized helper.
+                run_checkpoint_viz(step)
 
             step += 1
             if step >= args.steps:
                 break
 
     save_ckpt(step)
+    # The loop saves periodic checkpoints before incrementing `step`, while the final checkpoint
+    # is written at exactly `args.steps`. Visualize that final state explicitly as well.
+    run_checkpoint_viz(step)
     logline("[train] done")
     if logf is not None:
         logf.close()

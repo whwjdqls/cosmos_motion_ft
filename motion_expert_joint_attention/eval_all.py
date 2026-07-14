@@ -316,19 +316,42 @@ def main():
         T = int(ck_args["T"])
     else:
         T = int(C.VIDEO_NUM_FRAMES)
+    ti2m_T = int(ck_args.get("ti2m_frames") or T)
+    reasoner_ti2m = (
+        "textimg2motion" in mv_tasks
+        and getattr(model, "textimg_condition", "generator") == "reasoner"
+    )
+    needs_latents = (
+        "video2motion" in mv_tasks
+        or bool(set(mv_tasks) & VIDEO_GEN_TASKS)
+        or ("textimg2motion" in mv_tasks and not reasoner_ti2m)
+    )
+    # A Phase-2 checkpoint can use output T=200 for T2M but 97 aligned valid frames for TI2M.
+    # Build the held-out index at 97 when no selected task needs generator latents/full video.
+    index_T = ti2m_T if reasoner_ti2m and not needs_latents else T
     latent_root = args.latent_root or (
-        C.VIDEO_LATENT_ROOT if T == C.VIDEO_NUM_FRAMES else f"{C.VIDEO_LATENT_ROOT}_T{T}")
-    print(f"[eval_all] T={T}  latent_root={latent_root}  motion_objective={objective}", flush=True)
+        C.VIDEO_LATENT_ROOT
+        if index_T == C.VIDEO_NUM_FRAMES
+        else f"{C.VIDEO_LATENT_ROOT}_T{index_T}"
+    )
+    print(
+        f"[eval_all] output_T={T} ti2m_T={ti2m_T} index_T={index_T} "
+        f"needs_latents={needs_latents} latent_root={latent_root} "
+        f"motion_objective={objective}",
+        flush=True,
+    )
 
     mean = np.load(C.MOTION_STATS_MEAN).astype(np.float32)
     std = np.load(C.MOTION_STATS_STD).astype(np.float32)
 
     # ---- test-window index (carries every modality) -------------------------------------------
-    index = build_full_index(args.manifest, args.split_file, args.split, T, latent_root,
-                             args.uniego_root, require_latents=True)
+    index = build_full_index(args.manifest, args.split_file, args.split, index_T, latent_root,
+                             args.uniego_root, require_latents=needs_latents)
     if not index:
-        raise SystemExit(f"[eval_all] no test windows w/ latents under {latent_root} + uniego "
-                         f"(split={args.split})")
+        requirement = f"latents under {latent_root} + uniego" if needs_latents else "uniego"
+        raise SystemExit(
+            f"[eval_all] no test windows w/ {requirement} (split={args.split}, T={index_T})"
+        )
     index = index[: args.n]
     print(f"[eval_all] {len(index)} test windows for motion/video tasks", flush=True)
 
@@ -352,43 +375,59 @@ def main():
         name = seq_name(i, uuid, s)
         print(f"\n[eval_all] [{i+1}/{len(index)}] {name}", flush=True)
 
-        gt_feat_z, nj = load_gt_motion(it["uni"], s, it["off"], T, mean, std)  # [k,283],[30,3]
-        nj_t = torch.from_numpy(nj).float().to(dev)[None]                      # [1,30,3]
-        vlat = torch.from_numpy(np.ascontiguousarray(_load_latents(it["lp"]))).float().to(dev)
-        C_, T_lat, h, w = vlat.shape
+        base_gt_z, nj = load_gt_motion(
+            it["uni"], s, it["off"], index_T, mean, std
+        )
+        nj_t = torch.from_numpy(nj).float().to(dev)[None]
+        vlat = None
+        T_lat = None
+        if needs_latents:
+            vlat = torch.from_numpy(
+                np.ascontiguousarray(_load_latents(it["lp"]))
+            ).float().to(dev)
+            _C, T_lat, _h, _w = vlat.shape
         cap = it["cap"]
 
         # ---- MOTION tasks: sample -> recon metric -> render ------------------------------------
         for t in [x for x in mv_tasks if x in MOTION_TASKS]:
+            task_T = ti2m_T if t == "textimg2motion" else T
+            if task_T == index_T:
+                gt_task_z = base_gt_z
+            else:
+                gt_task_z, _ = load_gt_motion(
+                    it["uni"], s, it["off"], task_T, mean, std
+                )
             if t == "text2motion":
-                pred_z = S.sample_text2motion(model, caption=cap, neutral_joints=nj_t, T=T,
+                pred_z = S.sample_text2motion(model, caption=cap, neutral_joints=nj_t, T=task_T,
                                               steps=args.steps, guidance=args.cfg,
                                               objective=objective, device=dev, seed=args.seed)
             elif t == "textimg2motion":
                 reasoner_image = None
                 if getattr(model, "textimg_condition", "generator") == "reasoner":
                     from nymeria_camera_dataset import decode_window_pyav
-                    frames0 = decode_window_pyav(it["vis"], s, T, args.fps)
+                    # Corrected reasoner-side TI2M needs only frame 0. Decoding the full T=97
+                    # clip here was pure I/O/CPU overhead and did not change conditioning.
+                    frames0 = decode_window_pyav(it["vis"], s, 1, args.fps)
                     reasoner_image = torch.from_numpy(
                         np.ascontiguousarray(frames0[0])
                     ).permute(2, 0, 1).contiguous()
-                pred_z = S.sample_textimg2motion(model, caption=cap, neutral_joints=nj_t, T=T,
-                                                 image_latent=vlat[:, 0],
+                pred_z = S.sample_textimg2motion(model, caption=cap, neutral_joints=nj_t, T=task_T,
+                                                 image_latent=(vlat[:, 0] if vlat is not None else None),
                                                  reasoner_image=reasoner_image,
                                                  steps=args.steps,
                                                  guidance=args.cfg, objective=objective,
                                                  device=dev, seed=args.seed)
             else:  # video2motion
-                pred_z = S.sample_video2motion(model, neutral_joints=nj_t, T=T, video_latents=vlat,
+                pred_z = S.sample_video2motion(model, neutral_joints=nj_t, T=task_T, video_latents=vlat,
                                                steps=args.steps, guidance=args.cfg,
                                                objective=objective, device=dev, seed=args.seed)
             # save pred + gt z-scored motion
             pd = os.path.join(out_root, "motion_recon", t, "pred"); os.makedirs(pd, exist_ok=True)
             gd = os.path.join(out_root, "motion_recon", t, "gt"); os.makedirs(gd, exist_ok=True)
             np.save(os.path.join(pd, name + ".npy"), pred_z)
-            np.save(os.path.join(gd, name + ".npy"), gt_feat_z)
+            np.save(os.path.join(gd, name + ".npy"), gt_task_z)
             # recon metric (vs the aligned GT window)
-            recon_rows[t][name] = EMR.recon_metrics(pred_z, gt_feat_z, mean, std)
+            recon_rows[t][name] = EMR.recon_metrics(pred_z, gt_task_z, mean, std)
             print(f"  [{t}] MPJPE={recon_rows[t][name]['mpjpe_m']:.3f} "
                   f"accel_err={recon_rows[t][name]['accel_err']:.3f}", flush=True)
             # viz: video2motion -> GT|pred side-by-side; generative tasks -> pred only
@@ -396,7 +435,7 @@ def main():
                 dst = os.path.join(viz_dir, f"{t}_{name}.mp4")
                 try:
                     p = _render_motion(pred_z, mean, std, dst, cap[:40], args.fps,
-                                       gt_feat_z=(gt_feat_z if t == "video2motion" else None))
+                                       gt_feat_z=(gt_task_z if t == "video2motion" else None))
                     summary["viz"].append(p)
                     motion_viz_counts[t] += 1
                 except Exception as e:  # noqa: BLE001
@@ -408,7 +447,7 @@ def main():
 
         # ---- motimg2video: sample video -> VAE decode -> GT|gen side-by-side -------------------
         if "motimg2video" in mv_tasks:
-            motion_clean = torch.from_numpy(gt_feat_z).float().to(dev)[None]   # [1,k,283] clean cond
+            motion_clean = torch.from_numpy(base_gt_z).float().to(dev)[None]   # [1,k,283] clean cond
             gen = S.sample_motimg2video(model, caption=cap, image_latent=vlat[:, 0],
                                         motion=motion_clean, neutral_joints=nj_t, T_lat=T_lat,
                                         steps=args.steps, guidance=args.cfg, device=dev,

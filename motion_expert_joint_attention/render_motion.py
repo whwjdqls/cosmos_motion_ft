@@ -30,6 +30,7 @@ Entry points:
   * ``write_mp4(frames, path, fps)``                   -> h264 mp4 (pyav; imageio-ffmpeg fallback)
   * ``render_motion_mp4(joints, out_path, caption, fps, gt_joints=None)`` -- the train.py /
     eval_all.py call seam: single-panel when ``gt_joints`` is None, GT|gen side-by-side otherwise.
+  * ``render_conditioned_motion_mp4(...)``             -- conditioning image | GT | generated.
 """
 from __future__ import annotations
 
@@ -338,6 +339,85 @@ def render_motion_mp4(joints, out_path: str, caption: str = "", fps: int = 20,
         frames = render_sidebyside(np.asarray(gt_joints, dtype=np.float32),
                                    np.asarray(joints, dtype=np.float32),
                                    joint_parents=parents, caption=caption, **kw)
+    return write_mp4(frames, out_path, fps=fps)
+
+
+def _image_to_uint8_hwc(image) -> np.ndarray:
+    """Accept torch/numpy CHW or HWC image data and return contiguous RGB uint8 HWC."""
+    if hasattr(image, "detach"):
+        image = image.detach().cpu().numpy()
+    arr = np.asarray(image)
+    if arr.ndim != 3:
+        raise ValueError(f"condition_image must have 3 dimensions, got {arr.shape}")
+    if arr.shape[0] == 3 and arr.shape[-1] != 3:
+        arr = np.transpose(arr, (1, 2, 0))
+    if arr.shape[-1] != 3:
+        raise ValueError(f"condition_image must be RGB CHW/HWC, got {arr.shape}")
+    if arr.dtype != np.uint8:
+        arr = arr.astype(np.float32)
+        if arr.size and float(np.nanmax(arr)) <= 1.0:
+            arr = arr * 255.0
+        arr = np.nan_to_num(arr, nan=0.0, posinf=255.0, neginf=0.0)
+        arr = np.clip(np.rint(arr), 0, 255).astype(np.uint8)
+    return np.ascontiguousarray(arr)
+
+
+def render_conditioned_motion_mp4(
+    *,
+    condition_image,
+    gen_joints,
+    out_path: str,
+    gt_joints=None,
+    condition_out_path: Optional[str] = None,
+    caption: str = "",
+    fps: int = 20,
+    parents=PARENTS,
+    **kw,
+) -> str:
+    """Render TI2M as conditioning image | GT motion | generated motion.
+
+    The source image is saved separately when ``condition_out_path`` is provided. The MP4 repeats
+    a letterboxed image panel beside the normal two-panel motion rendering, making every training
+    visualization self-contained without altering the motion renderer's camera or scale.
+    """
+    from PIL import Image, ImageDraw
+
+    condition = _image_to_uint8_hwc(condition_image)
+    condition_pil = Image.fromarray(condition, mode="RGB")
+    if condition_out_path is not None:
+        condition_pil.save(condition_out_path)
+
+    motion_frames = render_sidebyside(
+        None if gt_joints is None else np.asarray(gt_joints, dtype=np.float32),
+        np.asarray(gen_joints, dtype=np.float32),
+        joint_parents=parents,
+        caption=caption,
+        **kw,
+    )
+    height = int(motion_frames.shape[1])
+    panel_width = height
+    margin = max(12, height // 40)
+    label_height = max(28, height // 16)
+    available_w = panel_width - 2 * margin
+    available_h = height - 2 * margin - label_height
+    scale = min(available_w / condition_pil.width, available_h / condition_pil.height)
+    resized = condition_pil.resize(
+        (
+            max(1, int(round(condition_pil.width * scale))),
+            max(1, int(round(condition_pil.height * scale))),
+        ),
+        resample=Image.Resampling.LANCZOS,
+    )
+    panel = Image.new("RGB", (panel_width, height), color=(245, 245, 245))
+    x = (panel_width - resized.width) // 2
+    y = margin + label_height + max(0, (available_h - resized.height) // 2)
+    panel.paste(resized, (x, y))
+    ImageDraw.Draw(panel).text(
+        (margin, margin), "conditioning image", fill=(25, 25, 25)
+    )
+    panel_np = np.asarray(panel, dtype=np.uint8)
+    panels = np.broadcast_to(panel_np, (motion_frames.shape[0], *panel_np.shape)).copy()
+    frames = np.concatenate([panels, motion_frames], axis=2)
     return write_mp4(frames, out_path, fps=fps)
 
 

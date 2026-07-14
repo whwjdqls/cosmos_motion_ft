@@ -107,7 +107,7 @@ class GenTokens:
     tokens: torch.Tensor
     mrope_ids: torch.Tensor
     condition_mask: torch.Tensor
-    next_temporal_offset: int
+    next_temporal_offset: int | float
     grid: tuple[int, int, int]
     n_frames: int
     noisy_frame_idx: torch.Tensor
@@ -141,7 +141,7 @@ class GenSegment:
     tokens: torch.Tensor
     mrope_ids: torch.Tensor
     condition_mask: torch.Tensor
-    next_temporal_offset: int
+    next_temporal_offset: int | float
     parts: dict[str, GenTokens] = field(default_factory=dict)
     offsets: dict[str, tuple[int, int]] = field(default_factory=dict)
 
@@ -191,7 +191,7 @@ class GenHeads:
         condition_mask: torch.Tensor,    # [T_lat] bool: True == CLEAN frame
         sigma: torch.Tensor,             # scalar | [1] flow time/sigma for the NOISED frames
         *,
-        temporal_offset: int = 0,
+        temporal_offset: int | float = 0,
         fps: Optional[float] = None,
     ) -> GenTokens:
         """Encode one video latent stack -> packed gen tokens (mirrors ``net._encode_vision``).
@@ -243,13 +243,14 @@ class GenHeads:
             base_temporal_compression_factor=self.tcf_vision,
             start_frame_offset=0,
         )  # mrope_ids: [3, Np]
-        mrope_ids = mrope_ids.to(self.device).long()
+        # FPS-modulated native Cosmos positions are float; do not quantize them.
+        mrope_ids = mrope_ids.to(self.device)
 
         return GenTokens(
             tokens=tokens.to(self.dtype),
             mrope_ids=mrope_ids,
             condition_mask=cond_token.to(self.device),
-            next_temporal_offset=int(next_off),
+            next_temporal_offset=next_off,
             grid=(T_lat, grid_h, grid_w),
             n_frames=T_lat,
             noisy_frame_idx=torch.nonzero(noisy_frame, as_tuple=False).view(-1),
@@ -259,7 +260,7 @@ class GenHeads:
         self,
         frame0_latent: torch.Tensor,     # [C, 1, h, w] OR [C, h, w]  the single clean image frame
         *,
-        temporal_offset: int = 0,
+        temporal_offset: int | float = 0,
     ) -> GenTokens:
         """Encode the single first-frame IMAGE latent, ALWAYS clean (no timestep bias, no loss).
 
@@ -285,7 +286,7 @@ class GenHeads:
         sigma: torch.Tensor,             # scalar | [1] flow time/sigma for the NOISED frames
         *,
         domain_id: int | None = None,
-        temporal_offset: int = 0,
+        temporal_offset: int | float = 0,
         fps: Optional[float] = None,
     ) -> GenTokens:
         """Encode camera action -> packed gen tokens (mirrors ``net._encode_action``).
@@ -327,13 +328,13 @@ class GenHeads:
             base_temporal_compression_factor=self.tcf_vision,
             start_frame_offset=1,
         )  # [3, T]
-        mrope_ids = mrope_ids.to(self.device).long()
+        mrope_ids = mrope_ids.to(self.device)
 
         return GenTokens(
             tokens=tokens.to(self.dtype),
             mrope_ids=mrope_ids,
             condition_mask=cond_frame.to(self.device),
-            next_temporal_offset=int(next_off),
+            next_temporal_offset=next_off,
             grid=(T, 1, 1),
             n_frames=T,
             noisy_frame_idx=torch.nonzero(noisy_frame, as_tuple=False).view(-1),
@@ -391,7 +392,7 @@ class GenHeads:
         video_latents: Optional[torch.Tensor] = None,   # [C, T_lat, h, w] (video OR image-only frame0)
         camera_action: Optional[torch.Tensor] = None,   # [T-1, 9] raw camera pseudo-action
         sigma: Optional[torch.Tensor] = None,           # scalar flow time for the NOISED gen frames
-        temporal_offset: int = 0,
+        temporal_offset: int | float = 0,
         fps: Optional[float] = None,
     ) -> Optional[GenSegment]:
         """Assemble the packed GENERATOR segment for ONE sample from its ``ResolvedPlan``.
@@ -486,7 +487,7 @@ class GenHeads:
         condition_mask = torch.cat(cond_chunks, dim=0)                  # [N_gen]
         return GenSegment(
             tokens=tokens.to(self.dtype),
-            mrope_ids=mrope_ids.long(),
+            mrope_ids=mrope_ids,
             condition_mask=condition_mask,
             next_temporal_offset=next_off,
             parts=parts,

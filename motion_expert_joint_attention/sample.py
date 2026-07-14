@@ -25,8 +25,8 @@ video as Wan-VAE latents; camera as (T-1,9) raw action). ``sample_task(model, mo
 dispatches by mode. PER-MODALITY objectives (matches train.py): MOTION targets dispatch on
 the ckpt's trained motion objective -- ``flow.sample_x0`` (DDIM-in-sigma, the default for
 new x0-motion runs) vs ``flow.sample_velocity`` (old velocity-motion ckpts) -- via
-``model.predict_closure``; VIDEO/CAMERA targets ALWAYS integrate velocity
-(``flow.sample_velocity_masked`` / the policy Euler co-integration) with a target closure
+``model.predict_closure``; VIDEO/CAMERA targets ALWAYS predict velocity and dispatch to
+legacy masked Euler or native Cosmos UniPC according to the checkpointed gen schedule, with a target closure
 that re-encodes the current noised iterate through the generator each step, matching the
 pretrained Cosmos generator's native rectified flow.
 
@@ -52,6 +52,7 @@ import torch
 import config
 import flow
 import task_plan as TP
+from checkpoint_utils import load_gen_init_state, load_joint_pt
 from cosmos_loader import FrozenCosmos
 from joint_motion_model import JointMotionModel
 from uniego_layout import FEAT_DIM, N_JOINTS
@@ -112,11 +113,18 @@ def _as_list(x, B: int):
     return [x]
 
 
-def _tokenize_pair(cosmos: FrozenCosmos, caption: str, *, always_empty: bool):
+def _tokenize_pair(
+    cosmos: FrozenCosmos,
+    caption: str,
+    *,
+    always_empty: bool,
+    native_generation: bool = False,
+):
     """Return (cond_ids, null_ids) for one caption. ``always_empty`` tasks (inverse_dynamics /
     video2motion) pass "" for BOTH passes (no instruction => CFG is a no-op there)."""
     cond = "" if always_empty else (caption or "")
-    return cosmos.tokenize(cond), cosmos.tokenize("")
+    tokenize = cosmos.tokenize_generation if native_generation else cosmos.tokenize
+    return tokenize(cond), tokenize("")
 
 
 # ---- MOTION target ----------------------------------------------------------
@@ -152,8 +160,12 @@ def _sample_motion_target(
     motion_pad_mask = torch.zeros(1, T, dtype=torch.bool, device=device)
     noisy_frame_mask = torch.ones(1, T, dtype=torch.bool, device=device)
 
-    cond_ids, null_ids = _tokenize_pair(model.cosmos, caption,
-                                        always_empty=plan.caption_always_empty)
+    cond_ids, null_ids = _tokenize_pair(
+        model.cosmos,
+        caption,
+        always_empty=plan.caption_always_empty,
+        native_generation=(model.gen_packing == "native" and plan.has_gen),
+    )
 
     vlat = [video_latents.to(device)] if video_latents is not None else [None]
     modes = [mode]
@@ -161,8 +173,12 @@ def _sample_motion_target(
     if model.textimg_condition == "reasoner" and mode == "textimg2motion":
         if reasoner_image is None:
             raise ValueError("sample_textimg2motion for textimg_condition=reasoner needs reasoner_image=[3,H,W]")
-        reasoner_cond = model.cosmos.encode_reasoner_image_text(caption, reasoner_image)
-        reasoner_null = model.cosmos.encode_reasoner_image_text("", reasoner_image)
+        reasoner_cond = model.cosmos.encode_reasoner_image_text(
+            caption, reasoner_image, image_size=model.reasoner_image_size
+        )
+        reasoner_null = model.cosmos.encode_reasoner_image_text(
+            "", reasoner_image, image_size=model.reasoner_image_size
+        )
         cond_ids = reasoner_cond["input_ids"].view(1, -1)
         null_ids = reasoner_null["input_ids"].view(1, -1)
         vlat = [None]
@@ -185,12 +201,23 @@ def _sample_motion_target(
             reasoner_inputs=[reasoner_null] if reasoner_null is not None else None,
         )
 
-    sampler = flow.sample_velocity if obj == "velocity" else flow.sample_x0
+    sampler = flow.motion_sampler(
+        obj,
+        schedule=model.motion_schedule,
+        native_solver=model.motion_native_solver,
+    )
+    native_kwargs = {}
+    if model.motion_schedule == "native":
+        native_kwargs = {
+            "native_shift": model.motion_shift,
+            "native_num_train_timesteps": model.motion_num_train_timesteps,
+        }
     g_m = torch.Generator(device=device).manual_seed(seed)
     x = sampler(
         predict_cond, T=T, motion_dim=model.motion_dim, steps=steps,
         guidance=guidance, predict_null=predict_null,
         device=device, dtype=torch.float32, generator=g_m,
+        **native_kwargs,
     )  # [1,T,283] normalized
     return x[0].cpu().numpy().astype(np.float32)
 
@@ -374,8 +401,12 @@ def _sample_gen_target(
         motion_pad_mask = torch.zeros(1, motion.shape[1], dtype=torch.bool, device=device)
     nj = neutral_joints.to(device) if neutral_joints is not None else None
 
-    cond_ids, null_ids = _tokenize_pair(model.cosmos, caption,
-                                        always_empty=plan.caption_always_empty)
+    cond_ids, null_ids = _tokenize_pair(
+        model.cosmos,
+        caption,
+        always_empty=plan.caption_always_empty,
+        native_generation=(model.gen_packing == "native"),
+    )
 
     common = dict(
         model=model, mode=mode, target=target, neutral_joints=nj, motion=motion,
@@ -399,10 +430,24 @@ def _sample_gen_target(
     cond_flat = torch.zeros(1, N, dtype=torch.bool, device=device)  # all noised -> integrate all
 
     g = torch.Generator(device=device).manual_seed(seed)
-    x = flow.sample_velocity_masked(
+    if model.gen_schedule == "native":
+        if model.gen_native_solver != "unipc":
+            raise ValueError(
+                f"native generator checkpoints require UniPC, got {model.gen_native_solver!r}"
+            )
+        gen_sampler = flow.sample_velocity_native_masked
+        sampler_kwargs = {
+            "native_shift": model.gen_shift,
+            "native_num_train_timesteps": model.gen_num_train_timesteps,
+        }
+    else:
+        gen_sampler = flow.sample_velocity_masked
+        sampler_kwargs = {}
+    x = gen_sampler(
         predict_cond, x0_clean=x0_clean, condition_mask=cond_flat,
         steps=steps, guidance=guidance, predict_null=predict_null,
         device=device, dtype=torch.float32, generator=g,
+        **sampler_kwargs,
     )  # [1, N, D] generated noised frames
 
     # Scatter the generated frames back into the full modality tensor (clean frames at truth).
@@ -523,8 +568,12 @@ def sample_policy(model, *, caption, image_latent, T_lat, camera_T=None,
     noised_frames = torch.nonzero(~vmask, as_tuple=False).view(-1)      # [n_noisy]
 
     plan = TP.build_task_plan("policy")
-    cond_ids, null_ids = _tokenize_pair(model.cosmos, caption,
-                                        always_empty=plan.caption_always_empty)
+    cond_ids, null_ids = _tokenize_pair(
+        model.cosmos,
+        caption,
+        always_empty=plan.caption_always_empty,
+        native_generation=(model.gen_packing == "native"),
+    )
     common = dict(model=model, base_video=base, noised_video_frames=noised_frames,
                   camera_T=camera_T, device=device)
     predict_cond = _make_policy_joint_closure(input_ids=cond_ids, **common)
@@ -532,23 +581,59 @@ def sample_policy(model, *, caption, image_latent, T_lat, camera_T=None,
     if guidance != 1.0 and not plan.caption_always_empty:
         predict_null = _make_policy_joint_closure(input_ids=null_ids, **common)
 
-    # ONE Euler ODE over the pair (t: 1 -> 0), CFG applied per modality per step.
+    # One shared reverse process over the pair, CFG applied per modality per step. Native
+    # checkpoints concatenate both target states into one UniPC state so video and camera
+    # retain the single shared timestep and single model call used during training.
     n_v = int(noised_frames.numel())
     g = torch.Generator(device=device).manual_seed(seed)
-    xv = torch.randn(1, n_v, C * h * w, device=device, dtype=torch.float32, generator=g)
-    xc = torch.randn(1, camera_T, TP.CAMERA_RAW_DIM, device=device, dtype=torch.float32,
-                     generator=g)
-    ts = torch.linspace(1.0, 0.0, steps + 1, device=device, dtype=torch.float32)
-    for i in range(steps):
-        t_b = ts[i].expand(1)
-        dt = ts[i] - ts[i + 1]
-        v_v, v_c = predict_cond(xv, xc, t_b)
-        if guidance != 1.0 and predict_null is not None:
-            u_v, u_c = predict_null(xv, xc, t_b)
-            v_v = u_v + guidance * (v_v - u_v)
-            v_c = u_c + guidance * (v_c - u_c)
-        xv = xv - dt * v_v.to(xv.dtype)
-        xc = xc - dt * v_c.to(xc.dtype)
+    n_v_scalar = n_v * C * h * w
+    n_c_scalar = camera_T * TP.CAMERA_RAW_DIM
+    if model.gen_schedule == "native":
+        if model.gen_native_solver != "unipc":
+            raise ValueError(
+                f"native generator checkpoints require UniPC, got {model.gen_native_solver!r}"
+            )
+
+        def _joint_velocity(fn):
+            def wrapped(state, t_b):
+                flat = state.reshape(1, -1)
+                xv_i = flat[:, :n_v_scalar].reshape(1, n_v, C * h * w)
+                xc_i = flat[:, n_v_scalar:].reshape(1, camera_T, TP.CAMERA_RAW_DIM)
+                vv, vc = fn(xv_i, xc_i, t_b)
+                return torch.cat([vv.reshape(1, -1), vc.reshape(1, -1)], dim=1).unsqueeze(-1)
+            return wrapped
+
+        state_shape = (1, n_v_scalar + n_c_scalar, 1)
+        state = flow.sample_velocity_native_masked(
+            _joint_velocity(predict_cond),
+            x0_clean=torch.zeros(state_shape, device=device, dtype=torch.float32),
+            condition_mask=torch.zeros(state_shape[:2], device=device, dtype=torch.bool),
+            steps=steps,
+            guidance=guidance,
+            predict_null=(_joint_velocity(predict_null) if predict_null is not None else None),
+            device=device,
+            dtype=torch.float32,
+            generator=g,
+            native_shift=model.gen_shift,
+            native_num_train_timesteps=model.gen_num_train_timesteps,
+        ).reshape(1, -1)
+        xv = state[:, :n_v_scalar].reshape(1, n_v, C * h * w)
+        xc = state[:, n_v_scalar:].reshape(1, camera_T, TP.CAMERA_RAW_DIM)
+    else:
+        xv = torch.randn(1, n_v, C * h * w, device=device, dtype=torch.float32, generator=g)
+        xc = torch.randn(1, camera_T, TP.CAMERA_RAW_DIM, device=device, dtype=torch.float32,
+                         generator=g)
+        ts = torch.linspace(1.0, 0.0, steps + 1, device=device, dtype=torch.float32)
+        for i in range(steps):
+            t_b = ts[i].expand(1)
+            dt = ts[i] - ts[i + 1]
+            v_v, v_c = predict_cond(xv, xc, t_b)
+            if guidance != 1.0 and predict_null is not None:
+                u_v, u_c = predict_null(xv, xc, t_b)
+                v_v = u_v + guidance * (v_v - u_v)
+                v_c = u_c + guidance * (v_c - u_c)
+            xv = xv - dt * v_v.to(xv.dtype)
+            xc = xc - dt * v_c.to(xc.dtype)
 
     video = base.clone()                                                # [C,T_lat,h,w]
     video[:, noised_frames] = (
@@ -602,6 +687,7 @@ def sample_task(model, mode: str, **kw):
 # Model loading (shared by the CLI + the eval harness).
 # ============================================================================
 def load_joint_model(ckpt_path: str, *, device="cuda", objective_cli=None,
+                     motion_native_solver_cli=None,
                      gen_lora=False, reasoner_lora=False, gen_full=False):
     """Build a FrozenCosmos + JointMotionModel and overlay the trainable ckpt delta by name.
 
@@ -610,8 +696,8 @@ def load_joint_model(ckpt_path: str, *, device="cuda", objective_cli=None,
 
     The resolved ``objective`` is the MOTION objective only (per-modality design): it picks the
     motion-target sampler (``flow.sample_x0`` vs ``flow.sample_velocity``). Vision/camera targets
-    ALWAYS integrate velocity (``sample_velocity_masked`` / the policy co-integration), matching
-    the pretrained Cosmos generator's native rectified flow."""
+    always predict velocity; their checkpointed gen schedule selects legacy Euler or native
+    Cosmos UniPC. The coupled policy helper remains a separate joint-state path."""
     cosmos = FrozenCosmos(dtype=torch.bfloat16, device=device)
     ck = torch.load(ckpt_path, map_location="cpu")
     a = ck.get("args", {}) or {}
@@ -623,6 +709,28 @@ def load_joint_model(ckpt_path: str, *, device="cuda", objective_cli=None,
     if objective_cli is not None and objective != objective_cli:
         print(f"[sample] WARNING: ckpt motion objective='{objective}' != "
               f"--objective='{objective_cli}'; using the ckpt's '{objective}'")
+    motion_schedule = str(a.get("motion_schedule", "legacy"))
+    motion_shift = float(a.get("motion_shift", flow.NATIVE_MOTION_SHIFT))
+    motion_num_train_timesteps = int(
+        a.get("motion_num_train_timesteps", flow.NATIVE_NUM_TRAIN_TIMESTEPS)
+    )
+    motion_native_solver = str(a.get("motion_native_solver", "euler"))
+    if motion_native_solver_cli is not None:
+        if motion_native_solver != motion_native_solver_cli:
+            print(
+                f"[sample] overriding checkpoint native motion solver "
+                f"{motion_native_solver!r} -> {motion_native_solver_cli!r}; weights/schedule unchanged"
+            )
+        motion_native_solver = motion_native_solver_cli
+    gen_schedule = str(a.get("gen_schedule", "legacy"))
+    gen_shift = float(a.get("gen_shift", flow.NATIVE_MOTION_SHIFT))
+    gen_num_train_timesteps = int(
+        a.get("gen_num_train_timesteps", flow.NATIVE_NUM_TRAIN_TIMESTEPS)
+    )
+    gen_native_solver = str(a.get("gen_native_solver", "unipc"))
+    gen_packing = str(a.get("gen_packing", "legacy"))
+    gen_fps = float(a.get("gen_fps", 20.0))
+    gen_temporal_margin = float(a.get("gen_temporal_margin", 15000.0))
     # ---- ARCHITECTURE-AFFECTING ckpt args: rebuild the exact trained model shape. ----------
     # train.py saves vars(args); the JointMotionModel ctor knobs that change the parameter set,
     # shapes, or positional behavior must be replayed here. Without threading them, a checkpoint
@@ -639,27 +747,42 @@ def load_joint_model(ckpt_path: str, *, device="cuda", objective_cli=None,
     motion_mrope = str(a.get("motion_mrope", "legacy"))
     coupling = str(a.get("coupling", "joint"))
     textimg_condition = str(a.get("textimg_condition", "generator"))
+    # Before this option existed, reasoner-side TI2M consumed the raw 640x640 Nymeria frame.
+    # Preserve that behavior for old checkpoints; all newly trained checkpoints record 256.
+    reasoner_image_size = int(
+        a.get("reasoner_image_size", 640 if textimg_condition == "reasoner" else 256)
+    )
     if textimg_condition == "generator":
         print("[sample][DEPRECATED] checkpoint uses textimg_condition=generator for textimg2motion. "
               "This historical path packs the image as a clean generator latent; new TI2M runs "
               "should use textimg_condition=reasoner.", flush=True)
     model = JointMotionModel(
         cosmos, objective=objective, motion_dim=FEAT_DIM,
+        motion_schedule=motion_schedule,
+        motion_shift=motion_shift,
+        motion_num_train_timesteps=motion_num_train_timesteps,
+        motion_native_solver=motion_native_solver,
+        gen_schedule=gen_schedule,
+        gen_shift=gen_shift,
+        gen_num_train_timesteps=gen_num_train_timesteps,
+        gen_native_solver=gen_native_solver,
+        gen_packing=gen_packing,
+        gen_fps=gen_fps,
+        gen_temporal_margin=gen_temporal_margin,
         motion_intermediate_size=motion_intermediate,
         motion_layer_stride=motion_layer_stride,
         motion_mrope=motion_mrope,
         coupling=coupling,
         textimg_condition=textimg_condition,
+        reasoner_image_size=reasoner_image_size,
         gen_lora=a.get("gen_lora", gen_lora),
+        gen_lora_rank=int(a.get("gen_lora_rank", 16)),
+        gen_lora_alpha=int(a.get("gen_lora_alpha", 16)),
         reasoner_lora=a.get("reasoner_lora", reasoner_lora),
         gen_full=a.get("gen_full", gen_full),
         freeze_gen=bool(a.get("freeze_gen", False)),
         freeze_motion=bool(a.get("freeze_motion", False)),
     ).to(device)
-
-    def _load_saved_model_state(path: str):
-        payload = torch.load(path, map_location="cpu", weights_only=False)
-        return payload.get("model", payload) if isinstance(payload, dict) else payload
 
     # Bridge-only / frozen-specialist Phase-3 checkpoints save only trainable bridge tensors.
     # Recreate the actual training-time model by loading the recorded frozen specialists first,
@@ -667,17 +790,19 @@ def load_joint_model(ckpt_path: str, *, device="cuda", objective_cli=None,
     init_gen = a.get("init_gen")
     if init_gen:
         if os.path.exists(init_gen):
-            gsd = _load_saved_model_state(init_gen)
+            native_weights = str(a.get("init_gen_dcp_weights", "ema"))
+            gsd = load_gen_init_state(init_gen, native_weights=native_weights)
             n_load, n_miss, n_shape = model.load_gen_subset(gsd)
             print(f"[sample][init_gen] {init_gen}: loaded {n_load} gen keys "
-                  f"(skipped missing={n_miss} shape-mismatch={n_shape})")
+                  f"(skipped missing={n_miss} shape-mismatch={n_shape}; "
+                  f"native_dcp_weights={native_weights})")
         else:
             print(f"[sample][WARN] ckpt records init_gen={init_gen!r}, but the file is missing; "
                   "evaluating without the frozen generator specialist.")
     init_motion = a.get("init_motion")
     if init_motion:
         if os.path.exists(init_motion):
-            msd = _load_saved_model_state(init_motion)
+            msd = load_joint_pt(init_motion)
             n_load, n_miss, n_shape = model.load_motion_subset(msd)
             print(f"[sample][init_motion] {init_motion}: loaded {n_load} motion keys "
                   f"(skipped missing={n_miss} shape-mismatch={n_shape})")
@@ -701,9 +826,14 @@ def load_joint_model(ckpt_path: str, *, device="cuda", objective_cli=None,
                 skipped += 1
     model.eval()
     print(f"[sample] loaded {ckpt_path} (step {ck.get('step')}) | "
-          f"motion_objective={objective} (vision/camera targets: always velocity) | "
+          f"motion_objective={objective} schedule={motion_schedule} "
+          f"shift={motion_shift:g} native_solver={motion_native_solver} "
+          f"| gen_objective=velocity schedule={gen_schedule} "
+          f"shift={gen_shift:g} native_solver={gen_native_solver} "
+          f"packing={gen_packing} fps={gen_fps:g} margin={gen_temporal_margin:g} | "
           f"motion_mrope={motion_mrope} | "
-          f"coupling={coupling} textimg_condition={textimg_condition} | "
+          f"coupling={coupling} textimg_condition={textimg_condition} "
+          f"reasoner_image_size={reasoner_image_size} | "
           f"overlaid {loaded} trainable tensors (skipped {skipped})")
     return model, cosmos, ck
 
@@ -723,6 +853,10 @@ def main():
                          "'objective' (velocity=Euler ODE on v-hat; x0=DDIM-in-sigma on x0-hat). "
                          "The ckpt's recorded motion objective always wins when present; "
                          "vision/camera targets always sample velocity (per-modality design).")
+    ap.add_argument("--motion_native_solver", choices=["euler", "unipc"], default=None,
+                    help="optional inference-only override for native-schedule x0 checkpoints. "
+                         "euler is the POC-proven straight-path solver; unipc uses NVIDIA's "
+                         "official solver after converting x0 predictions to velocity.")
     ap.add_argument("--T", type=int, default=96, help="number of motion frames to sample")
     ap.add_argument("--steps", type=int, default=50)
     ap.add_argument("--cfg", type=float, default=2.5, help="classifier-free guidance scale")
@@ -741,7 +875,12 @@ def main():
     mean = torch.from_numpy(np.load(args.mean)).float().to(dev)
     std = torch.from_numpy(np.load(args.std)).float().to(dev)
 
-    model, cosmos, ck = load_joint_model(args.ckpt, device=dev, objective_cli=args.objective)
+    model, cosmos, ck = load_joint_model(
+        args.ckpt,
+        device=dev,
+        objective_cli=args.objective,
+        motion_native_solver_cli=args.motion_native_solver,
+    )
     objective = model.objective
 
     # ---- actor skeleton (shape token) ----
@@ -769,6 +908,10 @@ def main():
             manifest.append({
                 "prompt": prompt, "mode": mode, "file": name + ".npy",
                 "ckpt": args.ckpt, "objective": objective, "cfg": float(guidance),
+                "motion_schedule": model.motion_schedule,
+                "motion_shift": model.motion_shift,
+                "motion_native_solver": model.motion_native_solver,
+                "reasoner_image_size": model.reasoner_image_size,
                 "T": args.T, "steps": args.steps,
             })
             print(f"  [{mode}] '{prompt[:40]}' -> {name}.npy  "
@@ -780,6 +923,11 @@ def main():
         {
             "n_joints": N_JOINTS, "feat_dim": FEAT_DIM,
             "ckpt": args.ckpt, "objective": objective, "step": ck.get("step"),
+            "motion_schedule": model.motion_schedule,
+            "motion_shift": model.motion_shift,
+            "motion_num_train_timesteps": model.motion_num_train_timesteps,
+            "motion_native_solver": model.motion_native_solver,
+            "reasoner_image_size": model.reasoner_image_size,
             "cfg": args.cfg, "T": args.T, "steps": args.steps,
             "skeleton": args.skeleton or "default_S01_neutral_joints",
             "samples": manifest,

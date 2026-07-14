@@ -42,23 +42,19 @@ MODE ROUTING (MOTION-WEIGHTED mixture, ``task_plan.TASK_WEIGHTS``):
     * ``_t2m_index`` -- NATIVE motion-window index: ONE entry per captioned ~100-frame (~5 s @ 20 fps)
       atomic-action window, kept at its native span and later padded+masked to T. It is
       T-INDEPENDENT (no ``s + T <= we`` length test), so EVERY captioned window survives at any T.
-      Used ONLY by NymeriaPlus ``text2motion``: a motion-output task that needs NO video and NO
-      camera, hence NO video-frame alignment -- the caption then correctly matches its own ~100
-      valid frames. (This fixes the earlier large-T collapse where video-aligned slicing dropped the
-      5 s windows and over-constrained text2motion.)
+      Used only by NymeriaPlus ``text2motion``. The caption correctly supervises its native
+      motion span without requiring a matching video window.
     * ``_index`` -- T-frame VIDEO-ALIGNED index: non-overlapping ``T``-frame sub-windows with
       ``s + T <= we`` so video / camera / motion all share the SAME ``(uuid, start)``. Used by every
       task that REQUIRES frame alignment: inverse_dynamics / forward_dynamics / policy (video<->camera
       aligned), motimg2video (motion<->video aligned), video2motion (video<->motion aligned). These
       COLLAPSE to a handful at large T (a captioned window is only ~100 frames).
 
-  The router: ``use_t2m = (mode == "text2motion" and not needs_video and not needs_camera)`` picks
-  ``_t2m_index``; otherwise ``_index``.
+  The router picks ``_t2m_index`` only for text2motion; every other task uses ``_index``.
 
-  ALIGNMENT INVARIANT: a task whose OUTPUT is motion and that carries NO video needs no video-frame
-  alignment (``text2motion``); tasks that pack video<->motion or video<->camera together MUST be
-  frame-aligned. ``textimg2motion`` needs only the single first-frame image (video absent), so in
-  principle it needs no full-video alignment either -- see the KNOWN SIMPLIFICATION below.
+  ALIGNMENT INVARIANT: text2motion needs no video alignment. NymeriaPlus textimg2motion uses the
+  same fixed-T aligned motion/video window and sends frame 0 to the reasoner. Tasks that pack
+  video<->motion or video<->camera together also use ``_index``.
 
   TWO DATA SOURCES (``task_plan.TASK_SOURCES``): NymeriaPlus windows carry ALL 5 modalities so they
   serve every task; BONES-SEED windows are motion-only (no image / video / camera) so they can ONLY
@@ -68,12 +64,8 @@ MODE ROUTING (MOTION-WEIGHTED mixture, ``task_plan.TASK_WEIGHTS``):
   rest of ``text2motion`` and ALL other tasks draw NymeriaPlus. The loader enforces this availability
   by construction.
 
-  KNOWN SIMPLIFICATION (honest gap): ``textimg2motion`` currently still draws from the VIDEO-ALIGNED
-  ``_index`` (it reuses the aligned window's frame-0 as its single image), even though by design it
-  only needs that first frame and could ride the native motion-window pool. This is fine at the T=97
-  the 7-task uses (``_index`` is large there), but at large T ``_index`` collapses, so textimg2motion
-  would over-constrain exactly the way text2motion did before the native-index fix. FUTURE refinement:
-  route ``textimg2motion`` to the native motion window + a frame-0 image.
+  Both reasoner-image and historical generator-image TI2M use ``_index``; only the image encoding
+  path differs.
 
 NORMALIZATION SPACES are kept STRICTLY per-modality (DESIGN_7TASK.md section 4) -- never
 cross-normalize: motion is z-scored (uniego283 stats), camera is un-normalized (Cosmos-exact),
@@ -107,6 +99,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch.utils.data import Dataset
 
 import config
@@ -160,6 +153,15 @@ def _load_latents(path: str) -> np.ndarray:
         return d[key].astype(np.float32)
 
 
+def uses_native_motion_index(mode: str, *, needs_video: bool, needs_camera: bool) -> bool:
+    """Whether a Nymeria task can use its complete native captioned motion span."""
+    return (
+        mode == "text2motion"
+        and not needs_video
+        and not needs_camera
+    )
+
+
 class NymeriaJointDataset(Dataset):
     """Aligned 5-modality NymeriaPlus loader, sliced at T=33 (4N+1) windows.
 
@@ -171,7 +173,10 @@ class NymeriaJointDataset(Dataset):
     Args:
         manifest_path / split_file / split: per-sequence NymeriaPlus split (hold out whole
             recordings; no window-level leakage) -- same contract as NymeriaCameraRGBDataset.
-        num_frames: shared window length T (must be 4N+1 for the Wan VAE; default config value).
+        num_frames: output/padding length T (must be 4N+1 when generator video is active).
+        aligned_num_frames: optional task-specific valid length for aligned windows. This may
+            differ from ``num_frames`` only for Phase-2 T2M + reasoner-image TI2M, where T2M keeps
+            its 200-frame capacity while TI2M uses the 97-frame Nymeria video window.
         fps: video fps (20).
         task_weights: per-mode sampling weights (defaults to the motion-weighted config mixture).
         bones_text2motion_frac: fraction of ``text2motion`` mass routed to the BONES stream (the
@@ -183,6 +188,9 @@ class NymeriaJointDataset(Dataset):
             different T is ignored -> raw frames are emitted for a live VAE encode in the trainer.
         force_on_the_fly: never read the precomputed latent cache; always emit raw frames so the
             trainer VAE-encodes every window live (used to force the on-the-fly path at any T).
+        reasoner_image_for_textimg: use corrected reasoner-side image conditioning for TI2M.
+        reasoner_image_size: square size returned for that frame-0 image. The released Cosmos Nano
+            processor supports 256x256 and emits 64 merged visual tokens at this size.
         train: random window start within a 100-frame slice + caption CFG-drop when True; center /
             no drop otherwise.
         require_rgb_cam / require_usable: window filters (same as the camera dataset).
@@ -201,6 +209,7 @@ class NymeriaJointDataset(Dataset):
         split_file: str = config.NYMERIA_SPLIT_FILE,
         split: str = "train",
         num_frames: int = config.VIDEO_NUM_FRAMES,
+        aligned_num_frames: Optional[int] = None,
         fps: float = 20.0,
         task_weights: Optional[Dict[str, float]] = None,
         bones_text2motion_frac: float = 0.5,
@@ -208,6 +217,7 @@ class NymeriaJointDataset(Dataset):
         prefer_latents: bool = True,
         force_on_the_fly: bool = False,
         reasoner_image_for_textimg: bool = False,
+        reasoner_image_size: Optional[int] = 256,
         latent_root: str = config.VIDEO_LATENT_ROOT,
         train: bool = True,
         require_rgb_cam: bool = True,
@@ -236,15 +246,41 @@ class NymeriaJointDataset(Dataset):
                 f"with tasks {list(tw_probe)}"
             )
         self._num_frames = int(num_frames)
+        self._aligned_num_frames = (
+            self._num_frames if aligned_num_frames is None else int(aligned_num_frames)
+        )
+        if not 1 <= self._aligned_num_frames <= self._num_frames:
+            raise ValueError(
+                "aligned_num_frames must be in [1, num_frames], got "
+                f"{self._aligned_num_frames} for num_frames={self._num_frames}"
+            )
+        if self._aligned_num_frames != self._num_frames:
+            unsupported = set(tw_probe) - {"text2motion", "textimg2motion"}
+            if unsupported or not bool(reasoner_image_for_textimg):
+                raise ValueError(
+                    "task-specific aligned_num_frames is supported only for Phase-2 "
+                    "text2motion + reasoner-side textimg2motion; got unsupported tasks "
+                    f"{sorted(unsupported)} reasoner_image_for_textimg={reasoner_image_for_textimg}"
+                )
         self._fps = float(fps)
         self._train = bool(train)
         self._cfg_dropout = float(cfg_dropout)
         self._prefer_latents = bool(prefer_latents)
         self._force_on_the_fly = bool(force_on_the_fly)
         self._reasoner_image_for_textimg = bool(reasoner_image_for_textimg)
+        self._reasoner_image_size = (
+            None if reasoner_image_size is None else int(reasoner_image_size)
+        )
+        if self._reasoner_image_size is not None and self._reasoner_image_size <= 0:
+            raise ValueError(
+                f"reasoner_image_size must be positive or None, got {reasoner_image_size}"
+            )
         self._latent_root = latent_root
         self._uniego_root = uniego_root
-        self._rng = random.Random(seed)
+        self._seed = int(seed)
+        self._rng = random.Random(self._seed)
+        self._worker_rng = None
+        self._worker_rng_key = None
 
         # ---- motion stats (z-score) + 283-d stats shared with the PoC / dataset.py ----------
         self._mean = np.load(config.MOTION_STATS_MEAN).astype(np.float32)
@@ -302,7 +338,7 @@ class NymeriaJointDataset(Dataset):
         #                      motion-in-aligned). These COLLAPSE to a handful at large T because a
         #                      captioned atomic-action window is only ~100 frames (~5 s @ 20 fps).
         #   self._t2m_index  : ONE entry per captioned atomic-action window at its NATIVE span, for
-        #                      NymeriaPlus text2motion. It is T-INDEPENDENT (no s + T <= we test):
+        #                      NymeriaPlus T2M. It is T-INDEPENDENT:
         #                      every usable+captioned window is included and later padded+masked to
         #                      T. `avail` = usable motion length (min(we, nb) - ws, ~100). A 5 s
         #                      caption then correctly matches its ~100 valid frames; we NEVER slide
@@ -357,17 +393,19 @@ class NymeriaJointDataset(Dataset):
                     avail = hi - ws                        # native usable motion length (~100)
                     if avail <= 0:
                         continue
-                    # (a) ALIGNED index: non-overlapping T-frame sub-windows, s + T <= hi. Used by
-                    #     video/camera (and motion-in-aligned) tasks that need a co-aligned window.
+                    # (a) ALIGNED index: normally aligned-T == output T. Phase-2 may keep output
+                    #     T=200 for full T2M while using aligned-T=97 for reasoner-image TI2M;
+                    #     _load_motion pads those 97 valid rows to output T and masks the tail.
                     s = ws
-                    while s + self._num_frames <= hi:
+                    while s + self._aligned_num_frames <= hi:
                         self._index.append({
                             "uuid": uuid, "vis": vis, "rgb": rgb, "uni": uni,
-                            "s": int(s), "cap": cap, "off": off,
+                            "s": int(s), "avail": self._aligned_num_frames,
+                            "cap": cap, "off": off,
                             "off_gt": off_gt, "delta": delta,
                         })
-                        s += self._num_frames
-                    # (b) NATIVE text2motion index: ONE entry per captioned window, T-independent.
+                        s += self._aligned_num_frames
+                    # (b) NATIVE text2motion index: one entry per captioned window, T-independent.
                     #     `avail` motion frames are loaded (<= T) then padded+masked up to T.
                     self._t2m_index.append({
                         "uuid": uuid, "vis": vis, "rgb": rgb, "uni": uni,
@@ -382,6 +420,7 @@ class NymeriaJointDataset(Dataset):
                   f"_t2m_index entry + its _index sub-windows); delta coverage: "
                   f"{len(_own_delta_uuids)} seqs own delta, {len(_fallback_uuids)} seqs global "
                   f"fallback ({self._floor_global_delta:+.4f} m); "
+                  f"aligned_T={self._aligned_num_frames} output_T={self._num_frames} "
                   f"_index={len(self._index)} _t2m_index={len(self._t2m_index)}", flush=True)
         # `_index` may legitimately be empty at large T (no >=T captioned span) -- text2motion then
         # runs entirely off `_t2m_index` + BONES, so only require SOMETHING to sample from.
@@ -434,8 +473,19 @@ class NymeriaJointDataset(Dataset):
         return self._bones is not None
 
     # -- mode selection -----------------------------------------------------------------------
+    def _active_rng(self) -> random.Random:
+        """Return a worker-unique RNG instead of cloning one stream into every worker."""
+        worker = torch.utils.data.get_worker_info()
+        if worker is None:
+            return self._rng
+        key = (int(worker.id), int(worker.seed))
+        if self._worker_rng is None or self._worker_rng_key != key:
+            self._worker_rng_key = key
+            self._worker_rng = random.Random(int(worker.seed) + 1_000_003 * self._seed)
+        return self._worker_rng
+
     def _choose_mode(self) -> str:
-        return self._rng.choices(self._modes, weights=self._mode_w, k=1)[0]
+        return self._active_rng().choices(self._modes, weights=self._mode_w, k=1)[0]
 
     def _route_to_bones(self, mode: str) -> bool:
         """A text2motion sample is routed to the BONES stream with prob ``bones_text2motion_frac``
@@ -443,7 +493,7 @@ class NymeriaJointDataset(Dataset):
         return (
             mode == "text2motion"
             and self._bones is not None
-            and self._rng.random() < self._bones_frac
+            and self._active_rng().random() < self._bones_frac
         )
 
     # -- caption policy (task text_policy + 10% CFG) ------------------------------------------
@@ -451,7 +501,7 @@ class NymeriaJointDataset(Dataset):
         plan = task_plan.build_task_plan(mode)
         if plan.caption_always_empty:                     # inverse_dynamics / video2motion
             return ""
-        if self._train and self._rng.random() < self._cfg_dropout:  # 10% CFG drop
+        if self._train and self._active_rng().random() < self._cfg_dropout:  # 10% CFG drop
             return ""
         return humanize_caption(caption)  # "C is ..." -> "A person is ..." (Nymeria convention)
 
@@ -500,6 +550,19 @@ class NymeriaJointDataset(Dataset):
         return feats, nj, pad
 
     # -- video: precomputed latents (preferred) or raw decoded frames -------------------------
+    def _resize_reasoner_image(self, image: torch.Tensor) -> torch.Tensor:
+        """Resize a CHW uint8 frame before it reaches the frozen Qwen visual tower."""
+        size = self._reasoner_image_size
+        if size is None or tuple(image.shape[-2:]) == (size, size):
+            return image.contiguous()
+        return F.interpolate(
+            image.float().unsqueeze(0),
+            size=(size, size),
+            mode="bilinear",
+            align_corners=False,
+            antialias=True,
+        ).squeeze(0).round().clamp_(0, 255).to(torch.uint8).contiguous()
+
     def _load_video(self, uuid: str, vis: str, s: int, *, need_reasoner_image: bool = False):
         """Return (video_frames, video_latents, reasoner_image).
 
@@ -521,12 +584,15 @@ class NymeriaJointDataset(Dataset):
                         reasoner_image = torch.from_numpy(
                             np.ascontiguousarray(frames[0])
                         ).permute(2, 0, 1).contiguous()
+                        reasoner_image = self._resize_reasoner_image(reasoner_image)
                     return None, torch.from_numpy(np.ascontiguousarray(lat)).float(), reasoner_image
                 # else: cache is for a DIFFERENT T -> decode raw frames + encode live.
         # raw-frame fallback (heavy; matches NymeriaCameraRGBDataset decode contract)
         frames = decode_window_pyav(vis, s, self._num_frames, self._fps)  # (T,H,W,3) uint8
         video = torch.from_numpy(frames).permute(3, 0, 1, 2).contiguous()  # (3,T,H,W)
-        reasoner_image = video[:, 0].contiguous() if need_reasoner_image else None
+        reasoner_image = (
+            self._resize_reasoner_image(video[:, 0]) if need_reasoner_image else None
+        )
         return video, None, reasoner_image
 
     def _load_reasoner_image(self, vis: str, s: int) -> torch.Tensor:
@@ -536,7 +602,8 @@ class NymeriaJointDataset(Dataset):
         the generator receives no image/video rows for corrected textimg2motion.
         """
         frames = decode_window_pyav(vis, s, 1, self._fps)  # (1,H,W,3) uint8
-        return torch.from_numpy(np.ascontiguousarray(frames[0])).permute(2, 0, 1).contiguous()
+        image = torch.from_numpy(np.ascontiguousarray(frames[0])).permute(2, 0, 1).contiguous()
+        return self._resize_reasoner_image(image)
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         mode = self._choose_mode()
@@ -567,18 +634,20 @@ class NymeriaJointDataset(Dataset):
         needs_motion = plan.motion.present
         T = self._num_frames
 
-        # NymeriaPlus text2motion draws from the NATIVE `_t2m_index` (one entry per captioned
-        # atomic-action window, T-independent, padded+masked to T). It needs neither video nor
-        # camera, so it never touches an ALIGNED span -- this is what lets ALL ~100-frame windows
-        # survive at any T. Every OTHER task (video/camera/motion-in-aligned) needs the co-aligned
-        # `_index` window (s + T <= we), so it draws from `_index`.
-        use_t2m = (mode == "text2motion" and not needs_video and not needs_camera)
-        pool = self._t2m_index if use_t2m else self._index
+        # T2M draws from the native caption span. NymeriaPlus TI2M uses the fixed-T aligned
+        # video/motion window even when frame 0 is encoded by the reasoner rather than generator.
+        use_native_motion = uses_native_motion_index(
+            mode,
+            needs_video=needs_video,
+            needs_camera=needs_camera,
+        )
+        pool = self._t2m_index if use_native_motion else self._index
         n = len(pool)
         if n == 0:
             raise RuntimeError(
                 f"NymeriaJoint: no windows for mode={mode} at T={T} "
-                f"(use_t2m={use_t2m}); _index={len(self._index)} _t2m={len(self._t2m_index)}"
+                f"(use_native_motion={use_native_motion}); _index={len(self._index)} "
+                f"_t2m={len(self._t2m_index)}"
             )
 
         # Deterministically skip to the next window on any decode/load failure (corrupt video,
