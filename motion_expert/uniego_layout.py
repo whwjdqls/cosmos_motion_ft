@@ -24,6 +24,11 @@ LOCAL_SLICE = slice(0, LOCAL)
 CANON_DELTA_SLICE = slice(LOCAL, DELTA)
 FOOT_SLICE = slice(DELTA, FEAT_DIM)
 
+# Contact-channel order is [L heel/ankle, L toe, R heel/ankle, R toe].
+# Corresponding indices in SOMASkeleton30's fixed 30-joint order.
+FOOT_JOINT_IDX = (24, 25, 28, 29)
+FOOT_Y_IDX = tuple(joint_idx * 9 + 7 for joint_idx in FOOT_JOINT_IDX)
+
 # matrix_to_cont6d(I) = [I[:,0], I[:,1]] = [1,0,0, 0,1,0]; translation = 0
 IDENTITY_DELTA9 = np.array([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
 

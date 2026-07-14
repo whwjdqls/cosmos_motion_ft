@@ -64,6 +64,101 @@ Native-schedule BONES Phase-2 POC: `motion_expert/bs_native_flow.py`, `bs_native
 
 Native-schedule POC launch status on 2026-07-11: Slurm smoke job `10386` passed five real-data optimizer steps on one A100 with finite losses/gradients, shifted sigma mean about `0.70-0.74`, and 10.3 GB peak memory. Production job `10387` runs `bs_native_x0_logitnormal_shift3_w1_1_5_200k` for 200k steps, batch 128, loss weights `1/1/5`, reusing `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_incontext_v1/bs_train_index.json`. Its run directory is `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_native_x0_logitnormal_shift3_w1_1_5_200k` and Slurm log is `/home/jungbin_cho/cosmos_motion_ft/slurm-bsnatp2-10387.out`.
 
+`motion_expert/bs_tmr_eval.py` is the in-memory generation evaluator for comparing native- and
+legacy-schedule BONES checkpoints with the shape-aware C45 TMR. It follows Kimodo's benchmark
+metric contract without writing generated motions or embeddings: generate normalized proportional
+283-D UniEgo at 20 FPS, unnormalize and decode to SOMA-30 joints, resample joints to 30 FPS and
+featurize with C45's official-stat `TMRMotionRep`, and pass the same centered proportional
+`neutral_joints` to both the generator and C45 shape encoder. It reports protocol and plain
+R-precision, TMR FID, benchmark foot skate/contact metrics on native 20-FPS joints, and bone-length
+MAE versus the conditioned skeleton. Generated four-channel foot contacts are thresholded at 0.5.
+Generation uses the benchmark LLM2Vec cache because the training cache intentionally omits almost
+all held-out benchmark captions; both caches store outputs of the same frozen text representation.
+The full content/overview comparison launcher is `motion_expert/sbatch_bs_tmr_eval.sh`; its default
+evaluator is C45 step 5000, selected as C45's best full-overview checkpoint.
+
+Full in-memory C45 comparison completed as Slurm job `10570` on 2026-07-13. It discovered 917
+content/overview cases and scored 911; the six exclusions were proportional GT UniEgo windows with
+non-finite values. Both step-200k generators used 100 steps, CFG 2, identical case-seeded noise,
+and C45 step 5000. Native versus legacy: protocol R@3 `69.15` vs `54.34`, plain R@3 `58.84` vs
+`42.81`, and FID gen-GT `0.05255` vs `0.08028`. Physical quality favored legacy: predicted-contact
+skate `13.85` vs `10.23` cm/s, contact consistency `0.818` vs `0.879`, skate ratio `0.260` vs
+`0.212`, and conditioned-skeleton bone MAE `0.360` vs `0.269` cm. GT references were `1.90` cm/s,
+`1.000`, `0.102`, and `0.181` cm respectively. Aggregate result:
+`/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_tmr_eval/c45_step5k_content_overview_native_vs_legacy.json`.
+
+Native Heun sampler follow-up: `bs_native_flow.sample_x0_heun` implements explicit trapezoidal
+RK2 on the same shifted native ladder, with an Euler final interval because its endpoint is sigma
+zero. `bs_sample.py --native_solver heun` exposes it for normal sampling, and `bs_tmr_eval.py
+--native-solver heun` exposes it for in-memory evaluation. A 50-step run has 99 denoiser
+evaluations, or 198 model forwards with two-branch CFG, versus Euler-100's 100/200. Five focused
+native-flow tests pass and GPU smoke job `10606` passed. Full job `10607` scored all 911 cases:
+Heun-50 versus Euler-100 protocol R@3 `69.59` vs `69.15`, plain R@3 `57.96` vs `58.84`, FID
+gen-GT `0.05193` vs `0.05255`, predicted-contact skate `13.73` vs `13.85` cm/s, contact consistency
+`0.820` vs `0.818`, skate ratio `0.258` vs `0.260`, and bone MAE `0.352` vs `0.360` cm. This is
+effectively a tie: Heun gives marginal FID/physical improvements but does not fix foot skating and
+slightly lowers plain R@3. Result:
+`/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_tmr_eval/c45_step5k_content_overview_native_heun50.json`.
+
+Official Cosmos-3 UniPC follow-up: `bs_native_flow.sample_x0_unipc` does not reimplement UniPC. It
+imports NVIDIA `cosmos-framework==1.2.2`'s `FlowUniPCMultistepScheduler` from the `kimodo` env and
+calls its `step` method directly; installed scheduler SHA-256 is
+`03aef1959f273b704ca4954f69b2a34df0fdd412f6acc8ab91625eeed78cf4fe`, byte-identical to audited
+Cosmos Framework commit `3d9c0878fd0dde76eac98161aed0493d85a036fd`. The only local adapter converts
+guided x0 to the scheduler's required flow velocity as `(x - x0_cfg) / sigma`. Preserve the real
+wrapper's defaults: 35 steps, order 2, `bh2`, `flow_prediction`, `predict_x0=True`, lower-order
+final, shift 3, and no dynamic shifting. The official code shifts its constructor sigma range and
+then shifts the inference ladder again in `set_timesteps`; do not replace this with the earlier
+single-shift Euler/Heun diagnostic ladder.
+
+UniPC GPU smoke job `10608` passed. Full job `10609` evaluated all 911 cases with C45 step 5000,
+CFG 2, and 35 denoiser evaluations/70 CFG model calls: protocol R@3 `69.81`, plain R@3 `59.06`,
+FID gen-GT `0.05143`, predicted-contact skate `13.54` cm/s, consistency `0.821`, skate ratio
+`0.257`, and bone MAE `0.352` cm. Relative to Euler-100, this is +0.66 protocol R@3, +0.22 plain
+R@3, 2.13% lower FID, and slightly better physical metrics with 65% fewer denoiser evaluations.
+Result: `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_tmr_eval/c45_step5k_content_overview_native_unipc35.json`.
+
+Foot-skating loss follow-up launched 2026-07-13. `motion_expert/bs_losses.py` contains tested,
+configurable contact-aware losses; `bs_train.py` records/logs them, and
+`sbatch_bs_native_phase2.sh` exposes all weights through `BS_NATIVE_W_*`. The SOMA-30 contact order
+is `[LeftFoot, LeftToeBase, RightFoot, RightToeBase]`, indices `[24,25,28,29]`. Contact BCE is
+class-balanced and centered on raw contact threshold 0.5; horizontal physical foot speed and raw
+foot-height reconstruction are masked with GT contacts so the model cannot avoid them by predicting
+no contact. Raw Y channels are used for height because they exactly equal decoded Y under UniEgo's
+yaw-only canonical frame and avoid unstable cumulative-decoder gradients. Four focused loss tests
+pass; final contact-aware GPU smoke `10616` passed with gradient norms `2.7-5.5`.
+
+Two 200k controlled runs train from scratch. Job `10622` is
+`bs_native_x0_logitnormal_shift3_w1_10_100_inline10k_200k`, changing existing
+feature/joint/smooth weights to `1/10/100`. Job `10623` is
+`bs_native_x0_logitnormal_shift3_contactaware_c0p05_v1_h10_s2_inline10k_200k`, retaining `1/1/5`
+and adding contact/foot-velocity/foot-height weights `0.05/1/10` with contact logit scale 2.
+Separate dependent evaluations `10619/10620` were canceled. `bs_train.py` now initializes C45 and
+all 911 GT references once, then evaluates the live model in-process every 10k checkpoint and at
+the final step. Results are `<run>/inline_eval/step_XXXXXX.json` plus `history.json`; no motions or
+embeddings are saved. CPU/CUDA RNG states and training mode are restored after each callback.
+Integration smoke `10621` passed the train/save/live-eval/write path. Native checkpoint
+visualizations also use official UniPC-35. Full rationale, paths, smoke ablations, and evaluation
+outputs are in `motion_expert/BONES_SEED_POC.md` section 18.
+
+Early 2026-07-14 results motivated two paired hybrid follow-ups. Job `10644` keeps the stronger
+`1/10/100` reconstruction weights and adds foot velocity/height weights `0.5/5` without contact
+BCE. Job `10645` is identical but adds contact BCE weight `0.025` at logit scale 2. Their run
+directories are respectively `bs_native_x0_logitnormal_shift3_w1_10_100_foot_v0p5_h5_inline10k_200k`
+and `bs_native_x0_logitnormal_shift3_w1_10_100_softcontact_c0p025_v0p5_h5_s2_inline10k_200k` under
+`/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/`; both use the same inline 10k C45 evaluation.
+
+Shape-awareness evaluation was strengthened on 2026-07-14. `bs_tmr_eval.py` now supplements
+conditioned-skeleton bone MAE with actor-centered bone correlation/slope/variance and an optional
+paired counterfactual pass. The counterfactual uses identical text, duration, and initial noise but
+conditions on the most different natural held-out skeleton, then measures generated/requested bone
+delta alignment, target advantage, and retrieval retention. New inline evaluators default to
+`farthest`; processes already running before this edit retain the old imported callback. Initial
+smoke `10650` failed before Python because Slurm used `/bin/sh` for a `pipefail` wrapper, and blocked
+job `10651` was canceled. Corrected explicit-Bash smoke `10679` gates final-200k backfill `10680`,
+which also waits for training jobs `10644/10645`; output is
+`/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_tmr_eval/c45_step5k_shape_counterfactual_final200_ablation_runs.json`.
+
 ### `nymeria_world/` Camera World Model
 
 Files: `nymeria_world/*`.
