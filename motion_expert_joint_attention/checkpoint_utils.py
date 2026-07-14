@@ -106,4 +106,3 @@ def load_gen_init_state(
     if Path(path).is_dir():
         return load_native_gen_dcp(path, weights=native_weights)
     return load_joint_pt(path)
-
