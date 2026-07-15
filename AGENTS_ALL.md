@@ -160,6 +160,24 @@ smoke `10650` failed before Python because Slurm used `/bin/sh` for a `pipefail`
 job `10651` was canceled. Corrected explicit-Bash smoke `10679` gates final-200k backfill `10680`,
 which also waits for training jobs `10644/10645`; output is
 `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_tmr_eval/c45_step5k_shape_counterfactual_final200_ablation_runs.json`.
+Smoke `10679` completed successfully with all five metric tests and an eight-case paired
+UniPC/C45 integration pass. Foot-only hybrid job `10644` also completed at 200k; job `10645`
+remains the only unfinished training dependency for the full shape backfill.
+
+Full-contact continuation/all-benchmark follow-up launched 2026-07-15. `bs_train.py` supports a
+strict model-only warm start with global checkpoint numbering and a restart-local LR schedule. The
+source step-200k checkpoint has no optimizer or RNG state, so job `10747` is explicitly a fresh
+AdamW warm start rather than an exact resume: unchanged full-contact recipe, steps `200k->500k`,
+LR `5e-5`, 1k local warmup, cosine decay, and seed `200000`. It keeps 10k in-process 911-case C45
+overview evaluation. Run:
+`/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_native_x0_logitnormal_shift3_contactaware_c0p05_v1_h10_s2_continue200to500k_lr5e-5_seed200000`.
+`sbatch_bs_all_t2m_eval.sh` evaluates all six applicable content/repetition overview/single/multi
+text-to-motion suites using UniPC-35, physical metrics, and paired shape intervention, then
+`bs_all_benchmark_summary.py` writes one structured report. Step-200k job `10746` writes under
+`/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_tmr_eval/full_contact_200k_all_text2motion_unipc35_shape_cf`;
+dependent final-500k job `10748` writes the corresponding `full_contact_500k...` directory.
+Constraint-conditioned suites are marked not applicable because this generator has no constraint
+input. Continuation/evaluation/unit smokes `10742/10743/10744` all passed.
 
 ### `nymeria_world/` Camera World Model
 

@@ -15,6 +15,10 @@ D=/home/jungbin_cho/cosmos_motion_ft/motion_expert
 RUN_NAME=${BS_NATIVE_RUN_NAME:-bs_native_x0_logitnormal_shift3_w1_1_5_200k}
 SHIFT=${BS_NATIVE_SHIFT:-3}
 STEPS=${BS_NATIVE_STEPS:-200000}
+START_STEP=${BS_NATIVE_START_STEP:-0}
+INIT_CKPT=${BS_NATIVE_INIT_CKPT:-}
+LR=${BS_NATIVE_LR:-0.0002}
+SEED=${BS_NATIVE_SEED:-0}
 BATCH_SIZE=${BS_NATIVE_BATCH_SIZE:-128}
 INDEX_CACHE=${BS_NATIVE_INDEX_CACHE:-/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_incontext_v1/bs_train_index.json}
 SMOKE=${BS_NATIVE_SMOKE:-0}
@@ -30,7 +34,8 @@ INLINE_EVAL_MAX_CASES=${BS_NATIVE_INLINE_EVAL_MAX_CASES:-0}
 INLINE_EVAL_SHAPE_CF=${BS_NATIVE_INLINE_EVAL_SHAPE_CF:-farthest}
 
 echo "[bsnatp2] node=$(hostname) date=$(date)"
-echo "[bsnatp2] run=${RUN_NAME} shift=${SHIFT} steps=${STEPS} batch=${BATCH_SIZE} smoke=${SMOKE}"
+echo "[bsnatp2] run=${RUN_NAME} shift=${SHIFT} steps=${START_STEP}->${STEPS} batch=${BATCH_SIZE} lr=${LR} seed=${SEED} smoke=${SMOKE}"
+echo "[bsnatp2] init_ckpt=${INIT_CKPT:-none}"
 echo "[bsnatp2] losses=${W_FEAT}/${W_JOINT}/${W_SMOOTH} contact=${W_CONTACT} foot_vel=${W_FOOT_VEL} foot_height=${W_FOOT_HEIGHT}"
 echo "[bsnatp2] inline_eval_every=${INLINE_EVAL_EVERY} inline_eval_max_cases=${INLINE_EVAL_MAX_CASES} shape_cf=${INLINE_EVAL_SHAPE_CF}"
 echo "[bsnatp2] index_cache=${INDEX_CACHE}"
@@ -39,6 +44,10 @@ nvidia-smi --query-gpu=index,name,memory.used,memory.free,utilization.gpu --form
 ARGS=(
   --native_shift "${SHIFT}"
   --native_num_train_timesteps 1000
+  --steps "${STEPS}"
+  --start_step "${START_STEP}"
+  --lr "${LR}"
+  --seed "${SEED}"
   --batch_size "${BATCH_SIZE}"
   --w_feat "${W_FEAT}"
   --w_joint "${W_JOINT}"
@@ -58,11 +67,14 @@ ARGS=(
   --inline_eval_shape_counterfactual "${INLINE_EVAL_SHAPE_CF}"
 )
 
+if [[ -n "${INIT_CKPT}" ]]; then
+  ARGS+=(--init_ckpt "${INIT_CKPT}")
+fi
+
 if [[ "${SMOKE}" == "1" ]]; then
   ARGS+=(--smoke --viz_n 0 --inline_eval_every 0)
 else
   ARGS+=(
-    --steps "${STEPS}"
     --run_name "${RUN_NAME}"
     --save_every 10000
     --viz_every 10000

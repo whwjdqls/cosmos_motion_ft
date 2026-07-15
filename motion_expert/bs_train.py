@@ -41,6 +41,100 @@ from uniego_layout import FEAT_DIM, canonicalize_frame0
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUN_ROOT = "/mnt/shared/jungbin_cho/cosmos_motion_ft_runs"
 
+CONTINUATION_COMPAT_FIELDS = (
+    "batch_size",
+    "d",
+    "layers",
+    "heads",
+    "ffn",
+    "cfg_dropout",
+    "pred",
+    "schedule",
+    "native_shift",
+    "native_num_train_timesteps",
+    "w_feat",
+    "w_joint",
+    "w_smooth",
+    "w_contact",
+    "w_foot_vel",
+    "w_foot_height",
+    "contact_logit_scale",
+    "motion_fps",
+    "grad_clip",
+    "warmup",
+    "train_split",
+    "mean",
+    "std",
+    "cache_path",
+    "index_cache",
+)
+
+
+def continuation_lr(
+    step: int,
+    *,
+    start_step: int,
+    total_steps: int,
+    base_lr: float,
+    warmup_steps: int,
+) -> float:
+    """Warmup/cosine LR indexed by updates in the current training invocation."""
+    if not start_step <= step < total_steps:
+        raise ValueError(
+            f"step must satisfy start_step <= step < total_steps; got "
+            f"{start_step} <= {step} < {total_steps}"
+        )
+    local_step = step - start_step
+    local_total = total_steps - start_step
+    warmup_steps = min(warmup_steps, local_total)
+    if warmup_steps > 0 and local_step < warmup_steps:
+        return base_lr * (local_step + 1) / warmup_steps
+    progress = (local_step - warmup_steps) / max(1, local_total - warmup_steps)
+    return base_lr * 0.5 * (1.0 + math.cos(math.pi * min(1.0, progress)))
+
+
+def _same_continuation_value(field: str, source, requested) -> bool:
+    if field in {"train_split", "mean", "std", "cache_path", "index_cache"}:
+        if source is None or requested is None:
+            return source == requested
+        return os.path.realpath(str(source)) == os.path.realpath(str(requested))
+    if isinstance(source, (int, float)) and isinstance(requested, (int, float)):
+        return math.isclose(float(source), float(requested), rel_tol=1e-9, abs_tol=1e-12)
+    return source == requested
+
+
+def load_warm_start(model: torch.nn.Module, checkpoint_path: str, args) -> dict:
+    """Load model-only continuation weights and reject recipe mismatches."""
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    if not isinstance(checkpoint, dict) or "model" not in checkpoint:
+        raise ValueError(f"warm-start checkpoint has no model state: {checkpoint_path}")
+    source_step = int(checkpoint.get("step", -1))
+    if source_step != args.start_step:
+        raise ValueError(
+            f"warm-start step mismatch: checkpoint={source_step}, --start_step={args.start_step}"
+        )
+    source_args = checkpoint.get("args")
+    if not isinstance(source_args, dict):
+        raise ValueError(f"warm-start checkpoint has no args metadata: {checkpoint_path}")
+
+    mismatches = []
+    for field in CONTINUATION_COMPAT_FIELDS:
+        source = source_args.get(field)
+        requested = getattr(args, field)
+        if not _same_continuation_value(field, source, requested):
+            mismatches.append(f"{field}: checkpoint={source!r}, requested={requested!r}")
+    if mismatches:
+        raise ValueError("incompatible warm-start recipe:\n  " + "\n  ".join(mismatches))
+
+    model.load_state_dict(checkpoint["model"], strict=True)
+    return {
+        "checkpoint": os.path.abspath(checkpoint_path),
+        "checkpoint_step": source_step,
+        "optimizer_state_restored": False,
+        "rng_state_restored": False,
+        "policy": "model weights only; fresh AdamW and restart-local LR schedule",
+    }
+
 
 def load_viz_items(split_path, cache, n, dev, viz_frames):
     """Held-out (caption, neutral_joints, GT joints, length) for GT|gen viz.
@@ -86,6 +180,18 @@ def load_viz_items(split_path, cache, n, dev, viz_frames):
 def main(argv=None, parser_defaults=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--steps", type=int, default=150000)
+    ap.add_argument(
+        "--start_step",
+        type=int,
+        default=0,
+        help="number of completed updates represented by --init_ckpt; checkpoints keep global labels",
+    )
+    ap.add_argument(
+        "--init_ckpt",
+        default=None,
+        help="model checkpoint for a controlled warm start (optimizer/RNG are not available)",
+    )
+    ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--batch_size", type=int, default=128)
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--d", type=int, default=512)
@@ -159,6 +265,14 @@ def main(argv=None, parser_defaults=None):
     if parser_defaults:
         ap.set_defaults(**parser_defaults)
     args = ap.parse_args(argv)
+    if args.steps <= 0 or args.start_step < 0 or args.start_step >= args.steps:
+        ap.error("require --steps > --start_step >= 0")
+    if args.start_step > 0 and not args.init_ckpt:
+        ap.error("--start_step > 0 requires --init_ckpt")
+    if args.init_ckpt and not os.path.isfile(args.init_ckpt):
+        ap.error(f"missing --init_ckpt: {args.init_ckpt}")
+    if args.lr <= 0.0 or args.warmup < 0:
+        ap.error("--lr must be positive and --warmup must be non-negative")
     if args.schedule == "native" and args.pred != "x0":
         ap.error("--schedule native is the clean-x0 Phase-2 POC and requires --pred x0")
     if args.native_shift <= 0:
@@ -182,7 +296,8 @@ def main(argv=None, parser_defaults=None):
     if args.inline_eval_batch_size <= 0 or args.inline_eval_steps <= 0:
         ap.error("inline evaluation batch size and steps must be positive")
     dev = "cuda"
-    torch.manual_seed(0)
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
 
     mean = torch.from_numpy(np.load(args.mean)).float().to(dev)
     std = torch.from_numpy(np.load(args.std)).float().to(dev)
@@ -191,6 +306,14 @@ def main(argv=None, parser_defaults=None):
 
     model = MotionExpertInContext(d=args.d, n_layers=args.layers, heads=args.heads,
                                   ffn=args.ffn, text_dim=cache.dim, motion_dim=FEAT_DIM).to(dev)
+    continuation = None
+    if args.init_ckpt:
+        continuation = load_warm_start(model, args.init_ckpt, args)
+        # The source checkpoint did not preserve RNG state. Start a documented, deterministic
+        # random stream instead of inheriting draws consumed by temporary model initialization.
+        torch.manual_seed(args.seed)
+        np.random.seed(args.seed)
+        print(f"[train] warm start: {json.dumps(continuation, sort_keys=True)}", flush=True)
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"[train] MotionExpertInContext trainable = {n_train/1e6:.2f}M", flush=True)
     print(
@@ -210,7 +333,11 @@ def main(argv=None, parser_defaults=None):
         default_prefix = "bs_native_x0" if args.schedule == "native" else "bs_incontext"
         name = args.run_name or f"{default_prefix}_{time.strftime('%Y%m%d_%H%M%S')}"
         out = os.path.join(RUN_ROOT, name); os.makedirs(out, exist_ok=True)
-        json.dump({**vars(args), "trainable_M": n_train}, open(os.path.join(out, "config.json"), "w"), indent=2)
+        json.dump(
+            {**vars(args), "trainable_M": n_train, "continuation": continuation},
+            open(os.path.join(out, "config.json"), "w"),
+            indent=2,
+        )
         idx_cache = args.index_cache or os.path.join(out, "bs_train_index.json")
         try:
             from torch.utils.tensorboard import SummaryWriter
@@ -220,18 +347,22 @@ def main(argv=None, parser_defaults=None):
         print(f"[train] run dir: {out}", flush=True)
 
     ds = BonesSeedUniegoDataset(args.train_split, mean_path=args.mean, std_path=args.std,
-                                cache_index=idx_cache, train=True, seed=0)
+                                cache_index=idx_cache, train=True, seed=args.seed)
     print(f"[train] dataset virtual_len={len(ds)}", flush=True)
+    loader_generator = torch.Generator().manual_seed(args.seed)
     dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers,
                     collate_fn=collate, drop_last=True, pin_memory=True,
-                    persistent_workers=args.num_workers > 0)
+                    persistent_workers=args.num_workers > 0, generator=loader_generator)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.0, betas=(0.9, 0.99))
 
     def lr_at(s):
-        if s < args.warmup:
-            return args.lr * (s + 1) / args.warmup
-        p = (s - args.warmup) / max(1, args.steps - args.warmup)
-        return args.lr * 0.5 * (1 + math.cos(math.pi * min(1.0, p)))
+        return continuation_lr(
+            s,
+            start_step=args.start_step,
+            total_steps=args.steps,
+            base_lr=args.lr,
+            warmup_steps=args.warmup,
+        )
 
     def step_loss(batch):
         x0 = batch["motion"].to(dev)                         # [B,T,283] normalized
@@ -476,14 +607,16 @@ def main(argv=None, parser_defaults=None):
         ok = True
         for s, batch in enumerate(dl):
             for g in opt.param_groups:
-                g["lr"] = lr_at(s)                      # mirror the real loop (warmup)
+                g["lr"] = lr_at(args.start_step + s)    # mirror restart-local warmup
             loss, lf, lj, ls, lc, lfv, lfh, sigma = step_loss(batch)
             opt.zero_grad(set_to_none=True); loss.backward()
             gn = torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
             fin = bool(torch.isfinite(loss)) and bool(torch.isfinite(gn))
             if fin:
                 opt.step()
-            print(f"[smoke] {s} loss={loss.item():.4f} feat={lf.item():.4f} joint={lj.item():.4f} "
+            print(f"[smoke] {args.start_step + s + 1} loss={loss.item():.4f} "
+                  f"lr={lr_at(args.start_step + s):.2e} "
+                  f"feat={lf.item():.4f} joint={lj.item():.4f} "
                   f"smooth={ls.item():.4f} contact={lc.item():.4f} "
                   f"foot_vel={lfv.item():.4f} foot_height={lfh.item():.4f} "
                   f"sigma={sigma.mean().item():.3f} "
@@ -498,13 +631,20 @@ def main(argv=None, parser_defaults=None):
 
     def save_checkpoint(checkpoint_step: int) -> str:
         checkpoint_path = os.path.join(out, f"ckpt_step{checkpoint_step:06d}.pt")
-        payload = {"model": model.state_dict(), "step": checkpoint_step, "args": vars(args)}
+        payload = {
+            "model": model.state_dict(),
+            "step": checkpoint_step,
+            "args": vars(args),
+            "continuation": continuation,
+        }
         torch.save(payload, checkpoint_path)
         torch.save(payload, os.path.join(out, "latest.pt"))
         print(f"[ckpt] step {checkpoint_step}", flush=True)
         return checkpoint_path
 
-    step, t0 = 0, time.time()
+    step, t0 = args.start_step, time.time()
+    updates_this_run = 0
+    last_checkpoint_step = None
     while step < args.steps:
         for batch in dl:
             for g in opt.param_groups:
@@ -517,13 +657,15 @@ def main(argv=None, parser_defaults=None):
             skipped = not bool(torch.isfinite(gn))
             if not skipped:
                 opt.step()
-            if step % args.log_every == 0:
+            step += 1
+            updates_this_run += 1
+            if step % args.log_every == 0 or updates_this_run == 1:
                 print(f"step {step:6d} loss={loss.item():.4f} feat={lf.item():.4f} joint={lj.item():.4f} "
                       f"smooth={ls.item():.4f} contact={lc.item():.4f} "
                       f"foot_vel={lfv.item():.4f} foot_height={lfh.item():.4f} "
                       f"grad_norm={float(gn):.2f}{' SKIP' if skipped else ''} "
                       f"sigma={sigma.mean().item():.3f} "
-                      f"lr={lr_at(step):.2e} {(time.time()-t0)/(step+1):.3f}s/it", flush=True)
+                      f"lr={g['lr']:.2e} {(time.time()-t0)/updates_this_run:.3f}s/it", flush=True)
                 if tb:
                     for k, v in [
                         ("loss", loss),
@@ -542,6 +684,7 @@ def main(argv=None, parser_defaults=None):
             checkpoint_path = None
             if step > 0 and step % args.save_every == 0:
                 checkpoint_path = save_checkpoint(step)
+                last_checkpoint_step = step
             if (
                 inline_evaluator is not None
                 and step > 0
@@ -549,16 +692,19 @@ def main(argv=None, parser_defaults=None):
             ):
                 if checkpoint_path is None:
                     checkpoint_path = save_checkpoint(step)
+                    last_checkpoint_step = step
                 do_inline_eval(step, checkpoint_path)
             if viz_items and step > 0 and step % args.viz_every == 0:
                 try:
                     do_viz(step)
                 except Exception as e:
                     print(f"[viz] step {step} failed: {e}", flush=True)
-            step += 1
             if step >= args.steps:
                 break
-    final_checkpoint_path = save_checkpoint(step)
+    if last_checkpoint_step == step:
+        final_checkpoint_path = os.path.join(out, f"ckpt_step{step:06d}.pt")
+    else:
+        final_checkpoint_path = save_checkpoint(step)
     if inline_evaluator is not None and last_inline_eval_step != step:
         do_inline_eval(step, final_checkpoint_path)
     print("[train] done")
