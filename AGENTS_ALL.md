@@ -439,6 +439,11 @@ Window drops from `floor_calibration.json` are skipped in both `_index` and `_t2
 
 - `wrong_floor`: enough contacts and the contact median is more than 0.20 m from expected floor.
 - `residual_penetration`: calibrated min-foot-y below -0.20 m.
+- `extreme_y`: a later defense-in-depth scan found post-calibration joint-Y magnitudes above 2.5 m that survived the first two criteria.
+
+The completed 713-sequence calibration file is noisier than the early ~2% estimate: among usable captioned windows, train drops 7,173/128,102 (5.60%: 4,640 wrong-floor, 2,181 residual-penetration, 352 extreme-Y) and test drops 714/13,487 (5.29%: 488/198/28). The active Phase-2 and native Phase-3 logs confirm these exact train drops at dataset construction, leaving 120,929 native T2M windows and 112,937 aligned T97 windows. Every train/test sequence has its own measured delta; no sequence uses the global fallback. The full71 camera-oriented list was not motion-quality filtered and happens to contain five dropped windows (7.04%): four wrong-floor and one residual-penetration. Direct diagnostics show these are gross, not borderline: wrong-floor contact-height errors are 0.58, 2.64, 0.66, and 1.24 m, and the residual case reaches 0.415 m below floor. Use the floor-valid result or select replacement windows for motion evaluation.
+
+Filtering does not prove that every retained SOMA fit is clean. The calibration summary over retained windows has median min-foot-y +0.34 cm and no windows below -20 cm, but 15.22% have at least one min-foot observation below -5 cm; that minimum-over-window statistic can include transient fit/contact artifacts and is not itself a wrong-floor label. `_load_motion` therefore also rejects normalized `|z|max > 20` at runtime before the sample reaches the loss. In the completed 200k Phase-2 run this guard rejected about 247,961 attempts out of approximately 51.2M sampled items (~0.48%), concentrated in 574 unique starts. This adds retry/log overhead but prevents those extreme samples from training the model. Moderate residual motion-fitting noise remains a real data-quality risk and should not be described as fully solved.
 
 If calibration JSON is missing, the dataset warns and proceeds uncalibrated. BONES samples are untouched.
 
