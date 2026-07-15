@@ -614,6 +614,20 @@ def main():
             "metrics_json": metrics_path,
             "aggregate": video_payload["aggregate"],
         }
+        valid_video_rows = {
+            name: row for name, row in video_metric_rows.items() if name not in floor_flagged
+        }
+        if len(valid_video_rows) != len(video_metric_rows):
+            valid_metrics_path = os.path.join(
+                out_root, "video", "motimg2video_metrics_floor_valid.json"
+            )
+            valid_video_payload = _aggregate_video_metrics(valid_video_rows)
+            json.dump(valid_video_payload, open(valid_metrics_path, "w"), indent=2)
+            summary["video_metrics"]["motimg2video"].update({
+                "floor_valid_metrics_json": valid_metrics_path,
+                "floor_valid_n": len(valid_video_rows),
+                "floor_valid_aggregate": valid_video_payload["aggregate"],
+            })
 
     _write_summary(out_root, summary)
     _print_summary(summary)
