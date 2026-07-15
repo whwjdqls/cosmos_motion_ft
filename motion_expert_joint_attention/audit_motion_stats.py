@@ -76,6 +76,7 @@ def _load_kept_windows(args):
 
 def _compute_stats(args, by_sequence, old_mean, old_std):
     count = 0
+    stats_windows = 0
     sum_1 = np.zeros(FEAT_DIM, dtype=np.float64)
     sum_2 = np.zeros(FEAT_DIM, dtype=np.float64)
     old_zmax = []
@@ -89,10 +90,14 @@ def _compute_stats(args, by_sequence, old_mean, old_std):
                 features = all_features[start:end].astype(np.float32)
                 features = canonicalize_frame0(ground_features(features, offset))
                 features_64 = features.astype(np.float64)
+                zmax = float(np.abs((features_64 - old_mean) / old_std).max())
+                old_zmax.append(zmax)
+                if args.max_old_z > 0 and zmax > args.max_old_z:
+                    continue
                 sum_1 += features_64.sum(axis=0)
                 sum_2 += np.square(features_64).sum(axis=0)
                 count += len(features_64)
-                old_zmax.append(float(np.abs((features_64 - old_mean) / old_std).max()))
+                stats_windows += 1
         if index % args.progress_every == 0 or index == len(by_sequence):
             print(
                 f"[motion-stats-audit] {index}/{len(by_sequence)} sequences "
@@ -100,10 +105,18 @@ def _compute_stats(args, by_sequence, old_mean, old_std):
                 flush=True,
             )
 
+    if count == 0:
+        raise ValueError("runtime feature guard rejected every candidate stats window")
     mean = sum_1 / count
     std = np.sqrt(np.maximum(sum_2 / count - np.square(mean), 0.0))
     std[std < args.const_eps] = 1.0
-    return mean.astype(np.float32), std.astype(np.float32), np.asarray(old_zmax), count
+    return (
+        mean.astype(np.float32),
+        std.astype(np.float32),
+        np.asarray(old_zmax),
+        count,
+        stats_windows,
+    )
 
 
 def main():
@@ -117,6 +130,12 @@ def main():
     parser.add_argument("--old-std", default=config.MOTION_STATS_STD)
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--const-eps", type=float, default=1e-6)
+    parser.add_argument(
+        "--max-old-z",
+        type=float,
+        default=20.0,
+        help="exclude windows rejected by the active runtime guard; <=0 disables",
+    )
     parser.add_argument("--progress-every", type=int, default=50)
     args = parser.parse_args()
 
@@ -136,7 +155,7 @@ def main():
     by_sequence, raw_windows, dropped = _load_kept_windows(args)
     if not by_sequence:
         raise ValueError(f"no kept windows found for split {args.split!r}")
-    mean, std, old_zmax, frame_count = _compute_stats(
+    mean, std, old_zmax, frame_count, stats_windows = _compute_stats(
         args, by_sequence, old_mean, old_std
     )
 
@@ -155,7 +174,10 @@ def main():
         "raw_usable_captioned_windows": raw_windows,
         "dropped_windows": int(sum(dropped.values())),
         "drop_reasons": dict(sorted(dropped.items())),
-        "kept_windows": int(len(old_zmax)),
+        "kept_windows_after_floor_filter": int(len(old_zmax)),
+        "runtime_guard_max_old_z": args.max_old_z,
+        "runtime_guard_rejected": int(len(old_zmax) - stats_windows),
+        "stats_windows": int(stats_windows),
         "frames": int(frame_count),
         "candidate_mean": mean_path,
         "candidate_std": std_path,
