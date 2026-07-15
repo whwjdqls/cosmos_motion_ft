@@ -77,8 +77,18 @@ VIDEO_GEN_TASKS = {"motimg2video"}
 # index build at lines 264-301: uni + off + latents + rgb + caption at one (uuid,start)).
 # ============================================================================
 def build_full_index(manifest_path, split_file, split, num_frames, latent_root, uniego_root,
-                     require_latents=True):
+                     require_latents=True, windows_json=None):
     from nymeria_camera_rgb_dataset import _rgb_path
+    want = None
+    want_by_uuid = {}
+    if windows_json:
+        rows = json.load(open(windows_json))
+        want = {(row["uuid"], int(row["start"])): order for order, row in enumerate(rows)}
+        if len(want) != len(rows):
+            raise ValueError(f"{windows_json}: duplicate (uuid,start) rows")
+        for (uuid, start), order in want.items():
+            want_by_uuid.setdefault(uuid, []).append((start, order))
+
     keep = None
     if split not in ("all", None):
         sp = json.load(open(split_file))
@@ -114,6 +124,44 @@ def build_full_index(manifest_path, split_file, split, num_frames, latent_root, 
             uni = os.path.join(uniego_root, f"{uuid}.npz")
             if not os.path.isfile(uni):
                 continue
+            if want is not None:
+                windows = {int(w["start_frame"]): w for w in rec.get("t2w_windows", [])}
+                for s, order in want_by_uuid.get(uuid, []):
+                    if s + num_frames > nb:
+                        continue
+                    lp = latent_path(uuid, s, latent_root)
+                    if require_latents and not os.path.isfile(lp):
+                        continue
+                    window = windows.get(s)
+                    if window is None:
+                        continue
+                    off = window.get("ground_offset_y", None)
+                    if calibrated and off is not None:
+                        off = float(off) + deltas.get(uuid, gdelta)
+                    drop_entry = next(
+                        (
+                            entry for entry in _fc.get("dropped_windows", {}).get(uuid, [])
+                            if int(entry[0]) == int(window["start_frame"])
+                            and int(entry[1]) == int(window["end_frame"])
+                        ),
+                        None,
+                    ) if calibrated else None
+                    index.append({
+                        "uuid": uuid,
+                        "vis": vis,
+                        "rgb": rgb,
+                        "uni": uni,
+                        "s": int(s),
+                        "cap": window.get("caption", ""),
+                        "off": off,
+                        "lp": lp,
+                        "_order": order,
+                        "floor_drop_reason": (
+                            str(drop_entry[2]) if drop_entry is not None and len(drop_entry) > 2
+                            else None
+                        ),
+                    })
+                continue
             for w in rec.get("t2w_windows", []):
                 if not w.get("usable", False) or not w.get("caption"):
                     continue
@@ -131,6 +179,17 @@ def build_full_index(manifest_path, split_file, split, num_frames, latent_root, 
                         index.append({"uuid": uuid, "vis": vis, "rgb": rgb, "uni": uni,
                                       "s": int(s), "cap": w["caption"], "off": off, "lp": lp})
                     s += num_frames
+    if want is not None:
+        index.sort(key=lambda item: item["_order"])
+        found = {(item["uuid"], item["s"]) for item in index}
+        missing = [key for key, _order in sorted(want.items(), key=lambda pair: pair[1])
+                   if key not in found]
+        print(
+            f"[eval_all] windows_json: matched {len(index)}/{len(want)} requested windows",
+            flush=True,
+        )
+        if missing:
+            print(f"[eval_all] windows_json missing: {missing}", flush=True)
     return index
 
 
@@ -155,9 +214,8 @@ def load_gt_motion(uni_path, s, off, T, mean, std):
 # ============================================================================
 # Video (Wan-VAE latent) helpers -- reuse eval_camera's exact decode/write.
 # ============================================================================
-def _video_side_by_side(vae, gt_frames, gen_latents, dst_mp4, fps, dev):
+def _video_side_by_side(gt_frames, gen_frames, dst_mp4, fps):
     import eval_camera as EC
-    gen_frames = EC.latent_to_frames(vae, gen_latents, dev)
     gt_path = dst_mp4.replace(".mp4", "_gt.mp4")
     gen_path = dst_mp4.replace(".mp4", "_gen.mp4")
     if gt_frames is not None:
@@ -204,8 +262,8 @@ def main():
     ap.add_argument("--n", type=int, default=8, help="number of test windows per task")
     ap.add_argument("--tasks", nargs="*", default=ALL_TASKS, help="tasks to eval (default = all 7)")
     ap.add_argument("--windows_json", default=None,
-                    help="JSON list of {uuid,start}: evaluate EXACTLY these windows (e.g. the "
-                         "held-out full71 set shared with nymeria_world). Forwarded to eval_camera.")
+                    help="JSON list of {uuid,start}: evaluate EXACTLY these windows, in order, "
+                         "for camera, motion, and video tasks (e.g. one per held-out sequence)")
     ap.add_argument("--steps", type=int, default=50)
     ap.add_argument("--cfg", type=float, default=2.5)
     ap.add_argument("--seed", type=int, default=0)
@@ -224,6 +282,8 @@ def main():
     ap.add_argument("--motion_viz_limit", type=int, default=-1,
                     help="maximum number of motion-task mp4s to render per task; negative renders all. "
                          "Metrics and .npy outputs are still written for every evaluated window.")
+    ap.add_argument("--lpips_batch_size", type=int, default=16,
+                    help="frame batch size for motimg2video LPIPS-Alex evaluation")
     ap.add_argument("--device", default="cuda")
     args = ap.parse_args()
 
@@ -244,7 +304,8 @@ def main():
     print(f"[eval_all] out_root={out_root}  tasks={tasks}", flush=True)
 
     summary = {"ckpt": args.ckpt, "tasks": tasks, "n": args.n, "out_root": out_root,
-               "camera": None, "motion": {}, "video": {}, "viz": []}
+               "windows_json": args.windows_json, "camera": None, "motion": {},
+               "video": {}, "video_metrics": {}, "viz": []}
 
     # ---- 1. CAMERA tasks -> delegate to eval_camera (its schema + metric + viz) ---------------
     cam_tasks = [t for t in tasks if t in CAMERA_TASKS]
@@ -345,22 +406,52 @@ def main():
     std = np.load(C.MOTION_STATS_STD).astype(np.float32)
 
     # ---- test-window index (carries every modality) -------------------------------------------
-    index = build_full_index(args.manifest, args.split_file, args.split, index_T, latent_root,
-                             args.uniego_root, require_latents=needs_latents)
+    index = build_full_index(
+        args.manifest,
+        args.split_file,
+        args.split,
+        index_T,
+        latent_root,
+        args.uniego_root,
+        require_latents=needs_latents,
+        windows_json=args.windows_json,
+    )
     if not index:
         requirement = f"latents under {latent_root} + uniego" if needs_latents else "uniego"
         raise SystemExit(
             f"[eval_all] no test windows w/ {requirement} (split={args.split}, T={index_T})"
         )
+    if args.windows_json:
+        requested_count = len(json.load(open(args.windows_json)))
+        if len(index) != requested_count:
+            raise RuntimeError(
+                f"explicit held-out set incomplete: matched {len(index)}/{requested_count} windows"
+            )
     index = index[: args.n]
     print(f"[eval_all] {len(index)} test windows for motion/video tasks", flush=True)
+    floor_flagged = {
+        seq_name(i, item["uuid"], item["s"]): item["floor_drop_reason"]
+        for i, item in enumerate(index)
+        if item.get("floor_drop_reason")
+    }
+    summary["floor_flagged_motion_gt"] = floor_flagged
+    if floor_flagged:
+        print(
+            f"[eval_all] WARNING: {len(floor_flagged)} explicit windows are flagged by floor "
+            "calibration; full-set metrics include them and a floor-valid subset is also written",
+            flush=True,
+        )
 
     # ---- VAE only if a video-gen task with pixel output -----------------------------------
     need_video = (not args.no_video) and any(t in VIDEO_GEN_TASKS for t in mv_tasks)
     vae = None
+    lpips_metric = None
     if need_video:
         from precompute_latents import load_vae
+        from native_phase_training.evaluate_inverse_forward import LPIPSAlex
+
         vae = load_vae(args.vae_path, args.resolution, T, dev)
+        lpips_metric = LPIPSAlex(dev, args.lpips_batch_size)
         print("[eval_all] Wan2.2-VAE loaded", flush=True)
 
     viz_dir = os.path.join(out_root, "viz")
@@ -369,6 +460,7 @@ def main():
     # per-task collected metric rows
     recon_rows = {t: {} for t in mv_tasks if t in MOTION_TASKS}
     motion_viz_counts = {t: 0 for t in mv_tasks if t in MOTION_TASKS}
+    video_metric_rows = {}
 
     for i, it in enumerate(index):
         uuid, s = it["uuid"], it["s"]
@@ -456,19 +548,38 @@ def main():
             np.savez(os.path.join(vd, name + ".npz"), latents=gen.astype(np.float16))
             summary["video"].setdefault("motimg2video", []).append(name)
             if need_video:
-                try:
-                    from nymeria_camera_dataset import decode_window_pyav
-                    gt_frames = None
-                    try:
-                        gt_frames = decode_window_pyav(it["vis"], s, T, args.fps)
-                    except Exception as e:  # noqa: BLE001
-                        print(f"  [motimg2video] GT clip decode failed ({e})", flush=True)
-                    dst = os.path.join(viz_dir, f"motimg2video_{name}.mp4")
-                    p = _video_side_by_side(vae, gt_frames, gen, dst, args.fps, dev)
-                    summary["viz"].append(p)
-                    print(f"  [motimg2video] video -> {p}", flush=True)
-                except Exception as e:  # noqa: BLE001
-                    print(f"  [motimg2video] video viz failed ({e})", flush=True)
+                import eval_camera as EC
+                from native_phase_training.evaluate_inverse_forward import (
+                    _frame_metrics,
+                    _resize_gt_like_native,
+                    _summarize_frame_metrics,
+                )
+                from nymeria_camera_dataset import decode_window_pyav
+
+                gt_frames = decode_window_pyav(it["vis"], s, T, args.fps)
+                gen_frames = EC.latent_to_frames(vae, gen, dev)
+                if len(gt_frames) != T or len(gen_frames) != T:
+                    raise RuntimeError(
+                        f"{name}: expected {T} GT/generated frames, got "
+                        f"{len(gt_frames)}/{len(gen_frames)}"
+                    )
+                gt_metric_frames = _resize_gt_like_native(
+                    gt_frames, gen_frames.shape[1], gen_frames.shape[2]
+                )
+                frame_values = _frame_metrics(
+                    gt_metric_frames[1:], gen_frames[1:], lpips_metric
+                )
+                video_metric_rows[name] = _summarize_frame_metrics(frame_values)
+                metric_row = video_metric_rows[name]
+                print(
+                    f"  [motimg2video] PSNR={metric_row['psnr_db']:.3f} "
+                    f"SSIM={metric_row['ssim']:.4f} LPIPS={metric_row['lpips_alex']:.4f}",
+                    flush=True,
+                )
+                dst = os.path.join(viz_dir, f"motimg2video_{name}.mp4")
+                p = _video_side_by_side(gt_frames, gen_frames, dst, args.fps)
+                summary["viz"].append(p)
+                print(f"  [motimg2video] video -> {p}", flush=True)
 
     # ---- write motion recon metrics per task --------------------------------------------------
     for t, rows in recon_rows.items():
@@ -480,9 +591,73 @@ def main():
         summary["motion"][t] = {"metrics_json": outp,
                                 "generative": t in EMR.GENERATIVE_TASKS,
                                 "aggregate": json.load(open(outp))["aggregate"]}
+        valid_rows = {name: row for name, row in rows.items() if name not in floor_flagged}
+        if len(valid_rows) != len(rows):
+            valid_out = os.path.join(
+                out_root, "motion_recon", t, "motion_recon_metrics_floor_valid.json"
+            )
+            EMR.aggregate_and_write(
+                valid_rows,
+                valid_out,
+                tag=f"{t} floor-valid | {out_root}",
+                generative=(t in EMR.GENERATIVE_TASKS),
+            )
+            summary["motion"][t]["floor_valid_metrics_json"] = valid_out
+            summary["motion"][t]["floor_valid_n"] = len(valid_rows)
+
+    if video_metric_rows:
+        metrics_path = os.path.join(out_root, "video", "motimg2video_metrics.json")
+        video_payload = _aggregate_video_metrics(video_metric_rows)
+        os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
+        json.dump(video_payload, open(metrics_path, "w"), indent=2)
+        summary["video_metrics"]["motimg2video"] = {
+            "metrics_json": metrics_path,
+            "aggregate": video_payload["aggregate"],
+        }
 
     _write_summary(out_root, summary)
     _print_summary(summary)
+
+
+def _aggregate_video_metrics(rows):
+    """Aggregate per-sequence M2V pixel metrics using the native Phase-1 schema."""
+    from native_phase_training.evaluate_inverse_forward import (
+        HORIZONS,
+        METRIC_KEYS_FORWARD,
+        _aggregate,
+    )
+
+    scalar_rows = {
+        name: {key: float(row[key]) for key in METRIC_KEYS_FORWARD}
+        for name, row in rows.items()
+    }
+    horizon_aggregate = {
+        horizon: {
+            key: {
+                "mean": float(np.mean([
+                    row["horizons"][horizon][key] for row in rows.values()
+                ])),
+                "median": float(np.median([
+                    row["horizons"][horizon][key] for row in rows.values()
+                ])),
+            }
+            for key in METRIC_KEYS_FORWARD
+        }
+        for horizon in HORIZONS
+    }
+    evaluated_frames = int(next(iter(rows.values()))["evaluated_frames"])
+    return {
+        "n": len(rows),
+        "task": "motimg2video",
+        "conditioned_frame_excluded": True,
+        "evaluated_frame_range": [1, evaluated_frames],
+        "gt_preprocessing": (
+            "native aspect-preserving bicubic antialias resize plus right/bottom reflection pad"
+        ),
+        "aggregate": _aggregate(scalar_rows, METRIC_KEYS_FORWARD),
+        "horizon_aggregate": horizon_aggregate,
+        "per_sequence": rows,
+    }
 
 
 def _write_summary(out_root, summary):
@@ -514,6 +689,13 @@ def _print_summary(summary):
     # video gen
     for t, names in summary.get("video", {}).items():
         print(f"{t:16s}  {len(names)} clips generated")
+    for t, info in summary.get("video_metrics", {}).items():
+        aggregate = info["aggregate"]
+        print(
+            f"{t:16s}  PSNR={aggregate['psnr_db']['mean']:.3f}dB  "
+            f"SSIM={aggregate['ssim']['mean']:.4f}  "
+            f"LPIPS={aggregate['lpips_alex']['mean']:.4f}"
+        )
     # viz
     print(f"\nviz files written ({len(summary.get('viz', []))}):")
     for p in summary.get("viz", [])[:40]:
