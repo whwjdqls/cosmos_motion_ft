@@ -43,7 +43,11 @@ WINDOW DROPS (recorded, not applied here — the dataset skips them at index-bui
    was 1.3% of windows on the 48-seq sample.
 2. ``residual_penetration``: window min-foot-y AFTER calibration < -0.20 m — deep SOMA fit
    failures the constant delta cannot fix; was ~0.65% on the 48-seq sample.
-Both are computed from the raw Y channels directly (no decode needed). Expected total ~2%.
+3. ``extreme_y``: any joint-Y magnitude AFTER calibration > 2.5 m — defense in depth for
+   degenerate fits that can evade the foot-specific criteria above.
+All are computed from the raw Y channels directly (no decode needed). The completed 713-sequence
+scan drops about 5.6% of usable captioned train windows; the earlier ~2% estimate came from the
+smaller validation sample.
 
 OUTPUT (one JSON, consumed by ``nymeria_joint_dataset.NymeriaJointDataset``)
 ----------------------------------------------------------------------------
@@ -91,11 +95,13 @@ OUT_JSON = "/weka/jungbin/nymeriaplus_kimodo_proportional/metadata/floor_calibra
 # SOMA-30: contact channels [279:283] map (in order) to these joints; Y channel = j*9+7.
 FOOT_J = [24, 25, 28, 29]                 # LeftFoot, LeftToeBase, RightFoot, RightToeBase
 FOOT_Y = [j * 9 + 7 for j in FOOT_J]      # [223, 232, 259, 268]
+JOINT_Y = [j * 9 + 7 for j in range(30)]  # every SOMA-30 joint translation-Y channel
 HEAD_Y = 6 * 9 + 7                        # 61 (Head joint 6) — for the lying/extent gate
 
 WRONG_FLOOR_MIN_CONTACT = 10              # frames with any contact needed to trust con_y_med
 WRONG_FLOOR_TOL = 0.20                    # m; |con_y_med - (delta_seq + c0)| beyond this = drop
 RESIDUAL_PEN_THRESH = -0.20               # m; min-foot AFTER calibration below this = drop
+EXTREME_Y_THRESH = 2.50                    # m; any post-calibration |joint y| above this = drop
 N_BONES_CLIPS = 2500                      # unique BONES clips for c0 (>= 2000 required)
 
 
@@ -152,6 +158,7 @@ def measure_seq(job):
         return uuid, None, [], f"{type(e).__name__}: {e}"
     Tn = F.shape[0]
     fy_raw = F[:, FOOT_Y]
+    jy_raw = F[:, JOINT_Y]
     hy_raw = F[:, HEAD_Y]
     con = F[:, 279:283] > 0.5
 
@@ -162,6 +169,7 @@ def measure_seq(job):
         if hi - ws <= 0 or off is None:
             continue
         fy = fy_raw[ws:hi] - off                       # (t, 4) grounded foot heights
+        jy = jy_raw[ws:hi] - off                       # (t, 30) grounded joint heights
         hy = hy_raw[ws:hi] - off
         c = con[ws:hi]
         anyc = c.any(axis=1)
@@ -175,6 +183,8 @@ def measure_seq(job):
             minfoot=float(fy.min()),
             n_contact=n_con,
             con_y_med=(float(np.median(ev)) if ev.size else None),
+            joint_y_min=float(jy.min()),
+            joint_y_max=float(jy.max()),
             frac_lying=float((extent < 1.2).mean()),
         ))
     d_minc = float(np.median(np.concatenate(minc_events))) if minc_events else None
@@ -293,8 +303,11 @@ def main():
           f"max={dv.max() * 100:+.1f}   GLOBAL fallback = {global_delta * 100:+.2f}cm", flush=True)
 
     # ---- window drops + before/after stats ---------------------------------------------------
-    dropped = defaultdict(list)
-    n_drop = {"wrong_floor": 0, "residual_penetration": 0}
+    # The manifest contains some duplicate (uuid,start,end) annotation rows. Count every
+    # occurrence in distribution statistics, but emit one deterministic blacklist entry per
+    # physical window because the dataset consumes this structure as a lookup map.
+    dropped = defaultdict(dict)
+    n_drop = {"wrong_floor": 0, "residual_penetration": 0, "extreme_y": 0}
     before, after, lying, kept_mask = [], [], [], []
     for uuid, rows in win_rows.items():
         d = deltas.get(uuid, global_delta)
@@ -310,9 +323,14 @@ def main():
                 reason = "wrong_floor"
             elif a < RESIDUAL_PEN_THRESH:
                 reason = "residual_penetration"
+            elif (
+                max(abs(r["joint_y_min"] - d), abs(r["joint_y_max"] - d))
+                > EXTREME_Y_THRESH
+            ):
+                reason = "extreme_y"
             if reason is not None:
                 n_drop[reason] += 1
-                dropped[uuid].append([r["ws"], r["we"], reason])
+                dropped[uuid][(r["ws"], r["we"])] = reason
             kept_mask.append(reason is None)
     before = np.array(before)
     after = np.array(after)
@@ -320,6 +338,7 @@ def main():
     kept = np.array(kept_mask)
     n_win = int(before.size)
     n_drop_total = int((~kept).sum())
+    n_drop_unique = sum(len(entries) for entries in dropped.values())
 
     print(f"\n== WINDOW MIN-FOOT-Y DISTRIBUTION (n={n_win} captioned windows, "
           f"{len(win_rows)} seqs) ==")
@@ -337,8 +356,10 @@ def main():
           f"({n_drop['wrong_floor'] / n_win:.2%})")
     print(f"  residual_penetration : {n_drop['residual_penetration']:5d} "
           f"({n_drop['residual_penetration'] / n_win:.2%})")
+    print(f"  extreme_y            : {n_drop['extreme_y']:5d} "
+          f"({n_drop['extreme_y'] / n_win:.2%})")
     print(f"  TOTAL                : {n_drop_total:5d} ({n_drop_total / n_win:.2%}) "
-          f"across {len(dropped)} seqs")
+          f"annotation rows; {n_drop_unique} unique windows across {len(dropped)} seqs")
 
     stats = {
         "n_seqs_manifest": n_seqs_manifest,
@@ -361,7 +382,9 @@ def main():
         "minfoot_after_kept": s_after_kept,
         "drops": {"wrong_floor": n_drop["wrong_floor"],
                   "residual_penetration": n_drop["residual_penetration"],
+                  "extreme_y": n_drop["extreme_y"],
                   "total": n_drop_total,
+                  "unique_total": n_drop_unique,
                   "frac": round(n_drop_total / n_win, 5),
                   "n_seqs_affected": len(dropped)},
         "seq_load_errors": seq_errors,
@@ -383,6 +406,8 @@ def main():
                            f"|window contact-median - (delta_seq + c0)| > {WRONG_FLOOR_TOL} m",
             "residual_penetration": f"window min-foot-y after calibration < "
                                     f"{RESIDUAL_PEN_THRESH} m",
+            "extreme_y": f"window max absolute joint-y after calibration > "
+                         f"{EXTREME_Y_THRESH} m",
             "dropped_windows_format": "[start_frame, end_frame, reason] (raw manifest frames)",
         },
     }
@@ -391,7 +416,10 @@ def main():
         "c0": c0,
         "global_delta": global_delta,
         "deltas": {u: float(v) for u, v in sorted(deltas.items())},
-        "dropped_windows": {u: v for u, v in sorted(dropped.items())},
+        "dropped_windows": {
+            uuid: [[start, end, reason] for (start, end), reason in sorted(entries.items())]
+            for uuid, entries in sorted(dropped.items())
+        },
         "stats": stats,
         "provenance": provenance,
     }
@@ -402,7 +430,8 @@ def main():
     os.replace(tmp, args.out)
     print(f"\n[out] wrote {args.out}  "
           f"(c0={c0 * 100:+.2f}cm, global_delta={global_delta * 100:+.2f}cm, "
-          f"{len(deltas)} deltas, {n_drop_total} dropped windows)")
+          f"{len(deltas)} deltas, {n_drop_total} dropped annotation rows / "
+          f"{n_drop_unique} unique windows)")
 
 
 if __name__ == "__main__":
