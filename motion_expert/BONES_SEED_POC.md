@@ -654,7 +654,59 @@ restarted.
 
 - Initial smoke job `10650` failed before Python because Slurm's `/bin/sh` rejected
   `set -o pipefail`; the permanently blocked dependent job `10651` was canceled.
-- Corrected GPU unit/integration smoke with explicit Bash: job `10679`
+- Corrected GPU unit/integration smoke with explicit Bash: job `10679`, completed successfully
+  (`5/5` metric tests plus an eight-case paired UniPC/C45 integration pass)
 - Final-200k 911-case backfill, dependent on the smoke and jobs `10644/10645`: job `10680`
 - Backfill output:
   `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_tmr_eval/c45_step5k_shape_counterfactual_final200_ablation_runs.json`
+
+Variant C job `10644` completed at 200k. Its final protocol/plain R@3 is
+`66.52/55.32`, FID `0.05309`, contact skate `5.18 cm/s`, height skate
+`19.53 cm/s`, consistency `0.960`, skate ratio `0.113`, and bone MAE
+`0.409 cm`. Its peak retrieval checkpoint remains 170k at protocol/plain R@3
+`68.17/55.98`.
+
+## 19. Full-contact all-benchmark evaluation and 500k continuation (2026-07-15)
+
+The full-contact Variant B step-200k checkpoint is being evaluated on every
+applicable Kimodo text-to-motion suite:
+
+```text
+content/{overview,timeline_single,timeline_multi}
+repetition/{overview,timeline_single,timeline_multi}
+```
+
+This is 9,162 discovered benchmark cases before per-suite data audits. Constraint-conditioned
+categories are explicitly not applicable: this BONES MotionExpert accepts text and actor skeleton
+shape, but no trajectory, keyframe, or end-effector constraint input. The evaluation samples
+in-memory with official Cosmos UniPC-35, CFG 2, C45 step 5k, proportional skeleton conditioning,
+foot/contact metrics, population shape tracking, and the farthest-natural same-text/same-noise
+shape counterfactual. It writes six detailed JSON files and one case-weighted suite summary without
+saving generated motions or embeddings.
+
+- Step-200k full evaluation job: `10746`
+- Step-200k report directory:
+  `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_tmr_eval/full_contact_200k_all_text2motion_unipc35_shape_cf`
+- Six-suite smoke job `10743` completed all 48 requested cases and built its aggregate report.
+
+The original step-200k checkpoint contains model weights and arguments only. It has no AdamW
+moments, RNG state, or data-loader position, so an exact optimizer resume is impossible. The 500k
+run is therefore a documented model-weight warm start: it strictly verifies the architecture,
+data representation, batch size, schedule, prediction target, and all loss settings, then starts a
+fresh AdamW optimizer with a conservative `5e-5` restart LR, 1k local-step warmup, cosine decay over
+300k new updates, and seed `200000`. Checkpoint labels remain global (`210000` through `500000`).
+
+- Source checkpoint:
+  `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_native_x0_logitnormal_shift3_contactaware_c0p05_v1_h10_s2_inline10k_200k/ckpt_step200000.pt`
+- Continuation job: `10747`
+- Continuation run:
+  `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_native_x0_logitnormal_shift3_contactaware_c0p05_v1_h10_s2_continue200to500k_lr5e-5_seed200000`
+- Final step-500k all-benchmark evaluation: job `10748`, dependency `afterok:10747`
+- Final report directory:
+  `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_tmr_eval/full_contact_500k_all_text2motion_unipc35_shape_cf`
+
+Training retains the exact `1/1/5 + contact/foot-velocity/foot-height = 0.05/1/10` objective and
+official shifted-logitnormal shift-3 x0 recipe. Every 10k updates it saves a checkpoint and runs the
+911-case content/overview C45 evaluation with UniPC-35 and shape counterfactuals. GPU continuation
+smoke job `10742` loaded the real checkpoint and completed five finite optimizer steps at 10.3 GB;
+LR unit job `10744` passed both restart-schedule tests.
