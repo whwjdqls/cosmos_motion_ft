@@ -526,7 +526,11 @@ def main():
             if args.motion_viz_limit < 0 or motion_viz_counts[t] < args.motion_viz_limit:
                 dst = os.path.join(viz_dir, f"{t}_{name}.mp4")
                 try:
-                    p = _render_motion(pred_z, mean, std, dst, cap[:40], args.fps,
+                    viz_caption = (
+                        f"metadata only (V2M text disabled): {cap[:40]}"
+                        if t == "video2motion" else cap[:40]
+                    )
+                    p = _render_motion(pred_z, mean, std, dst, viz_caption, args.fps,
                                        gt_feat_z=(gt_task_z if t == "video2motion" else None))
                     summary["viz"].append(p)
                     motion_viz_counts[t] += 1

@@ -84,9 +84,10 @@ time: ``entry["off"] = ground_offset_y + delta_seq``, and ``ground_features`` th
 TOTAL. The original pair stays recoverable via ``entry["off_gt"]`` (the GT per-window multi-floor
 level) and ``entry["delta"]`` -- IMPORTANT: any future camera<->motion ABSOLUTE alignment must use
 the calibrated TOTAL ``off``, which is the full vertical world->grounded shift applied to motion.
-Windows in the precomputed drop list (``wrong_floor`` metre-scale floor-selection errors +
-``residual_penetration`` deep fit failures, ~2%) are SKIPPED in BOTH indices. If the json is
-missing we WARN loudly and proceed uncalibrated (backward compat). BONES samples are untouched.
+Windows in the precomputed drop list (``wrong_floor`` metre-scale floor-selection errors,
+``residual_penetration`` deep fit failures, and ``extreme_y`` outliers; about 5-6% of usable
+NymeriaPlus windows in the current train/test manifests) are SKIPPED in BOTH indices. If the json
+is missing we WARN loudly and proceed uncalibrated (backward compat). BONES samples are untouched.
 """
 from __future__ import annotations
 
