@@ -2,13 +2,22 @@
 """CPU contracts for relative head-camera geometry and task packing."""
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
+import tempfile
 
 import torch
 
 import task_plan as TP
+from estimate_head_camera_calibration import (
+    fit_head_camera_calibration,
+    optimize_head_camera_transform_from_relative_actions,
+)
 from head_camera_alignment import (
+    actor_id_from_uuid,
     head_camera_alignment_losses,
+    load_oracle_actor_head_camera_calibrations,
     matrix_to_cont6d,
     motion_to_camera_action,
 )
@@ -20,6 +29,18 @@ def _rotation_y(angle: float) -> torch.Tensor:
     c = math.cos(angle)
     s = math.sin(angle)
     return torch.tensor([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
+
+
+def _rotation_x(angle: float) -> torch.Tensor:
+    c = math.cos(angle)
+    s = math.sin(angle)
+    return torch.tensor([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]])
+
+
+def _rotation_z(angle: float) -> torch.Tensor:
+    c = math.cos(angle)
+    s = math.sin(angle)
+    return torch.tensor([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
 
 
 def _se3(rotation: torch.Tensor, translation: torch.Tensor) -> torch.Tensor:
@@ -131,6 +152,88 @@ def verify_collate() -> None:
     print("[contract] auxiliary camera target remains separate from task camera input")
 
 
+def verify_oracle_actor_loader() -> None:
+    payload = {
+        "kind": "oracle_test_actor_head_camera_calibration",
+        "split": "test",
+        "leakage_contract": {
+            "uses_test_gt_motion": True,
+            "uses_test_gt_camera": True,
+            "diagnostic_only": True,
+        },
+        "actors": {
+            "S07": {
+                "rotation_head_to_upright_camera": torch.eye(3).tolist(),
+                "camera_origin_in_head_m": [0.01, 0.02, 0.03],
+            }
+        },
+    }
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "oracle.json"
+        path.write_text(json.dumps(payload))
+        calibrations, metadata = load_oracle_actor_head_camera_calibrations(str(path))
+        rotation, lever = calibrations["S07"]
+        assert torch.equal(rotation, torch.eye(3))
+        assert torch.allclose(lever, torch.tensor([0.01, 0.02, 0.03]))
+        assert metadata["split"] == "test"
+
+        payload["leakage_contract"]["diagnostic_only"] = False
+        path.write_text(json.dumps(payload))
+        try:
+            load_oracle_actor_head_camera_calibrations(str(path))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("oracle loader accepted missing diagnostic-only guard")
+    assert actor_id_from_uuid("S07/example") == "S07"
+    print("[contract] oracle test-actor calibration is explicit and leakage-guarded")
+
+
+def verify_calibration_fit() -> None:
+    x_rotation = (_rotation_y(-0.35) @ _rotation_x(0.12)).double()
+    lever = torch.tensor([0.02, 0.10, 0.08], dtype=torch.float64)
+    head_rotation = torch.stack([
+        _rotation_x(0.08),
+        _rotation_y(-0.11),
+        _rotation_z(0.07),
+        _rotation_x(-0.05) @ _rotation_y(0.09),
+        _rotation_z(-0.06) @ _rotation_x(0.04),
+    ]).double()
+    head_translation = torch.tensor([
+        [0.010, 0.002, -0.004],
+        [0.003, -0.001, 0.008],
+        [-0.006, 0.004, 0.002],
+        [0.004, 0.005, 0.006],
+        [0.002, -0.003, -0.005],
+    ], dtype=torch.float64)
+    eye = torch.eye(3, dtype=torch.float64)
+    camera_rotation = x_rotation.T @ head_rotation @ x_rotation
+    camera_translation = (
+        x_rotation.T
+        @ (head_translation + ((head_rotation - eye) @ lever[:, None]).squeeze(-1))[:, :, None]
+    ).squeeze(-1)
+    sample = {
+        "frame_rotations": x_rotation.repeat(20, 1, 1),
+        "head_relative_rotations": head_rotation,
+        "head_relative_translations": head_translation,
+        "camera_relative_rotations": camera_rotation,
+        "camera_relative_translations": camera_translation,
+    }
+    fitted = fit_head_camera_calibration([sample])
+    assert torch.allclose(fitted["rotation"], x_rotation, atol=2e-6)
+    assert torch.allclose(fitted["lever"], lever, atol=2e-6)
+    initial = x_rotation @ _rotation_z(0.04).double()
+    optimized_rotation, optimized_lever, optimizer = (
+        optimize_head_camera_transform_from_relative_actions(
+            [sample], initial, lever + torch.tensor([0.01, -0.01, 0.02]), max_samples=100
+        )
+    )
+    assert optimizer["final"]["loss"] < optimizer["initial"]["loss"]
+    assert torch.allclose(optimized_rotation, x_rotation, atol=2e-5)
+    assert torch.allclose(optimized_lever, lever, atol=2e-5)
+    print("[contract] robust calibration fitter recovers exact synthetic rigid transform")
+
+
 if __name__ == "__main__":
     assert torch.equal(torch.from_numpy(IDENTITY_DELTA9), torch.tensor(
         [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]
@@ -138,4 +241,6 @@ if __name__ == "__main__":
     verify_geometry()
     verify_task_resolution()
     verify_collate()
+    verify_oracle_actor_loader()
+    verify_calibration_fit()
     print("PASS: head-camera alignment contracts")

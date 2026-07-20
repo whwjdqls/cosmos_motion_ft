@@ -596,6 +596,58 @@ With `--head_camera_alignment`, data/model flow is deliberately asymmetric and l
 
 `eval_all.py` automatically writes `motion_recon/video2motion/head_camera_alignment_metrics.json` for head-camera checkpoints. It reports mean/median/p90 V2M translation and rotation action errors plus the GT-motion calibration floor on the identical windows; floor-valid output is split when needed. `--eval_head_camera_alignment` enables the exact same train-calibrated evaluation-only metric for a historical baseline checkpoint without changing that model's inputs, weights, or sampling. This is required for a paired baseline/headcam comparison. The metric measures relative action consistency, not absolute camera pose. M2V keeps the existing PSNR/SSIM/LPIPS video metrics because camera motion cannot be read directly from generated pixels without a separate inverse-dynamics estimator. `merge_phase3_clean71.py` also merges the 66 floor-valid rows plus five deterministic replacements for this metric.
 
+Phase-1 camera-coordinate reminder: all native Phase-1 action targets are from the preprocessed **upright RGB optical-camera** trajectory, not the raw Aria device trajectory. `nymeria_camera_rgb_dataset.py` rewrites the manifest's `/camera/` path to `/camera_rgb/`, loads `cam_world_pos_upright` and `cam_world_rot_upright`, and computes the 9D metric relative action with Cosmos `pose_abs_to_rel(..., pose_convention="backward_framewise")`. Preprocessing first forms `T_world_rgb = T_world_device @ T_device_rgb` from the recording's VRS device-to-RGB extrinsic and then applies the optical-axis rotation matching the upright video. Inverse dynamics, forward dynamics, and policy therefore all use relative upright-RGB-camera translation `(3)` plus rotation-6D `(6)`. The head mapping and all metrics below target this same frame.
+
+The 2026-07-20 **test-actor oracle** is a separate, explicitly leaky diagnostic requested to answer how well GT motion can reconstruct camera after calibrating each held-out actor from GT. `estimate_test_actor_head_camera_calibration.py` fits one fixed `R_X,r_X` for each of the 17 actors represented by the motion-clean71 benchmark. It uses the exact 71 held-out windows (66 original floor-valid windows plus five deterministic replacements), synchronized GT UniEgo motion, and synchronized GT upright-RGB camera actions. Each six-parameter actor transform starts from the train-global calibration and minimizes the same normalized Phase-3 geometry objective: SmoothL1 translation at a 2 cm scale plus rotation-matrix chord at a 5 degree scale, with a bounded rotation correction and lever arm. The fit and reported clean71 windows are identical. Consequently this is an **in-sample oracle floor**, not a leakage-free evaluation, deployable calibration, training target, or model-selection metric. The loader requires `kind=oracle_test_actor_head_camera_calibration`, `split=test`, and explicit `uses_test_gt_motion`, `uses_test_gt_camera`, and `diagnostic_only` flags before accepting the artifact.
+
+The metric components are:
+
+- `translation_m` / `rotation_deg`: V2M-predicted motion mapped with the production train-global rigid calibration, compared with synchronized GT upright-RGB camera action.
+- `gt_calibration_translation_m` / `gt_calibration_rotation_deg`: GT motion mapped with that same train-global calibration. This is the leakage-free calibration/representation/data floor paired to the model rows.
+- `oracle_actor_translation_m` / `oracle_actor_rotation_deg`: V2M-predicted motion mapped with the actor's test-GT-fitted transform. This diagnoses whether an oracle actor transform transfers from GT motion to model output; it is not a fair model score.
+- `gt_oracle_actor_translation_m` / `gt_oracle_actor_rotation_deg`: GT motion mapped with its own test-GT-fitted actor transform. This is the requested in-sample actor-calibrated floor.
+
+For every 97-frame window, translation is the mean Euclidean error over 96 relative translations in metres, and rotation is the mean SO(3) geodesic angle over 96 relative rotations in degrees. JSON aggregation then reports mean/median/p90 across windows. `per_actor_aggregate` first groups those window rows by actor; the overall aggregate remains window-weighted, not actor-balanced. Absolute pose, absolute origin, and accumulated trajectory error are not part of these metrics.
+
+Vanilla Phase-3 step-200k motion-clean71 results (`head_camera_alignment_metrics_motion_clean71.json`):
+
+| Motion source | Rigid calibration | Translation mean | Rotation mean |
+|---|---|---:|---:|
+| V2M prediction | train-global | 6.394 mm | 1.281 deg |
+| GT motion | train-global | 4.445 mm | 1.235 deg |
+| V2M prediction | test-actor oracle | 6.709 mm | 1.259 deg |
+| GT motion | test-actor oracle | 4.056 mm | 1.205 deg |
+
+Per-actor GT floors are:
+
+| Actor | Windows | Train-global GT | Test-actor-oracle GT |
+|---|---:|---:|---:|
+| S01 | 7 | 5.490 mm / 1.040 deg | 5.164 mm / 1.017 deg |
+| S02 | 9 | 3.558 mm / 1.180 deg | 3.789 mm / 1.147 deg |
+| S03 | 3 | 2.624 mm / 0.886 deg | 2.087 mm / 0.882 deg |
+| S04 | 1 | 2.795 mm / 0.875 deg | 1.423 mm / 0.864 deg |
+| S05 | 5 | 5.319 mm / 1.193 deg | 4.865 mm / 1.179 deg |
+| S06 | 3 | 7.923 mm / 1.715 deg | 6.719 mm / 1.723 deg |
+| S07 | 6 | 5.297 mm / 1.168 deg | 5.191 mm / 1.175 deg |
+| S08 | 4 | 3.638 mm / 1.289 deg | 3.379 mm / 1.250 deg |
+| S09 | 1 | 6.123 mm / 1.261 deg | 2.815 mm / 1.236 deg |
+| S10 | 5 | 5.374 mm / 1.417 deg | 4.994 mm / 1.430 deg |
+| S11 | 1 | 6.442 mm / 1.373 deg | 2.252 mm / 1.335 deg |
+| S12 | 7 | 3.698 mm / 1.175 deg | 3.606 mm / 1.141 deg |
+| S13 | 2 | 3.476 mm / 0.937 deg | 2.335 mm / 0.937 deg |
+| S14 | 3 | 4.752 mm / 1.461 deg | 3.589 mm / 1.232 deg |
+| S16 | 7 | 4.095 mm / 1.296 deg | 3.942 mm / 1.228 deg |
+| S17 | 2 | 2.414 mm / 0.658 deg | 1.636 mm / 0.672 deg |
+| S19 | 5 | 3.548 mm / 1.686 deg | 3.857 mm / 1.655 deg |
+
+The oracle reduces the aggregate GT floor by 8.76% in translation and 2.46% in rotation, so actor-specific rigid geometry explains a small but measurable part of the mismatch. It does not explain the main V2M translation problem: applying the GT-fitted actor transforms to predicted motion worsens translation by 4.93% (`6.394 -> 6.709 mm`) while improving rotation by only 1.70%. Some actors also worsen even on GT, because the optimizer minimizes the combined normalized robust objective rather than either reported mean independently and the SOMA Head-to-worn-camera relation is not perfectly rigid. Single-window actors S04/S09/S11 are especially in-sample and must not be used to claim generalization. Do not subtract the GT floor as though errors were independent; use paired rows and report the calibration contract.
+
+The same step-200k motion-clean71 V2M output confirms that its dominant decoded error is global/root trajectory: MPJPE is `0.187697 m`, root error is `0.163340 m`, root-centered MPJPE is `0.078462 m` (custom diagnostic, no rotation/scale fit), and PA-MPJPE is `0.089861 m`. Per-window MPJPE and root error correlate at `0.9738`. Mean root error grows from `0.0776 m` at frame 0 to `0.1033/0.1447/0.2170/0.3112 m` at frames 24/48/72/96 and is mostly horizontal. UniEgo hybrid decodes further localize the problem: predicted local features with GT global delta give `0.098156 m` MPJPE; GT local features with the predicted full global delta give `0.141005 m`; keeping all GT features except predicted delta translation gives `0.136229 m`; replacing only predicted delta rotation with GT barely changes full prediction (`0.185798 m`). Therefore global delta translation is a major contributor, but local body error also remains; this is not a pure rigid head-calibration problem.
+
+For a direct camera-prior comparison, recomputation on the identical floor-valid66 windows used raw relative and accumulated camera actions rather than mixing the Phase-1 scale-normalized headline with raw Phase-3 errors. Phase-1 inverse dynamics gives `3.317 mm` raw per-step translation, `0.209 deg` rotation, raw trajectory mean/RMSE/endpoint `0.0728/0.0857/0.1492 m`, and Sim(3)-aligned ATE `0.02335 m`. Phase-3 V2M motion mapped through the train-global head calibration gives `6.146 mm`, `1.261 deg`, `0.1418/0.1727/0.3100 m`, and `0.03740 m`. GT motion through that global calibration already gives `4.519 mm`, `1.207 deg`, `0.1322/0.1618/0.2839 m`, but only `0.00328 m` Sim(3) ATE; the large raw-versus-Sim(3) gap reflects calibration/frame bias rather than trajectory-shape failure alone. The Phase-1 camera model is clearly the stronger metric-camera prior, but vanilla `video2motion` does not run or expose its frozen camera-action prediction path, so that prior cannot automatically correct UniEgo root motion. A head-camera auxiliary loss or an explicit joint `video -> camera + motion` objective is required to couple them.
+
+The final artifact is `eval_full71_step200000_unipc30/head_camera_calibration_test_actor_motion_clean71_joint_oracle.json` under the vanilla Phase-3 run. `backfill_oracle_actor_head_metrics.py` reproduced the pre-existing global metrics before writing (maximum discrepancy `0.00000004 m / 0.000156 deg`), appended actor IDs and four oracle keys to saved rows without resampling, and updated all71, floor-valid66, replacement5, motion-clean71, and summary JSON. Provenance records overlap as 66/71 for the original all71 set, 66/66 for floor-valid, 5/5 for replacements, and 71/71 for motion-clean71. `eval_all.py --oracle_test_actor_calibration PATH` supports the same fields in future evaluations without changing sampling or model inputs. The discarded attempts to fit actor orientation from unaligned full-sequence frames or from absolute orientation averages were rejected because they produced 14-degree or larger inconsistencies; only aligned windows and the joint relative-action objective are retained in code/results.
+
 The isolated launcher is `sbatch_phase3_bridge_native_v2m_m2v_headcam.sh`. It keeps the exact baseline Phase-1 100k EMA and Phase-2 200k specialists, 50/50 V2M/M2V mixture, T97, global batch 32, 12 local bridges, LR/schedule, save cadence, and required two-per-direction visualization. The only learning-path changes are the derived M2V camera condition and V2M auxiliary losses; both motion and video checkpoint sampling use their native shift-3 UniPC solvers.
 
 Verification on 2026-07-18 used free H200 node 0. Synthetic geometry, gradient, task-plan leakage, collate separation, native bridge locality, Python compile, launcher syntax, and diff checks passed. An exact-checkpoint one-GPU smoke loaded all 293 Phase-1 generator tensors and 149 Phase-2 motion tensors with zero missing/shape mismatches. V2M produced finite loss 0.1521, nonzero bridge gradients, zero frozen-specialist gradient leakage, and initial head-camera error 1.4 cm/2.48 degrees; the weighted auxiliary contribution was about 0.014, so it did not dominate. M2V produced finite loss 0.1404, nonzero bridge gradients, zero leakage, and its clean motion-derived camera condition was 1 mm/0.36 degrees from synchronized GT for that sample. The full-path smoke at `/weka/jungbin/cosmos_motion_ft_runs/smoke_phase3_headcam_full_20260718` performed an optimizer step, wrote a 96-tensor checkpoint plus optimizer/TensorBoard state, and produced valid 97-frame V2M and M2V media. A separate reload smoke at `smoke_phase3_headcam_reload_20260718` restored all 96 tensors and optimizer state with zero mismatches, then reran both UniPC samplers, VAE decode, motion/video rendering, and manifests successfully.
@@ -868,7 +920,8 @@ Root:
 - `precompute_latents.py`: offline Wan-VAE latent precompute.
 - `precompute_floor_calibration.py`: per-seq floor deltas and drop list.
 - `decode_uniego_torch.py`, `uniego_layout.py`: 283-d decode/layout.
-- `head_camera_alignment.py`, `estimate_head_camera_calibration.py`, `head_camera_calibration_train.json`: relative SOMA-Head to upright-camera mapping, train-only estimator, and calibrated constants.
+- `head_camera_alignment.py`, `estimate_head_camera_calibration.py`, `head_camera_calibration_train.json`: relative SOMA-Head to upright-camera mapping, reusable rigid fitter, train-only estimator, and production constants.
+- `estimate_test_actor_head_camera_calibration.py`, `backfill_oracle_actor_head_metrics.py`: explicitly test-leaky per-actor GT oracle fitting and offline augmentation of already-sampled V2M metrics; never use the oracle artifact for training/model selection.
 - `merge_phase3_clean71.py`, `compare_phase3_evals.py`: corrected clean-71 aggregation and paired baseline/candidate comparison.
 - `config.py`: dims, paths, task weights, defaults.
 - `train.py`, `sample.py`, `eval_all.py`, `eval_camera.py`, `eval_motion_recon.py`.

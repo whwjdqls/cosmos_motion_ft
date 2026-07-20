@@ -11,6 +11,11 @@ from pathlib import Path
 
 import numpy as np
 
+from head_camera_alignment import (
+    HEAD_CAMERA_GLOBAL_METRIC_KEYS,
+    HEAD_CAMERA_ORACLE_ACTOR_METRIC_KEYS,
+)
+
 
 MOTION_KEYS = (
     "mpjpe_m",
@@ -22,12 +27,6 @@ MOTION_KEYS = (
     "root_err_m",
 )
 VIDEO_KEYS = ("psnr_db", "ssim", "lpips_alex")
-HEAD_CAMERA_KEYS = (
-    "translation_m",
-    "rotation_deg",
-    "gt_calibration_translation_m",
-    "gt_calibration_rotation_deg",
-)
 
 
 def _load(path: Path) -> dict:
@@ -109,25 +108,81 @@ def _video_payload(rows: dict, template: dict) -> dict:
     }
 
 
-def _head_camera_payload(rows: dict, template: dict) -> dict:
-    aggregate = {}
-    for key in HEAD_CAMERA_KEYS:
-        values = np.asarray([row[key] for row in rows.values()], dtype=np.float64)
-        if not np.isfinite(values).all():
-            raise ValueError(f"head-camera metric {key} contains non-finite values")
-        aggregate[key] = {
-            "mean": float(np.mean(values)),
-            "median": float(np.median(values)),
-            "p90": float(np.quantile(values, 0.90)),
-        }
-    return {
+def _head_camera_payload(
+    rows: dict,
+    template: dict,
+    replacement_template: dict | None = None,
+) -> dict:
+    keys = list(HEAD_CAMERA_GLOBAL_METRIC_KEYS)
+    oracle_presence = {
+        key: [key in row for row in rows.values()]
+        for key in HEAD_CAMERA_ORACLE_ACTOR_METRIC_KEYS
+    }
+    if any(any(presence) and not all(presence) for presence in oracle_presence.values()):
+        raise ValueError("partial oracle test-actor metrics across clean71 rows")
+    if all(all(presence) for presence in oracle_presence.values()):
+        keys.extend(HEAD_CAMERA_ORACLE_ACTOR_METRIC_KEYS)
+
+    def aggregate_subset(subset: dict) -> dict:
+        aggregate = {}
+        for key in keys:
+            values = np.asarray([row[key] for row in subset.values()], dtype=np.float64)
+            if not np.isfinite(values).all():
+                raise ValueError(f"head-camera metric {key} contains non-finite values")
+            aggregate[key] = {
+                "mean": float(np.mean(values)),
+                "median": float(np.median(values)),
+                "p90": float(np.quantile(values, 0.90)),
+            }
+        return aggregate
+
+    aggregate = aggregate_subset(rows)
+    per_actor = {}
+    actor_ids = {row.get("actor_id") for row in rows.values()}
+    if None not in actor_ids:
+        for actor_id in sorted(actor_ids):
+            actor_rows = {
+                name: row for name, row in rows.items() if row["actor_id"] == actor_id
+            }
+            per_actor[actor_id] = {
+                "n": len(actor_rows),
+                "aggregate": aggregate_subset(actor_rows),
+            }
+    payload = {
         "n": len(rows),
         "task": template["task"],
         "representation": template["representation"],
         "absolute_pose_used": template["absolute_pose_used"],
         "aggregate": aggregate,
+        "per_actor_aggregate": per_actor,
         "per_sequence": rows,
     }
+    for key in (
+        "metric_definitions",
+        "train_global_calibration",
+    ):
+        if key in template:
+            payload[key] = copy.deepcopy(template[key])
+    if "oracle_test_actor_calibration" in template:
+        oracle = copy.deepcopy(template["oracle_test_actor_calibration"])
+        if replacement_template is not None:
+            replacement_oracle = replacement_template.get(
+                "oracle_test_actor_calibration"
+            )
+            if replacement_oracle is None:
+                raise ValueError("replacement head-camera metrics lack oracle provenance")
+            if replacement_oracle.get("path") != oracle.get("path"):
+                raise ValueError("clean71 head-camera rows use different oracle calibrations")
+            oracle["fit_window_overlap"] = (
+                int(oracle.get("fit_window_overlap", 0))
+                + int(replacement_oracle.get("fit_window_overlap", 0))
+            )
+            oracle["evaluation_windows"] = (
+                int(oracle.get("evaluation_windows", 0))
+                + int(replacement_oracle.get("evaluation_windows", 0))
+            )
+        payload["oracle_test_actor_calibration"] = oracle
+    return payload
 
 
 def main() -> None:
@@ -218,7 +273,11 @@ def main() -> None:
             replacement_head_camera["per_sequence"],
             "head-camera",
         )
-        head_camera_payload = _head_camera_payload(head_camera_rows, full_head_camera)
+        head_camera_payload = _head_camera_payload(
+            head_camera_rows,
+            full_head_camera,
+            replacement_head_camera,
+        )
         clean_head_camera_path = (
             full_root
             / "motion_recon/video2motion/head_camera_alignment_metrics_motion_clean71.json"
@@ -278,6 +337,9 @@ def main() -> None:
                 "motion_clean71_metrics_json": str(clean_head_camera_path),
                 "motion_clean71_n": 71,
                 "motion_clean71_aggregate": head_camera_payload["aggregate"],
+                "motion_clean71_oracle_test_actor_calibration": (
+                    head_camera_payload.get("oracle_test_actor_calibration")
+                ),
             }
         )
     _dump(full_summary_path, full_summary)

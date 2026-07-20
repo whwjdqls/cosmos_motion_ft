@@ -66,8 +66,12 @@ import task_plan as TP        # noqa: E402
 import eval_motion_recon as EMR   # noqa: E402
 from head_camera_alignment import (  # noqa: E402
     DEFAULT_CALIBRATION,
+    HEAD_CAMERA_GLOBAL_METRIC_KEYS,
+    HEAD_CAMERA_ORACLE_ACTOR_METRIC_KEYS,
+    actor_id_from_uuid,
     head_camera_errors,
     load_head_camera_calibration,
+    load_oracle_actor_head_camera_calibrations,
     motion_to_camera_action,
 )
 from uniego_layout import FEAT_DIM, ground_features, canonicalize_frame0  # noqa: E402
@@ -305,6 +309,14 @@ def main():
             f"(default: checkpoint value, then {DEFAULT_CALIBRATION})"
         ),
     )
+    ap.add_argument(
+        "--oracle_test_actor_calibration",
+        default=None,
+        help=(
+            "optional per-test-actor calibration fitted from GT test motion and GT camera; "
+            "adds explicitly leaky oracle diagnostics and never changes model inputs/sampling"
+        ),
+    )
     ap.add_argument("--split", default="test", choices=["test", "train", "all"])
     ap.add_argument("--manifest", default=C.NYMERIA_MANIFEST)
     ap.add_argument("--split_file", default=C.NYMERIA_SPLIT_FILE)
@@ -462,13 +474,19 @@ def main():
 
     evaluate_head_camera = (
         "video2motion" in mv_tasks
-        and (args.eval_head_camera_alignment or getattr(model, "head_camera_alignment", False))
+        and (
+            args.eval_head_camera_alignment
+            or bool(args.oracle_test_actor_calibration)
+            or getattr(model, "head_camera_alignment", False)
+        )
     )
     head_camera_rotation = None
     camera_origin_in_head = None
     motion_mean_t = None
     motion_std_t = None
     head_camera_calibration = None
+    oracle_actor_calibrations = None
+    oracle_actor_calibration_payload = None
     if evaluate_head_camera:
         head_camera_calibration = (
             args.head_camera_calibration
@@ -492,6 +510,22 @@ def main():
             f"calibration={head_camera_calibration})",
             flush=True,
         )
+        if args.oracle_test_actor_calibration:
+            if args.split != "test":
+                raise ValueError(
+                    "--oracle_test_actor_calibration is test-label-derived and requires --split test"
+                )
+            oracle_actor_calibrations, oracle_actor_calibration_payload = (
+                load_oracle_actor_head_camera_calibrations(
+                    args.oracle_test_actor_calibration
+                )
+            )
+            print(
+                "[eval_all] WARNING: test-derived per-actor oracle enabled; these metrics "
+                "use GT test motion+camera and are diagnostic only "
+                f"({args.oracle_test_actor_calibration})",
+                flush=True,
+            )
 
     # ---- test-window index (carries every modality) -------------------------------------------
     index = build_full_index(
@@ -649,16 +683,55 @@ def main():
                     gt_trans, gt_rot = head_camera_errors(
                         gt_action, camera_target, transition_mask
                     )
+                actor_id = actor_id_from_uuid(uuid)
                 head_camera_rows[name] = {
+                    "actor_id": actor_id,
                     "translation_m": float(pred_trans),
                     "rotation_deg": float(pred_rot),
                     "gt_calibration_translation_m": float(gt_trans),
                     "gt_calibration_rotation_deg": float(gt_rot),
                 }
+                oracle_message = ""
+                if oracle_actor_calibrations is not None:
+                    if actor_id not in oracle_actor_calibrations:
+                        raise KeyError(
+                            f"oracle test-actor calibration has no entry for {actor_id} ({uuid})"
+                        )
+                    oracle_rotation, oracle_lever = oracle_actor_calibrations[actor_id]
+                    with torch.no_grad():
+                        oracle_pred_action = motion_to_camera_action(
+                            pred_motion * motion_std_t + motion_mean_t,
+                            oracle_rotation.to(dev),
+                            oracle_lever.to(dev),
+                        )
+                        oracle_gt_action = motion_to_camera_action(
+                            gt_motion * motion_std_t + motion_mean_t,
+                            oracle_rotation.to(dev),
+                            oracle_lever.to(dev),
+                        )
+                        oracle_pred_trans, oracle_pred_rot = head_camera_errors(
+                            oracle_pred_action, camera_target, transition_mask
+                        )
+                        oracle_gt_trans, oracle_gt_rot = head_camera_errors(
+                            oracle_gt_action, camera_target, transition_mask
+                        )
+                    head_camera_rows[name].update({
+                        "oracle_actor_translation_m": float(oracle_pred_trans),
+                        "oracle_actor_rotation_deg": float(oracle_pred_rot),
+                        "gt_oracle_actor_translation_m": float(oracle_gt_trans),
+                        "gt_oracle_actor_rotation_deg": float(oracle_gt_rot),
+                    })
+                    oracle_message = (
+                        f" oracle={float(oracle_pred_trans):.4f}m/"
+                        f"{float(oracle_pred_rot):.3f}deg "
+                        f"GT-oracle={float(oracle_gt_trans):.4f}m/"
+                        f"{float(oracle_gt_rot):.3f}deg"
+                    )
                 print(
                     f"  [video2motion head-camera] trans={float(pred_trans):.4f}m "
                     f"rot={float(pred_rot):.3f}deg "
-                    f"(GT calibration floor={float(gt_trans):.4f}m/{float(gt_rot):.3f}deg)",
+                    f"(GT calibration floor={float(gt_trans):.4f}m/{float(gt_rot):.3f}deg)"
+                    f"{oracle_message}",
                     flush=True,
                 )
             # viz: video2motion -> GT|pred side-by-side; generative tasks -> pred only
@@ -753,6 +826,23 @@ def main():
             out_root, "motion_recon", "video2motion", "head_camera_alignment_metrics.json"
         )
         payload = _aggregate_head_camera_metrics(head_camera_rows)
+        payload["train_global_calibration"] = head_camera_calibration
+        if oracle_actor_calibrations is not None:
+            payload["oracle_test_actor_calibration"] = {
+                "path": args.oracle_test_actor_calibration,
+                "kind": oracle_actor_calibration_payload["kind"],
+                "diagnostic_only": True,
+                "uses_test_gt_motion": True,
+                "uses_test_gt_camera": True,
+                "fit_and_evaluation_windows_are_identical": bool(
+                    oracle_actor_calibration_payload["leakage_contract"].get(
+                        "fit_and_evaluation_windows_are_identical", False
+                    )
+                ),
+                "fit_windows": int(
+                    oracle_actor_calibration_payload.get("counts", {}).get("windows", 0)
+                ),
+            }
         json.dump(payload, open(metrics_path, "w"), indent=2)
         summary["head_camera"] = {
             "metrics_json": metrics_path,
@@ -764,6 +854,10 @@ def main():
             "evaluation_only_for_checkpoint": not bool(
                 getattr(model, "head_camera_alignment", False)
             ),
+            "oracle_test_actor_calibration": payload.get(
+                "oracle_test_actor_calibration"
+            ),
+            "oracle_test_actor_diagnostic_only": bool(oracle_actor_calibrations),
         }
         valid_rows = {
             name: row for name, row in head_camera_rows.items() if name not in floor_flagged
@@ -776,6 +870,11 @@ def main():
                 "head_camera_alignment_metrics_floor_valid.json",
             )
             valid_payload = _aggregate_head_camera_metrics(valid_rows)
+            valid_payload["train_global_calibration"] = head_camera_calibration
+            if oracle_actor_calibrations is not None:
+                valid_payload["oracle_test_actor_calibration"] = payload[
+                    "oracle_test_actor_calibration"
+                ]
             json.dump(valid_payload, open(valid_path, "w"), indent=2)
             summary["head_camera"].update({
                 "floor_valid_metrics_json": valid_path,
@@ -854,26 +953,87 @@ def _aggregate_video_metrics(rows):
 
 def _aggregate_head_camera_metrics(rows):
     """Aggregate per-window V2M relative head-camera action errors."""
-    keys = (
-        "translation_m",
-        "rotation_deg",
-        "gt_calibration_translation_m",
-        "gt_calibration_rotation_deg",
-    )
-    aggregate = {}
-    for key in keys:
-        values = np.asarray([row[key] for row in rows.values()], dtype=np.float64)
-        aggregate[key] = {
-            "mean": float(values.mean()),
-            "median": float(np.median(values)),
-            "p90": float(np.quantile(values, 0.90)),
-        }
+    if not rows:
+        raise ValueError("cannot aggregate empty head-camera rows")
+    keys = list(HEAD_CAMERA_GLOBAL_METRIC_KEYS)
+    oracle_presence = {
+        key: [key in row for row in rows.values()]
+        for key in HEAD_CAMERA_ORACLE_ACTOR_METRIC_KEYS
+    }
+    if any(any(presence) and not all(presence) for presence in oracle_presence.values()):
+        raise ValueError("partial oracle test-actor metrics across head-camera rows")
+    if all(all(presence) for presence in oracle_presence.values()):
+        keys.extend(HEAD_CAMERA_ORACLE_ACTOR_METRIC_KEYS)
+
+    def aggregate_subset(subset):
+        aggregate = {}
+        for key in keys:
+            values = np.asarray([row[key] for row in subset.values()], dtype=np.float64)
+            if not np.isfinite(values).all():
+                raise ValueError(f"head-camera metric {key} contains non-finite values")
+            aggregate[key] = {
+                "mean": float(values.mean()),
+                "median": float(np.median(values)),
+                "p90": float(np.quantile(values, 0.90)),
+            }
+        return aggregate
+
+    aggregate = aggregate_subset(rows)
+    per_actor = {}
+    actor_ids = {row.get("actor_id") for row in rows.values()}
+    if None not in actor_ids:
+        for actor_id in sorted(actor_ids):
+            actor_rows = {
+                name: row for name, row in rows.items() if row["actor_id"] == actor_id
+            }
+            per_actor[actor_id] = {
+                "n": len(actor_rows),
+                "aggregate": aggregate_subset(actor_rows),
+            }
+
+    metric_definitions = {
+        "translation_m": (
+            "predicted V2M motion mapped with the train-global calibration versus GT camera; "
+            "mean relative-translation L2 error per window"
+        ),
+        "rotation_deg": (
+            "predicted V2M motion mapped with the train-global calibration versus GT camera; "
+            "mean SO(3) geodesic error per window"
+        ),
+        "gt_calibration_translation_m": (
+            "GT motion mapped with the train-global calibration versus GT camera"
+        ),
+        "gt_calibration_rotation_deg": (
+            "GT motion mapped with the train-global calibration versus GT camera"
+        ),
+    }
+    if len(keys) > len(HEAD_CAMERA_GLOBAL_METRIC_KEYS):
+        metric_definitions.update({
+            "oracle_actor_translation_m": (
+                "predicted V2M motion mapped with a test-GT-fitted actor calibration versus "
+                "GT camera; diagnostic only"
+            ),
+            "oracle_actor_rotation_deg": (
+                "predicted V2M motion mapped with a test-GT-fitted actor calibration versus "
+                "GT camera; diagnostic only"
+            ),
+            "gt_oracle_actor_translation_m": (
+                "GT motion mapped with its test-GT-fitted actor calibration versus GT camera; "
+                "test-label-derived oracle floor (in-sample when fit/eval windows match)"
+            ),
+            "gt_oracle_actor_rotation_deg": (
+                "GT motion mapped with its test-GT-fitted actor calibration versus GT camera; "
+                "test-label-derived oracle floor (in-sample when fit/eval windows match)"
+            ),
+        })
     return {
         "n": len(rows),
         "task": "video2motion",
         "representation": "relative upright-RGB camera action (translation + SO(3))",
         "absolute_pose_used": False,
         "aggregate": aggregate,
+        "per_actor_aggregate": per_actor,
+        "metric_definitions": metric_definitions,
         "per_sequence": rows,
     }
 
@@ -914,6 +1074,15 @@ def _print_summary(summary):
             f"GT-floor={aggregate['gt_calibration_translation_m']['mean']:.4f}m/"
             f"{aggregate['gt_calibration_rotation_deg']['mean']:.3f}deg"
         )
+        if "gt_oracle_actor_translation_m" in aggregate:
+            print(
+                "v2m actor oracle  "
+                f"pred={aggregate['oracle_actor_translation_m']['mean']:.4f}m/"
+                f"{aggregate['oracle_actor_rotation_deg']['mean']:.3f}deg  "
+                f"GT-floor={aggregate['gt_oracle_actor_translation_m']['mean']:.4f}m/"
+                f"{aggregate['gt_oracle_actor_rotation_deg']['mean']:.3f}deg  "
+                "[TEST-GT-DERIVED, DIAGNOSTIC ONLY]"
+            )
     # video gen
     for t, names in summary.get("video", {}).items():
         print(f"{t:16s}  {len(names)} clips generated")

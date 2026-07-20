@@ -29,28 +29,100 @@ from decode_uniego_torch import cont6d_to_matrix, decode_transforms
 
 HEAD_JOINT_IDX = 6
 DEFAULT_CALIBRATION = str(Path(__file__).with_name("head_camera_calibration_train.json"))
+HEAD_CAMERA_GLOBAL_METRIC_KEYS = (
+    "translation_m",
+    "rotation_deg",
+    "gt_calibration_translation_m",
+    "gt_calibration_rotation_deg",
+)
+HEAD_CAMERA_ORACLE_ACTOR_METRIC_KEYS = (
+    "oracle_actor_translation_m",
+    "oracle_actor_rotation_deg",
+    "gt_oracle_actor_translation_m",
+    "gt_oracle_actor_rotation_deg",
+)
 
 
-def load_head_camera_calibration(path: str = DEFAULT_CALIBRATION) -> tuple[torch.Tensor, torch.Tensor, dict]:
-    """Load train-split ``(R_head_camera, camera_origin_in_head, metadata)``."""
-    with open(path) as f:
-        payload = json.load(f)
-    rotation = torch.tensor(payload["rotation_head_to_upright_camera"], dtype=torch.float32)
-    lever = torch.tensor(payload["camera_origin_in_head_m"], dtype=torch.float32)
+def _validate_calibration_tensors(
+    rotation_value,
+    lever_value,
+    *,
+    source: str,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    rotation = torch.tensor(rotation_value, dtype=torch.float32)
+    lever = torch.tensor(lever_value, dtype=torch.float32)
     if rotation.shape != (3, 3) or lever.shape != (3,):
         raise ValueError(
-            f"bad head-camera calibration shapes in {path}: R={tuple(rotation.shape)} "
+            f"bad head-camera calibration shapes in {source}: R={tuple(rotation.shape)} "
             f"lever={tuple(lever.shape)}"
         )
+    if not torch.isfinite(rotation).all() or not torch.isfinite(lever).all():
+        raise ValueError(f"non-finite head-camera calibration in {source}")
     eye = torch.eye(3, dtype=rotation.dtype)
     ortho_error = float((rotation.T @ rotation - eye).abs().max())
     determinant = float(torch.det(rotation))
     if ortho_error > 1e-4 or abs(determinant - 1.0) > 1e-4:
         raise ValueError(
             f"head-camera calibration is not SO(3): ortho_error={ortho_error:.3e} "
-            f"det={determinant:.6f} ({path})"
+            f"det={determinant:.6f} ({source})"
         )
+    return rotation, lever
+
+
+def load_head_camera_calibration(path: str = DEFAULT_CALIBRATION) -> tuple[torch.Tensor, torch.Tensor, dict]:
+    """Load train-split ``(R_head_camera, camera_origin_in_head, metadata)``."""
+    with open(path) as f:
+        payload = json.load(f)
+    rotation, lever = _validate_calibration_tensors(
+        payload["rotation_head_to_upright_camera"],
+        payload["camera_origin_in_head_m"],
+        source=path,
+    )
     return rotation, lever, payload
+
+
+def actor_id_from_uuid(uuid: str) -> str:
+    """Return the Nymeria actor prefix (for example ``S07``) from a sequence UUID."""
+    actor = str(uuid).split("/", 1)[0]
+    if len(actor) != 3 or not actor.startswith("S") or not actor[1:].isdigit():
+        raise ValueError(f"cannot derive Nymeria actor id from UUID {uuid!r}")
+    return actor
+
+
+def load_oracle_actor_head_camera_calibrations(
+    path: str,
+) -> tuple[dict[str, tuple[torch.Tensor, torch.Tensor]], dict]:
+    """Load test-derived per-actor calibrations used only for oracle diagnostics.
+
+    The artifact deliberately contains test-label information. Requiring its explicit kind and
+    leakage flags prevents it from being mistaken for the train calibration used by Phase 3.
+    """
+    with open(path) as f:
+        payload = json.load(f)
+    if payload.get("kind") != "oracle_test_actor_head_camera_calibration":
+        raise ValueError(f"{path}: not an oracle test-actor calibration artifact")
+    if payload.get("split") != "test":
+        raise ValueError(f"{path}: oracle actor calibration must declare split='test'")
+    leakage = payload.get("leakage_contract", {})
+    if not (
+        leakage.get("uses_test_gt_motion") is True
+        and leakage.get("uses_test_gt_camera") is True
+        and leakage.get("diagnostic_only") is True
+    ):
+        raise ValueError(f"{path}: incomplete oracle leakage contract")
+    actors = payload.get("actors")
+    if not isinstance(actors, dict) or not actors:
+        raise ValueError(f"{path}: no per-actor calibrations")
+    calibrations = {}
+    for actor, entry in sorted(actors.items()):
+        if actor_id_from_uuid(actor) != actor:
+            raise ValueError(f"{path}: invalid actor key {actor!r}")
+        calibrations[actor] = _validate_calibration_tensors(
+            entry["rotation_head_to_upright_camera"],
+            entry["camera_origin_in_head_m"],
+            source=f"{path}:{actor}",
+        )
+    return calibrations, payload
 
 
 def matrix_to_cont6d(rotation: torch.Tensor) -> torch.Tensor:
@@ -192,10 +264,14 @@ def head_camera_errors(
 
 __all__ = [
     "DEFAULT_CALIBRATION",
+    "HEAD_CAMERA_GLOBAL_METRIC_KEYS",
+    "HEAD_CAMERA_ORACLE_ACTOR_METRIC_KEYS",
     "HEAD_JOINT_IDX",
+    "actor_id_from_uuid",
     "head_camera_alignment_losses",
     "head_camera_errors",
     "load_head_camera_calibration",
+    "load_oracle_actor_head_camera_calibrations",
     "matrix_to_cont6d",
     "motion_to_camera_action",
 ]
