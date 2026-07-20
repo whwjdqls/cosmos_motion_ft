@@ -20,7 +20,12 @@ INIT_CKPT=${BS_NATIVE_INIT_CKPT:-}
 LR=${BS_NATIVE_LR:-0.0002}
 SEED=${BS_NATIVE_SEED:-0}
 BATCH_SIZE=${BS_NATIVE_BATCH_SIZE:-128}
+DATALOADER_RNG=${BS_NATIVE_DATALOADER_RNG:-dedicated}
+STEP_INDEXING=${BS_NATIVE_STEP_INDEXING:-completed_updates}
 INDEX_CACHE=${BS_NATIVE_INDEX_CACHE:-/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_incontext_v1/bs_train_index.json}
+MEAN=${BS_NATIVE_MEAN:-/mnt/shared/jungbin_cho/seed/soma_proportional_uniegomotion_20fps/Mean_uniego.npy}
+STD=${BS_NATIVE_STD:-/mnt/shared/jungbin_cho/seed/soma_proportional_uniegomotion_20fps/Std_uniego.npy}
+NORMALIZATION_TAG=${BS_NATIVE_NORMALIZATION_TAG:-bones_seed_proportional_20fps}
 SMOKE=${BS_NATIVE_SMOKE:-0}
 W_FEAT=${BS_NATIVE_W_FEAT:-1}
 W_JOINT=${BS_NATIVE_W_JOINT:-1}
@@ -34,11 +39,13 @@ INLINE_EVAL_MAX_CASES=${BS_NATIVE_INLINE_EVAL_MAX_CASES:-0}
 INLINE_EVAL_SHAPE_CF=${BS_NATIVE_INLINE_EVAL_SHAPE_CF:-farthest}
 
 echo "[bsnatp2] node=$(hostname) date=$(date)"
-echo "[bsnatp2] run=${RUN_NAME} shift=${SHIFT} steps=${START_STEP}->${STEPS} batch=${BATCH_SIZE} lr=${LR} seed=${SEED} smoke=${SMOKE}"
+echo "[bsnatp2] run=${RUN_NAME} shift=${SHIFT} steps=${START_STEP}->${STEPS} batch=${BATCH_SIZE} lr=${LR} seed=${SEED} dataloader_rng=${DATALOADER_RNG} step_indexing=${STEP_INDEXING} smoke=${SMOKE}"
 echo "[bsnatp2] init_ckpt=${INIT_CKPT:-none}"
 echo "[bsnatp2] losses=${W_FEAT}/${W_JOINT}/${W_SMOOTH} contact=${W_CONTACT} foot_vel=${W_FOOT_VEL} foot_height=${W_FOOT_HEIGHT}"
 echo "[bsnatp2] inline_eval_every=${INLINE_EVAL_EVERY} inline_eval_max_cases=${INLINE_EVAL_MAX_CASES} shape_cf=${INLINE_EVAL_SHAPE_CF}"
 echo "[bsnatp2] index_cache=${INDEX_CACHE}"
+echo "[bsnatp2] normalization=${NORMALIZATION_TAG} mean=${MEAN} std=${STD}"
+sha256sum "${MEAN}" "${STD}"
 nvidia-smi --query-gpu=index,name,memory.used,memory.free,utilization.gpu --format=csv,noheader
 
 ARGS=(
@@ -49,6 +56,8 @@ ARGS=(
   --lr "${LR}"
   --seed "${SEED}"
   --batch_size "${BATCH_SIZE}"
+  --dataloader_rng "${DATALOADER_RNG}"
+  --step_indexing "${STEP_INDEXING}"
   --w_feat "${W_FEAT}"
   --w_joint "${W_JOINT}"
   --w_smooth "${W_SMOOTH}"
@@ -56,6 +65,9 @@ ARGS=(
   --w_foot_vel "${W_FOOT_VEL}"
   --w_foot_height "${W_FOOT_HEIGHT}"
   --contact_logit_scale "${CONTACT_LOGIT_SCALE}"
+  --mean "${MEAN}"
+  --std "${STD}"
+  --normalization_tag "${NORMALIZATION_TAG}"
   --index_cache "${INDEX_CACHE}"
   --num_workers "${SLURM_CPUS_PER_TASK:-8}"
   --viz_n 4

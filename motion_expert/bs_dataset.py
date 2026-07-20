@@ -11,7 +11,7 @@ because our data is the **precomputed 283-D UniEgoMotion** tree, not raw rotatio
   * ``_build_natural_pool`` reads a clip's frame count from ``features.shape[0]`` (the parent
     reads ``local_rot_mats``, which our npz doesn't have).
   * ``__getitem__`` loads ``features[sf:ef]`` + per-actor ``neutral_joints`` from the npz,
-    canonicalizes frame 0, and normalizes with the proportional Mean/Std.
+    canonicalizes frame 0, and normalizes with the selected Mean/Std pair.
 
 No grounding / no heading aug (bones-seed uniego is already floor-grounded; frame-0
 canonicalization removes global yaw). Text-drop for CFG is applied in the train loop, not here.
@@ -170,7 +170,7 @@ class BonesSeedUniegoDataset(SOMABonesSeedDataset):
             return self[(index + 1) % len(self)]
 
         feats = canonicalize_frame0(feats)                                     # window starts canonically
-        feats = (feats - self.mean) / self.std                                 # proportional-stats normalize
+        feats = (feats - self.mean) / self.std                                 # configured-stat normalize
         nj = nj - nj.mean(axis=0, keepdims=True)                               # center (keep scale = size cue)
 
         return {

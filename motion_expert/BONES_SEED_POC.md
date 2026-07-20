@@ -689,6 +689,32 @@ saving generated motions or embeddings.
   `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_tmr_eval/full_contact_200k_all_text2motion_unipc35_shape_cf`
 - Six-suite smoke job `10743` completed all 48 requested cases and built its aggregate report.
 
+Initial job `10746` exposed a raw-versus-sanitized benchmark text-cache lookup bug. The cache is
+keyed by `kimodo.sanitize_text(meta.text)`, but the evaluator used raw text and skipped 36 valid
+timeline-multi prompts. The same bug was corrected in `bs_tmr_eval.py`, `st_inline_eval.py`, and
+`official_tmr_eval.py`. Audit job `10751` verified complete text coverage, and correction job
+`10752` rescored the two affected suites and rebuilt the report. The final result uses 9,124 cases
+out of 9,162 discovered. R@3 values are percentages; skate is predicted-contact horizontal foot
+speed in cm/s.
+
+| Split | Prompt group | N | Protocol R@3 | Plain R@3 | FID | Skate | Bone MAE cm | Shape corr. | CF slope |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| content | overview | 911 | 70.58 | 59.60 | 0.04399 | 3.31 | 0.379 | 0.965 | 0.899 |
+| content | timeline single | 912 | 63.93 | 54.28 | 0.03091 | 3.19 | 0.376 | 0.959 | 0.912 |
+| content | timeline multi | 785 | 70.06 | 62.55 | 0.04401 | 3.09 | 0.381 | 0.961 | 0.904 |
+| repetition | overview | 2,374 | 77.89 | 65.33 | 0.01498 | 3.62 | 0.385 | 0.973 | 0.903 |
+| repetition | timeline single | 2,371 | 64.74 | 52.59 | 0.01357 | 3.63 | 0.384 | 0.970 | 0.908 |
+| repetition | timeline multi | 1,771 | 77.30 | 68.89 | 0.01677 | 3.28 | 0.381 | 0.975 | 0.907 |
+
+The case-weighted mean of the six independently computed suite metrics is protocol/plain R@3
+`71.56/60.80`, FID `0.02195`, contact skate `3.44 cm/s`, height skate `16.65 cm/s`, contact
+consistency `0.970`, skate ratio `0.104`, bone MAE `0.382 cm`, shape correlation `0.969`, normal
+shape response slope `0.911`, and counterfactual response slope `0.906`. This weighted row is a
+summary of suite-level metrics, not retrieval or FID recomputed over one merged candidate pool.
+
+The 38 remaining exclusions are fully audited: 32 non-finite GT cases and six requests below the
+evaluator's ten-frame minimum. There are no text-cache misses after sanitization.
+
 The original step-200k checkpoint contains model weights and arguments only. It has no AdamW
 moments, RNG state, or data-loader position, so an exact optimizer resume is impossible. The 500k
 run is therefore a documented model-weight warm start: it strictly verifies the architecture,
@@ -710,3 +736,210 @@ official shifted-logitnormal shift-3 x0 recipe. Every 10k updates it saves a che
 911-case content/overview C45 evaluation with UniPC-35 and shape counterfactuals. GPU continuation
 smoke job `10742` loaded the real checkpoint and completed five finite optimizer steps at 10.3 GB;
 LR unit job `10744` passed both restart-schedule tests.
+
+## 20. Generator normalization audit and continuation inline results (2026-07-15)
+
+### Proportional UniEgo mean/std used by the shape-aware generators
+
+Both the original full-contact run through step 200k and its model-weight continuation through
+step 500k record and load the same generator statistics:
+
+| artifact | path | SHA-256 |
+|---|---|---|
+| mean | `/mnt/shared/jungbin_cho/seed/soma_proportional_uniegomotion_20fps/Mean_uniego.npy` | `f4f32d4f03cede93b35c46a3aeaef7282dabc9d57b428a4b672acfcf064a79d5` |
+| std | `/mnt/shared/jungbin_cho/seed/soma_proportional_uniegomotion_20fps/Std_uniego.npy` | `559948ffc1d665a9e5c8e3a53f5b9ea024294fcb51b536c0f47bc7fb00ac9471` |
+
+These are `(283,)` little-endian float32 arrays for the proportional SOMA-30 UniEgo layout, not
+the Nymeria-grounded `motion_expert/stats/uniego283_{mean,std}.npy` files. The final finite arrays
+have mean range `[-0.7983141, 1.4693867]` and std range `[0.0009840003, 1.0]`. Their authoritative
+provenance is the adjacent
+`/mnt/shared/jungbin_cho/seed/soma_proportional_uniegomotion_20fps/_stats.json`:
+
+- 141,541 clean clips and 20,667,071 frames were accumulated frame-wise;
+- 679 source-corrupt clips containing NaNs were excluded;
+- seven structurally constant channels, indices `60,62,271,273,274,275,277`, had std floored to
+  `1.0`;
+- `_stats.log` retains the earlier all-ID attempt that produced NaNs, but the current files and
+  `_stats.json` are from the subsequent clean-ID recomputation.
+
+The generator data path is, in order:
+
+```text
+stored proportional features[sf:ef] at 20 fps
+  -> overwrite the sampled window's frame-0 canon_delta with identity
+  -> x0 = (features - Mean_uniego) / Std_uniego
+  -> native shifted-logitnormal flow training in normalized 283-D space
+```
+
+The model predicts normalized `x0`. Decoded pose, smoothness, contact, foot-velocity, and
+foot-height losses all use `decode_joints(x0_hat * std + mean)`, and sampling/evaluation uses the
+same inverse transform. The actor `neutral_joints (30,3)` condition is not z-scored with these
+arrays: it is only centered by subtracting its joint centroid, preserving body scale as the shape
+cue. C45 evaluation has a separate normalization contract after decoding and 20-to-30-fps joint
+resampling: NVIDIA's official 186-D TMR motion statistics.
+
+Two reproducibility caveats are now explicit. First, the generator stats are global over all clean
+converted clips rather than restricted to the benchmark train split. Second, stats canonicalized
+one first frame per complete clip, whereas training canonicalizes one first frame per sampled
+window. The representation and all non-first-frame residual deltas match, but the identity-delta
+frequency and exact stochastic train-window distribution are not reproduced by the stat pass.
+
+### Step-200k warm-start continuation through step 260k
+
+The continuation is a fresh-optimizer model-weight warm start, so step 210k initially regresses
+while the new AdamW state and restart-local LR settle. Each row below is the same deterministic
+911-case content/overview evaluation with C45 step 5k, official UniPC-35, CFG 2, and paired
+farthest-natural shape intervention. Step 200k is the source-checkpoint reference.
+
+| step | protocol R@3 | plain R@3 | FID gen-GT | contact skate cm/s | height skate cm/s | contact consistency | skate ratio |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 200k source | 70.58 | 59.60 | 0.04399 | 3.31 | 16.88 | 0.973 | 0.096 |
+| 210k | 67.29 | 54.67 | 0.05518 | 4.00 | 21.06 | 0.926 | 0.119 |
+| 220k | 69.26 | 56.75 | 0.04929 | 3.79 | 17.00 | 0.918 | 0.099 |
+| 230k | 71.13 | 59.82 | 0.05143 | 3.99 | 19.44 | 0.920 | 0.110 |
+| 240k | 68.83 | 57.08 | 0.05554 | 3.91 | 17.64 | 0.896 | 0.093 |
+| 250k | 70.36 | 58.29 | 0.04962 | 3.74 | 23.69 | 0.954 | 0.128 |
+| 260k | 68.83 | 58.84 | 0.04965 | 3.71 | 21.86 | 0.926 | 0.121 |
+
+| step | bone MAE cm | shape corr. | shape slope | CF delta cosine | CF slope | CF magnitude | CF target advantage cm | CF plain R@3 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 200k source | 0.379 | 0.965 | 0.894 | 0.992 | 0.899 | 0.907 | 2.056 | 51.81 |
+| 210k | 0.419 | 0.959 | 0.877 | 0.991 | 0.890 | 0.899 | 1.994 | 48.19 |
+| 220k | 0.379 | 0.963 | 0.906 | 0.991 | 0.907 | 0.916 | 2.079 | 49.18 |
+| 230k | 0.384 | 0.958 | 0.880 | 0.992 | 0.893 | 0.900 | 2.030 | 49.29 |
+| 240k | 0.403 | 0.958 | 0.898 | 0.991 | 0.901 | 0.909 | 2.041 | 48.19 |
+| 250k | 0.388 | 0.957 | 0.891 | 0.992 | 0.902 | 0.910 | 2.040 | 49.29 |
+| 260k | 0.400 | 0.955 | 0.890 | 0.991 | 0.893 | 0.901 | 2.028 | 51.15 |
+
+Readout at this snapshot:
+
+- step 230k has the strongest continuation retrieval (`71.13/59.82`), only marginally above the
+  source checkpoint;
+- step 220k is the best balanced continuation checkpoint for FID, bone MAE, population shape
+  correlation, and counterfactual response;
+- no continuation checkpoint through 260k beats step 200k on FID, predicted-contact skate, or
+  contact consistency;
+- job `10747` remains the active 500k continuation and dependent job `10748` will run the full
+  six-suite evaluation only after a successful step-500k exit.
+
+Detailed continuation records are under
+`<continuation-run>/inline_eval/{history.json,step_XXXXXX.json}`. This table is a dated snapshot;
+later 10k checkpoints should be appended rather than replacing it.
+
+## 21. Nymeria-grounded normalization ablation (2026-07-15)
+
+### Question and controlled recipe
+
+Job `10860` tests whether the generator's proportional-dataset normalization is contributing to
+the retrieval/physical-quality tradeoff. It is a from-scratch replication of the full-contact
+step-200k run with exactly one intended data transformation change: the 283-D mean/std pair.
+
+| setting | baseline and ablation |
+|---|---|
+| architecture | MotionExpertInContext, d=512, 8 layers, 8 heads, FFN=2048 |
+| optimizer | AdamW, LR 2e-4, betas 0.9/0.99, no weight decay, 1k warmup + cosine |
+| training | 200k updates, batch 128, seed 0, CFG text dropout 0.1 |
+| flow | native x0, shifted logit-normal shift 3, 1,000 train timesteps |
+| reconstruction | feature/joint/smooth = 1/1/5 |
+| contact | BCE/foot velocity/foot height = 0.05/1/10, logit scale 2 |
+| data/text/shape | same proportional 20-fps UniEgo tree, cached index, LLM2Vec cache, centered proportional neutral joints |
+| output cadence | checkpoints, GT/gen visualization, and C45 UniPC-35 inline eval every 10k |
+
+Baseline normalization:
+
+```text
+tag:  bones_seed_proportional_20fps
+mean: /mnt/shared/jungbin_cho/seed/soma_proportional_uniegomotion_20fps/Mean_uniego.npy
+      f4f32d4f03cede93b35c46a3aeaef7282dabc9d57b428a4b672acfcf064a79d5
+std:  /mnt/shared/jungbin_cho/seed/soma_proportional_uniegomotion_20fps/Std_uniego.npy
+      559948ffc1d665a9e5c8e3a53f5b9ea024294fcb51b536c0f47bc7fb00ac9471
+```
+
+Ablation normalization:
+
+```text
+tag:  nymeria_grounded_uniego283
+mean: /home/jungbin_cho/cosmos_motion_ft/motion_expert/stats/uniego283_mean.npy
+      bd1d6bdc9a3b026fe1e5b28899441655ee36672c69c3e6e6389e9baff4b400d3
+std:  /home/jungbin_cho/cosmos_motion_ft/motion_expert/stats/uniego283_std.npy
+      ee069e3aa9f3cd1a1e70135cc00bc751030f8045fae6bbfb7b4f5b32fa65f28c
+```
+
+The alternate files were produced by `compute_stats.py` over grounded, frame-0-canonicalized
+Nymeria train windows. They are deliberately being applied to the same proportional BONES raw
+features; the source motions, skeleton conditioning, architecture, sampler, and physical-unit loss
+targets do not change. This changes normalized x0/noise scale and feature-MSE gradient weighting,
+so it can still change the balance against decoded joint/contact losses even though inverse
+normalization recovers physical UniEgo features before those losses.
+
+The only diagnostic-only difference is that the current inline callback also runs the later-added
+farthest-natural shape counterfactual and writes normalization provenance. The original job's live
+callback predated those fields. Callback construction/evaluation saves and restores CPU/CUDA RNG
+state and training mode, so the extra inference pass does not alter the optimization trajectory.
+
+### Historical-equivalence audit
+
+The original run predates two trainer bookkeeping improvements. It used PyTorch's global RNG for
+DataLoader shuffling/worker seeds, and it checked periodic events against the pre-increment loop
+counter. The ablation therefore records:
+
+```text
+dataloader_rng = historical_global
+step_indexing  = historical_preincrement
+```
+
+The second setting means historical `ckpt_step010000.pt` is emitted after update 10,001, while the
+final `ckpt_step200000.pt` still contains exactly 200,000 updates. This is retained only to match
+the baseline's periodic curves; current continuation jobs use completed-update indexing.
+
+GPU control job `10859` reran the old proportional stats with these modes. Its first update matches
+the archived job-10623 production log exactly to printed precision:
+
+```text
+loss=1.0271 feat=0.9733 joint=0.0186 smooth=0.0006
+contact=0.3336 foot_vel=0.0090 foot_height=0.0007
+sigma=0.718 grad_norm=4.02
+```
+
+This confirms the model initialization, minibatch, noising, loss recipe, and optimizer start are
+reproduced. With the alternate stats, GPU smoke job `10857` completed five finite updates at
+10.3 GB peak allocation. GPU unit/compile preflight `10856` passed eight tests, including
+normalization mismatch rejection and both step-indexing modes.
+
+### Normalization safety contract
+
+`bs_normalization.py` now validates `(283,)`, finite, strictly-positive-std arrays and records both
+absolute paths and SHA-256 hashes. `bs_train.py` writes this metadata to `config.json` and every
+checkpoint. The launcher exposes `BS_NATIVE_MEAN`, `BS_NATIVE_STD`, and
+`BS_NATIVE_NORMALIZATION_TAG`, prints the paths, and hashes both files before training.
+
+Consumers no longer silently fall back to the proportional stats:
+
+- `bs_sample.py` resolves mean/std from the checkpoint by default and writes the resolved tag,
+  paths, and hashes to every sample manifest. A mismatched explicit pair is rejected unless
+  `--allow_stats_override` is supplied.
+- `bs_tmr_eval.py` resolves and verifies normalization independently for each generator, so one
+  invocation can safely compare proportional-stat and Nymeria-stat checkpoints. Each generator's
+  result JSON records the actual tag, paths, hashes, and checkpoint-match status. A mismatched
+  global override requires `--allow-generator-stats-override`.
+- `bs_shape_eval.py` and `bs_shape_eval_nymeria.py` use the same checkpoint-driven resolution and
+  record it in their reports instead of retaining independent proportional-stat defaults.
+- Inline evaluation and checkpoint visualization use the live training mean/std tensors directly;
+  inline JSON now also records their full provenance.
+- Legacy checkpoints remain supported through their recorded `args.mean`/`args.std` paths, whose
+  file contents are hashed at evaluation time.
+
+Production details:
+
+```text
+job: 10860 (bsnym200)
+run: /mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_native_x0_logitnormal_shift3_contactaware_c0p05_v1_h10_s2_nymeria_grounded_stats_inline10k_200k
+log: /home/jungbin_cho/cosmos_motion_ft/slurm-bsnym200-10860.out
+```
+
+Three startup jobs were deliberately canceled before any checkpoint was written while the exact
+historical RNG/indexing controls were audited: `10852`, `10855`, and `10858`. Their tiny config and
+TensorBoard-only directories were renamed with `_ABORTED_job...` suffixes and are not valid runs.
+Only job `10860` and the unsuffixed run directory are authoritative. Its 10k inline results should
+be compared against the baseline's same-step records, with the historical one-update checkpoint
+indexing noted above.

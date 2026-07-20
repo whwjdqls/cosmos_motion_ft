@@ -159,8 +159,9 @@ job `10651` was canceled. Corrected explicit-Bash smoke `10679` gates final-200k
 which also waits for training jobs `10644/10645`; output is
 `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_tmr_eval/c45_step5k_shape_counterfactual_final200_ablation_runs.json`.
 Smoke `10679` completed successfully with all five metric tests and an eight-case paired
-UniPC/C45 integration pass. Foot-only hybrid job `10644` also completed at 200k; job `10645`
-remains the only unfinished training dependency for the full shape backfill.
+UniPC/C45 integration pass. Foot-only hybrid job `10644`, soft-contact job `10645`, and final shape
+backfill job `10680` all completed. The backfill report is
+`/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_tmr_eval/c45_step5k_shape_counterfactual_final200_ablation_runs.json`.
 
 Full-contact continuation/all-benchmark follow-up launched 2026-07-15. `bs_train.py` supports a
 strict model-only warm start with global checkpoint numbering and a restart-local LR schedule. The
@@ -175,7 +176,29 @@ text-to-motion suites using UniPC-35, physical metrics, and paired shape interve
 `/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_tmr_eval/full_contact_200k_all_text2motion_unipc35_shape_cf`;
 dependent final-500k job `10748` writes the corresponding `full_contact_500k...` directory.
 Constraint-conditioned suites are marked not applicable because this generator has no constraint
-input. Continuation/evaluation/unit smokes `10742/10743/10744` all passed.
+input. Continuation/evaluation/unit smokes `10742/10743/10744` all passed. Initial job `10746`
+revealed that benchmark readers looked up raw text in a cache keyed by Kimodo-sanitized prompts;
+this was fixed in `bs_tmr_eval.py`, `st_inline_eval.py`, and `official_tmr_eval.py`. Audit `10751`
+recovered all 36 valid timeline prompts, and correction job `10752` rebuilt the report with
+9,124/9,162 discovered cases; only 32 non-finite GT motions and six sub-10-frame requests remain.
+Per-suite protocol/plain R@3 is `70.58/59.60`, `63.93/54.28`, `70.06/62.55`, `77.89/65.33`,
+`64.74/52.59`, and `77.30/68.89` in the order above. The case-weighted suite means are
+protocol/plain R@3 `71.56/60.80`, FID `0.02195`, contact skate `3.44 cm/s`, bone MAE `0.382 cm`,
+shape correlation `0.969`, and counterfactual response slope `0.906`; these are means of
+suite-level metrics, not one merged retrieval computation.
+
+Generator-normalization ablation launched 2026-07-15 as job `10860`. It reproduces the
+full-contact 200k recipe, including the historical global DataLoader RNG and pre-increment periodic
+checkpoint indexing, but replaces the proportional-data stats with
+`motion_expert/stats/uniego283_{mean,std}.npy` (tag `nymeria_grounded_uniego283`, SHA prefixes
+`bd1d6bdc`/`ee069e3a`). Run:
+`/mnt/shared/jungbin_cho/cosmos_motion_ft_runs/bs_native_x0_logitnormal_shift3_contactaware_c0p05_v1_h10_s2_nymeria_grounded_stats_inline10k_200k`.
+Control smoke `10859` with the original proportional stats reproduced the archived baseline's first
+update exactly to printed precision; alternate-stat smoke `10857` passed five finite updates.
+`bs_normalization.py` now pins paths, hashes, shape, dtype, and a tag in configs/checkpoints.
+`bs_sample.py` and `bs_tmr_eval.py` resolve stats from checkpoint metadata by default and reject
+silent mismatches; the evaluator resolves each generator independently, allowing valid mixed-stat
+comparisons. Full rationale and job audit are in `motion_expert/BONES_SEED_POC.md` section 21.
 
 ### `nymeria_world/` Camera World Model
 
@@ -696,7 +719,8 @@ Root:
 - `BONES_SEED_POC.md`: BONES-only LLM2Vec in-context POC.
 - `reasoner.py`, `precompute_hr.py`, `hr_cache.py`: reasoner hidden-state cache.
 - `motion_expert.py`, `flow.py`, `train.py`, `sample.py`, `viz.py`.
-- `bs_*`: BONES-only in-context LLM2Vec POC.
+- `bs_*`: BONES-only in-context LLM2Vec POC; `bs_normalization.py` owns checkpoint-pinned
+  generator mean/std provenance and mismatch checks.
 
 `nymeria_world/`:
 

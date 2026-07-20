@@ -23,6 +23,7 @@ import torch
 import torch.nn.functional as F
 
 from kimodo.metrics.tmr import compute_tmr_retrieval_metrics
+from kimodo.sanitize import sanitize_text
 from kimodo.skeleton import SOMASkeleton30
 
 from decode_uniego import decode_joints
@@ -59,7 +60,9 @@ class TestsuiteEvaluator:
                 if case_limit is not None and len(cases) >= case_limit:
                     break
                 try:
-                    text = json.load(open(os.path.join(cd, "meta.json")))["text"]
+                    text = sanitize_text(
+                        str(json.load(open(os.path.join(cd, "meta.json")))["text"])
+                    )
                     sm = json.load(open(os.path.join(cd, "seed_motion.json")))
                 except (OSError, json.JSONDecodeError, KeyError):
                     miss += 1

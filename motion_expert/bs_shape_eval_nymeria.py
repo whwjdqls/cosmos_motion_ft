@@ -26,6 +26,7 @@ import flow
 import bs_native_flow
 from bs_dataset import MEAN_PATH, STD_PATH
 from bs_model import MotionExpertInContext
+from bs_normalization import resolve_checkpoint_normalization
 from bs_text_cache import LLM2VecCache, DEFAULT_CACHE
 from bs_viz import load_skeleton
 from bs_sample import bone_lengths, group_len
@@ -43,19 +44,29 @@ def main():
     ap.add_argument("--T", type=int, default=120)
     ap.add_argument("--steps", type=int, default=50)
     ap.add_argument("--guidance", type=float, default=2.0)
-    ap.add_argument("--mean", default=MEAN_PATH)
-    ap.add_argument("--std", default=STD_PATH)
+    ap.add_argument("--mean", default=None, help="override checkpoint normalization")
+    ap.add_argument("--std", default=None, help="override checkpoint normalization")
+    ap.add_argument("--allow_stats_override", action="store_true")
     ap.add_argument("--cache_path", default=DEFAULT_CACHE)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--split", default="test", choices=["test", "train", "all"])
     args = ap.parse_args()
     dev = "cuda"
 
-    mean = torch.from_numpy(np.load(args.mean)).float().to(dev)
-    std = torch.from_numpy(np.load(args.std)).float().to(dev)
     cache = LLM2VecCache(args.cache_path, device=dev)
     parents, _ = load_skeleton()
-    ck = torch.load(args.ckpt, map_location="cpu"); a = ck.get("args", {})
+    ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
+    a = ck.get("args", {})
+    mean_np, std_np, normalization = resolve_checkpoint_normalization(
+        ck,
+        mean_override=args.mean,
+        std_override=args.std,
+        fallback_mean=MEAN_PATH,
+        fallback_std=STD_PATH,
+        allow_override=args.allow_stats_override,
+    )
+    mean = torch.from_numpy(mean_np).to(dev)
+    std = torch.from_numpy(std_np).to(dev)
     model = MotionExpertInContext(d=a.get("d", 512), n_layers=a.get("layers", 8), heads=a.get("heads", 8),
                                   ffn=a.get("ffn", 2048), text_dim=cache.dim, motion_dim=FEAT_DIM).to(dev)
     model.load_state_dict(ck["model"]); model.eval()
@@ -75,7 +86,9 @@ def main():
         sampler = flow.sample_v if pred == "v" else flow.sample_x0
     print(
         f"[eval] {args.ckpt} (step {ck.get('step')}, pred={pred}, schedule={schedule}) "
-        f"on nymeria split={args.split}",
+        f"on nymeria split={args.split}, normalization={normalization['tag']}, "
+        f"mean_sha256={normalization['mean_sha256'][:12]}, "
+        f"std_sha256={normalization['std_sha256'][:12]}",
         flush=True,
     )
     null_H = cache.null(1)
@@ -137,6 +150,7 @@ def main():
     g = np.array(gen_mae) * 100; t = np.array(gt_mae) * 100
     res = {"dataset": "nymeriaplus_proportional", "split": args.split, "n": used,
            "schedule": schedule,
+           "normalization": normalization,
            "native_shift": a.get("native_shift") if schedule == "native" else None,
            "native_num_train_timesteps": a.get("native_num_train_timesteps") if schedule == "native" else None,
            "gen_bone_mae_cm_mean": round(float(g.mean()), 3), "gen_bone_mae_cm_std": round(float(g.std()), 3),

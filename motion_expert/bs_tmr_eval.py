@@ -27,6 +27,7 @@ import torch
 import bs_native_flow
 from bs_dataset import DATA_ROOT, MEAN_PATH, STD_PATH
 from bs_model import MotionExpertInContext
+from bs_normalization import resolve_checkpoint_normalization
 from bs_shape_metrics import (
     counterfactual_shape_response,
     farthest_shape_indices,
@@ -55,6 +56,7 @@ from kimodo.metrics import (  # noqa: E402
     compute_metrics,
     compute_tmr_retrieval_metrics,
 )
+from kimodo.sanitize import sanitize_text  # noqa: E402
 from kimodo.skeleton import SOMASkeleton30  # noqa: E402
 
 
@@ -119,7 +121,8 @@ def build_cases(
         try:
             meta = json.load(open(os.path.join(case_dir, "meta.json")))
             seed_motion = json.load(open(os.path.join(case_dir, "seed_motion.json")))
-            text = str(meta["text"])
+            # benchmark_llm2vec.pt uses Kimodo's generation-time sanitized prompt as its key.
+            text = sanitize_text(str(meta["text"]))
             duration = float(meta["duration"])
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
             skipped["bad_metadata"] += 1
@@ -550,6 +553,7 @@ def evaluate_model(
     native_solver: str,
     device: str,
     shape_counterfactuals: dict[str, np.ndarray] | None = None,
+    normalization: dict | None = None,
 ) -> dict:
     schedule = str(checkpoint_args.get("schedule", "legacy"))
     pred = str(checkpoint_args.get("pred", "x0"))
@@ -710,6 +714,7 @@ def evaluate_model(
         "total_model_forward_calls_with_cfg_per_case": sampling_passes * 2 * denoiser_evaluations,
         "guidance": guidance,
         "num_motions": len(cases),
+        "normalization": normalization,
         "tmr": {key: float(value) for key, value in protocol.items()},
         "plain_t2m_gen": plain_generated,
         "plain_t2m_gt": _plain_retrieval(gt_embeddings, text_embeddings),
@@ -731,8 +736,9 @@ def evaluate_generator(
     generator_cache: LLM2VecCache,
     embedder: ShapeTMREmbedder,
     skeleton: SOMASkeleton30,
-    mean: torch.Tensor,
-    std: torch.Tensor,
+    mean_override: str | None,
+    std_override: str | None,
+    allow_stats_override: bool,
     gt_embeddings: np.ndarray,
     text_embeddings: np.ndarray,
     fps: float,
@@ -746,6 +752,23 @@ def evaluate_generator(
         device,
     )
     try:
+        mean_np, std_np, normalization = resolve_checkpoint_normalization(
+            checkpoint,
+            mean_override=mean_override,
+            std_override=std_override,
+            fallback_mean=MEAN_PATH,
+            fallback_std=STD_PATH,
+            allow_override=allow_stats_override,
+        )
+        mean = torch.from_numpy(mean_np).to(device)
+        std = torch.from_numpy(std_np).to(device)
+        print(
+            f"[{label}] normalization={normalization['tag']} "
+            f"mean_sha256={normalization['mean_sha256'][:12]} "
+            f"std_sha256={normalization['std_sha256'][:12]} "
+            f"checkpoint_match={normalization['checkpoint_match']}",
+            flush=True,
+        )
         return evaluate_model(
             label,
             model,
@@ -767,6 +790,7 @@ def evaluate_generator(
             native_solver,
             device,
             shape_counterfactuals,
+            normalization,
         )
     finally:
         del model, checkpoint
@@ -781,6 +805,7 @@ class InlineShapeTMREvaluator:
         output_dir: str,
         generator_mean: torch.Tensor,
         generator_std: torch.Tensor,
+        generator_normalization: dict | None = None,
         *,
         tmr_ckpt: str = DEFAULT_TMR_CKPT,
         tmr_stats: str = DEFAULT_TMR_STATS,
@@ -854,6 +879,7 @@ class InlineShapeTMREvaluator:
             self.shape_counterfactual_audit = {"strategy": "disabled", "num_pairs": 0}
         self.mean = generator_mean.detach()
         self.std = generator_std.detach()
+        self.generator_normalization = generator_normalization
         (
             self.gt_embeddings,
             self.text_embeddings,
@@ -872,7 +898,8 @@ class InlineShapeTMREvaluator:
             "split": split,
             "group": group,
             "case_audit": self.audit,
-            "generator_representation": "normalized 283-D proportional UniEgo at 20 fps",
+            "generator_representation": "normalized 283-D UniEgo at 20 fps",
+            "generator_normalization": self.generator_normalization,
             "tmr_conversion": (
                 "unnormalize -> decode SOMA-30 joints -> resample 20 to 30 fps "
                 "-> C45 TMRMotionRep"
@@ -937,6 +964,7 @@ class InlineShapeTMREvaluator:
                 self.native_solver,
                 self.device,
                 self.shape_counterfactuals,
+                self.generator_normalization,
             )
         finally:
             model.train(was_training)
@@ -1022,8 +1050,21 @@ def main():
     parser.add_argument("--split", default="content")
     parser.add_argument("--group", default="overview")
     parser.add_argument("--uniego-root", default=DATA_ROOT)
-    parser.add_argument("--generator-mean", default=MEAN_PATH)
-    parser.add_argument("--generator-std", default=STD_PATH)
+    parser.add_argument(
+        "--generator-mean",
+        default=None,
+        help="normalization override; default resolves independently from each checkpoint",
+    )
+    parser.add_argument(
+        "--generator-std",
+        default=None,
+        help="normalization override; default resolves independently from each checkpoint",
+    )
+    parser.add_argument(
+        "--allow-generator-stats-override",
+        action="store_true",
+        help="allow explicit generator stats whose hashes do not match checkpoint metadata",
+    )
     parser.add_argument(
         "--generator-text-cache",
         default=BENCH_TEXT_CACHE,
@@ -1042,6 +1083,11 @@ def main():
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--min-frames", type=int, default=10)
     parser.add_argument("--max-cases", type=int, default=0, help="0 evaluates every usable case")
+    parser.add_argument(
+        "--audit-only",
+        action="store_true",
+        help="write the case audit without loading evaluator/generator models or sampling",
+    )
     parser.add_argument(
         "--shape-counterfactual",
         choices=["none", "farthest"],
@@ -1077,6 +1123,26 @@ def main():
     if not cases:
         raise SystemExit(f"no usable {args.split}/{args.group} cases: {audit}")
     print(f"[cases] {json.dumps(audit, sort_keys=True)}", flush=True)
+    if args.audit_only:
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(
+            json.dumps(
+                {
+                    "protocol": {
+                        "testsuite": args.testsuite,
+                        "split": args.split,
+                        "group": args.group,
+                        "case_audit": audit,
+                        "text_lookup": "kimodo.sanitize_text(meta.text)",
+                    }
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        print(f"[audit] wrote {out_path}", flush=True)
+        return
 
     embedder = ShapeTMREmbedder(
         args.tmr_ckpt,
@@ -1098,9 +1164,6 @@ def main():
         f"[shape] {json.dumps(shape_counterfactual_audit, sort_keys=True)}",
         flush=True,
     )
-    mean = torch.from_numpy(np.load(args.generator_mean)).float().to(args.device)
-    std = torch.from_numpy(np.load(args.generator_std)).float().to(args.device)
-
     gt_embeddings, text_embeddings, gt_physical, gt_shape = precompute_references(
         cases,
         args.batch_size,
@@ -1123,8 +1186,9 @@ def main():
             generator_cache,
             embedder,
             skeleton,
-            mean,
-            std,
+            args.generator_mean,
+            args.generator_std,
+            args.allow_generator_stats_override,
             gt_embeddings,
             text_embeddings,
             args.fps,
@@ -1149,7 +1213,10 @@ def main():
             "split": args.split,
             "group": args.group,
             "case_audit": audit,
-            "generator_representation": "normalized 283-D proportional UniEgo at 20 fps",
+            "generator_representation": (
+                "normalized 283-D UniEgo at 20 fps; normalization is resolved and "
+                "recorded independently for each checkpoint"
+            ),
             "tmr_conversion": "unnormalize -> decode SOMA-30 joints -> resample 20 to 30 fps -> C45 TMRMotionRep",
             "shape_conditioning": "same centered proportional neutral_joints supplied to generator and C45",
             "shape_counterfactual": shape_counterfactual_audit,

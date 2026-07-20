@@ -20,6 +20,7 @@ import torch.nn.functional as F
 from kimodo.metrics.tmr import compute_tmr_retrieval_metrics
 from kimodo.model.tmr import TMR
 from kimodo.motion_rep.reps.tmr_motionrep import TMRMotionRep
+from kimodo.sanitize import sanitize_text
 from kimodo.skeleton import SOMASkeleton30
 
 from decode_uniego import decode_joints
@@ -113,7 +114,9 @@ def load_cases(
             break
         cdir = Path(cd)
         try:
-            text = json.load(open(cdir / "meta.json", encoding="utf-8"))["text"]
+            text = sanitize_text(
+                str(json.load(open(cdir / "meta.json", encoding="utf-8"))["text"])
+            )
         except (OSError, json.JSONDecodeError, KeyError):
             skipped += 1
             continue

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import unittest
 
-from bs_train import continuation_lr
+from bs_train import continuation_lr, event_step_after_update
 
 
 class ContinuationLearningRateTest(unittest.TestCase):
@@ -30,6 +30,16 @@ class ContinuationLearningRateTest(unittest.TestCase):
             continuation_lr(9, **kwargs)
         with self.assertRaises(ValueError):
             continuation_lr(20, **kwargs)
+
+
+class StepIndexingTest(unittest.TestCase):
+    def test_completed_update_labels(self):
+        self.assertEqual(event_step_after_update(1, "completed_updates"), 1)
+        self.assertEqual(event_step_after_update(10_000, "completed_updates"), 10_000)
+
+    def test_historical_preincrement_labels(self):
+        self.assertEqual(event_step_after_update(1, "historical_preincrement"), 0)
+        self.assertEqual(event_step_after_update(10_001, "historical_preincrement"), 10_000)
 
 
 if __name__ == "__main__":

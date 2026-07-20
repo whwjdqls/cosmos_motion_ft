@@ -32,6 +32,7 @@ import flow
 import bs_native_flow
 from bs_dataset import DATA_ROOT, MEAN_PATH, STD_PATH, NATURAL_CSV, SPLIT_DIR
 from bs_model import MotionExpertInContext
+from bs_normalization import resolve_checkpoint_normalization
 from bs_text_cache import LLM2VecCache, DEFAULT_CACHE
 from bs_viz import load_skeleton, render_pair
 from decode_uniego_torch import decode_joints
@@ -167,8 +168,21 @@ def main(argv=None, parser_defaults=None):
                     help="native-ladder solver; unipc calls the original Cosmos-3 "
                          "FlowUniPC scheduler, whose native default is 35 steps")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--mean", default=MEAN_PATH)
-    ap.add_argument("--std", default=STD_PATH)
+    ap.add_argument(
+        "--mean",
+        default=None,
+        help="normalization override; default resolves from checkpoint metadata",
+    )
+    ap.add_argument(
+        "--std",
+        default=None,
+        help="normalization override; default resolves from checkpoint metadata",
+    )
+    ap.add_argument(
+        "--allow_stats_override",
+        action="store_true",
+        help="allow explicit mean/std whose hashes do not match the checkpoint",
+    )
     ap.add_argument("--cache_path", default=DEFAULT_CACHE)
     ap.add_argument("--ablation", choices=["cond", "null", "both"], default="both")
     ap.add_argument("--skeleton_npz", default=None, help="uniego npz to take neutral_joints from")
@@ -203,8 +217,6 @@ def main(argv=None, parser_defaults=None):
 
     assert args.ckpt and args.out, "--ckpt and --out required (unless --sanity)"
     dev = "cuda"
-    mean = torch.from_numpy(np.load(args.mean)).float().to(dev)
-    std = torch.from_numpy(np.load(args.std)).float().to(dev)
     cache = LLM2VecCache(args.cache_path, device=dev)
 
     prompts = args.prompts or load_prompts_from_split(args.prompts_split, cache, args.n_prompts)
@@ -213,8 +225,18 @@ def main(argv=None, parser_defaults=None):
     print(f"[sample] {len(prompts)} prompts (real captions from cache): "
           + " | ".join(p[:32] for p in prompts), flush=True)
 
-    ck = torch.load(args.ckpt, map_location="cpu")
+    ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     a = ck.get("args", {})
+    mean_np, std_np, normalization = resolve_checkpoint_normalization(
+        ck,
+        mean_override=args.mean,
+        std_override=args.std,
+        fallback_mean=MEAN_PATH,
+        fallback_std=STD_PATH,
+        allow_override=args.allow_stats_override,
+    )
+    mean = torch.from_numpy(mean_np).to(dev)
+    std = torch.from_numpy(std_np).to(dev)
     model = MotionExpertInContext(d=a.get("d", 512), n_layers=a.get("layers", 8),
                                   heads=a.get("heads", 8), ffn=a.get("ffn", 2048),
                                   text_dim=cache.dim, motion_dim=FEAT_DIM).to(dev)
@@ -255,12 +277,15 @@ def main(argv=None, parser_defaults=None):
         "native_num_train_timesteps": (
             native_num_train_timesteps if sampler_name == "native" else None
         ),
+        "normalization": normalization,
     }
     print(
         f"[sample] loaded {args.ckpt} (step {ck.get('step')}, pred={pred}, "
         f"training_schedule={schedule}, sampler={sampler_name}, "
         f"native_solver={args.native_solver if sampler_name == 'native' else 'n/a'}, "
-        f"shift={native_shift:g})",
+        f"shift={native_shift:g}, normalization={normalization['tag']}, "
+        f"mean_sha256={normalization['mean_sha256'][:12]}, "
+        f"std_sha256={normalization['std_sha256'][:12]})",
         flush=True,
     )
 

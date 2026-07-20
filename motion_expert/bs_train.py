@@ -29,6 +29,7 @@ from torch.utils.data import DataLoader
 
 import flow
 import bs_native_flow
+from bs_normalization import load_normalization
 from bs_losses import contact_aware_losses, masked_mse
 from bs_dataset import (BonesSeedUniegoDataset, collate, DATA_ROOT, NATURAL_CSV,
                         SPLIT_DIR, MEAN_PATH, STD_PATH)
@@ -91,6 +92,17 @@ def continuation_lr(
         return base_lr * (local_step + 1) / warmup_steps
     progress = (local_step - warmup_steps) / max(1, local_total - warmup_steps)
     return base_lr * 0.5 * (1.0 + math.cos(math.pi * min(1.0, progress)))
+
+
+def event_step_after_update(completed_updates: int, indexing: str) -> int:
+    """Checkpoint/log label for an update under current or historical loop semantics."""
+    if completed_updates <= 0:
+        raise ValueError("completed_updates must be positive")
+    if indexing == "completed_updates":
+        return completed_updates
+    if indexing == "historical_preincrement":
+        return completed_updates - 1
+    raise ValueError(f"unsupported step indexing: {indexing}")
 
 
 def _same_continuation_value(field: str, source, requested) -> bool:
@@ -219,6 +231,18 @@ def main(argv=None, parser_defaults=None):
     ap.add_argument("--contact_logit_scale", type=float, default=10.0)
     ap.add_argument("--motion_fps", type=float, default=20.0)
     ap.add_argument("--num_workers", type=int, default=8)
+    ap.add_argument(
+        "--dataloader_rng",
+        choices=["dedicated", "historical_global"],
+        default="dedicated",
+        help="dedicated uses an isolated seed; historical_global reproduces pre-continuation runs",
+    )
+    ap.add_argument(
+        "--step_indexing",
+        choices=["completed_updates", "historical_preincrement"],
+        default="completed_updates",
+        help="historical_preincrement reproduces periodic checkpoint labels from the 200k baseline",
+    )
     ap.add_argument("--grad_clip", type=float, default=1.0)
     ap.add_argument("--warmup", type=int, default=1000)
     ap.add_argument("--log_every", type=int, default=20)
@@ -256,6 +280,11 @@ def main(argv=None, parser_defaults=None):
     ap.add_argument("--viz_split", default=os.path.join(SPLIT_DIR, "test_content_split_paths_small.txt"))
     ap.add_argument("--mean", default=MEAN_PATH)
     ap.add_argument("--std", default=STD_PATH)
+    ap.add_argument(
+        "--normalization_tag",
+        default=None,
+        help="human-readable identity stored with the exact mean/std paths and SHA-256 hashes",
+    )
     ap.add_argument("--cache_path", default=DEFAULT_CACHE)
     ap.add_argument("--index_cache", default=None,
                     help="optional existing BONES segment-index JSON. Reusing the baseline index "
@@ -269,6 +298,8 @@ def main(argv=None, parser_defaults=None):
         ap.error("require --steps > --start_step >= 0")
     if args.start_step > 0 and not args.init_ckpt:
         ap.error("--start_step > 0 requires --init_ckpt")
+    if args.start_step > 0 and args.step_indexing != "completed_updates":
+        ap.error("continuations require --step_indexing completed_updates")
     if args.init_ckpt and not os.path.isfile(args.init_ckpt):
         ap.error(f"missing --init_ckpt: {args.init_ckpt}")
     if args.lr <= 0.0 or args.warmup < 0:
@@ -299,8 +330,18 @@ def main(argv=None, parser_defaults=None):
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
 
-    mean = torch.from_numpy(np.load(args.mean)).float().to(dev)
-    std = torch.from_numpy(np.load(args.std)).float().to(dev)
+    mean_np, std_np, normalization = load_normalization(
+        args.mean,
+        args.std,
+        tag=args.normalization_tag,
+        source="training",
+    )
+    args.mean = normalization["mean_path"]
+    args.std = normalization["std_path"]
+    args.normalization_tag = normalization["tag"]
+    mean = torch.from_numpy(mean_np).to(dev)
+    std = torch.from_numpy(std_np).to(dev)
+    print(f"[train] normalization: {json.dumps(normalization, sort_keys=True)}", flush=True)
     cache = LLM2VecCache(args.cache_path, device=dev)
     print(f"[train] llm2vec cache: {len(cache)} captions, dim={cache.dim}", flush=True)
 
@@ -334,7 +375,12 @@ def main(argv=None, parser_defaults=None):
         name = args.run_name or f"{default_prefix}_{time.strftime('%Y%m%d_%H%M%S')}"
         out = os.path.join(RUN_ROOT, name); os.makedirs(out, exist_ok=True)
         json.dump(
-            {**vars(args), "trainable_M": n_train, "continuation": continuation},
+            {
+                **vars(args),
+                "trainable_M": n_train,
+                "continuation": continuation,
+                "normalization": normalization,
+            },
             open(os.path.join(out, "config.json"), "w"),
             indent=2,
         )
@@ -349,7 +395,10 @@ def main(argv=None, parser_defaults=None):
     ds = BonesSeedUniegoDataset(args.train_split, mean_path=args.mean, std_path=args.std,
                                 cache_index=idx_cache, train=True, seed=args.seed)
     print(f"[train] dataset virtual_len={len(ds)}", flush=True)
-    loader_generator = torch.Generator().manual_seed(args.seed)
+    loader_generator = None
+    if args.dataloader_rng == "dedicated":
+        loader_generator = torch.Generator().manual_seed(args.seed)
+    print(f"[train] dataloader_rng={args.dataloader_rng}", flush=True)
     dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers,
                     collate_fn=collate, drop_last=True, pin_memory=True,
                     persistent_workers=args.num_workers > 0, generator=loader_generator)
@@ -484,6 +533,7 @@ def main(argv=None, parser_defaults=None):
             "output_dir": os.path.join(out, "inline_eval"),
             "generator_mean": mean,
             "generator_std": std,
+            "generator_normalization": normalization,
             "batch_size": args.inline_eval_batch_size,
             "steps": args.inline_eval_steps,
             "guidance": args.inline_eval_guidance,
@@ -636,6 +686,7 @@ def main(argv=None, parser_defaults=None):
             "step": checkpoint_step,
             "args": vars(args),
             "continuation": continuation,
+            "normalization": normalization,
         }
         torch.save(payload, checkpoint_path)
         torch.save(payload, os.path.join(out, "latest.pt"))
@@ -659,8 +710,9 @@ def main(argv=None, parser_defaults=None):
                 opt.step()
             step += 1
             updates_this_run += 1
-            if step % args.log_every == 0 or updates_this_run == 1:
-                print(f"step {step:6d} loss={loss.item():.4f} feat={lf.item():.4f} joint={lj.item():.4f} "
+            event_step = event_step_after_update(step, args.step_indexing)
+            if event_step % args.log_every == 0 or updates_this_run == 1:
+                print(f"step {event_step:6d} loss={loss.item():.4f} feat={lf.item():.4f} joint={lj.item():.4f} "
                       f"smooth={ls.item():.4f} contact={lc.item():.4f} "
                       f"foot_vel={lfv.item():.4f} foot_height={lfh.item():.4f} "
                       f"grad_norm={float(gn):.2f}{' SKIP' if skipped else ''} "
@@ -676,29 +728,29 @@ def main(argv=None, parser_defaults=None):
                         ("foot_vel", lfv),
                         ("foot_height", lfh),
                     ]:
-                        tb.add_scalar(k, v.item(), step)
-                    tb.add_scalar("grad_norm", float(gn) if torch.isfinite(gn) else 0.0, step)
-                    tb.add_scalar("sigma/mean", sigma.mean().item(), step)
-                    tb.add_scalar("sigma/min", sigma.min().item(), step)
-                    tb.add_scalar("sigma/max", sigma.max().item(), step)
+                        tb.add_scalar(k, v.item(), event_step)
+                    tb.add_scalar("grad_norm", float(gn) if torch.isfinite(gn) else 0.0, event_step)
+                    tb.add_scalar("sigma/mean", sigma.mean().item(), event_step)
+                    tb.add_scalar("sigma/min", sigma.min().item(), event_step)
+                    tb.add_scalar("sigma/max", sigma.max().item(), event_step)
             checkpoint_path = None
-            if step > 0 and step % args.save_every == 0:
-                checkpoint_path = save_checkpoint(step)
-                last_checkpoint_step = step
+            if event_step > 0 and event_step % args.save_every == 0:
+                checkpoint_path = save_checkpoint(event_step)
+                last_checkpoint_step = event_step
             if (
                 inline_evaluator is not None
-                and step > 0
-                and step % args.inline_eval_every == 0
+                and event_step > 0
+                and event_step % args.inline_eval_every == 0
             ):
                 if checkpoint_path is None:
-                    checkpoint_path = save_checkpoint(step)
-                    last_checkpoint_step = step
-                do_inline_eval(step, checkpoint_path)
-            if viz_items and step > 0 and step % args.viz_every == 0:
+                    checkpoint_path = save_checkpoint(event_step)
+                    last_checkpoint_step = event_step
+                do_inline_eval(event_step, checkpoint_path)
+            if viz_items and event_step > 0 and event_step % args.viz_every == 0:
                 try:
-                    do_viz(step)
+                    do_viz(event_step)
                 except Exception as e:
-                    print(f"[viz] step {step} failed: {e}", flush=True)
+                    print(f"[viz] step {event_step} failed: {e}", flush=True)
             if step >= args.steps:
                 break
     if last_checkpoint_step == step:

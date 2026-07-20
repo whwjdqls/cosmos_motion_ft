@@ -594,3 +594,109 @@ similar to C45@5k. Step 10k slightly improves proportional timeline-single and
 repetition timeline-single plain R@3, but step 5k remains marginally better on
 content/overview. Keep C45@5k as the primary checkpoint unless timeline-single
 plain R@3 is the selection priority.
+
+## 2026-07-15 matched C45 checkpoint sweep: every 1k step
+
+The original C45 selection compared inline content/overview checkpoints and only ran the full six
+groups for selected steps. To answer whether step 5k was simply too early, every saved checkpoint
+from 1k through 10k was evaluated with the current `st_eval.py` over all six proportional-motion
+testsuite groups. C45 is an official-checkpoint fine-tune, not training from scratch: step 5k is
+about 640k sample presentations at batch 128, with the official text encoder frozen and official
+motion encoder/decoder initialization.
+
+Slurm jobs `10830` (steps 1k-5k), `10829` (6k-10k), and `10831` (matched 5k rerun) completed on an
+A2 GPU. Initial wrappers `10827/10828` failed before Python because `sbatch --wrap` invoked
+`/bin/sh`, which rejected `set -o pipefail`; the corrected wrappers explicitly invoked Bash. All
+matched evaluations have zero non-finite C45 embeddings.
+
+The current proportional data tree resolves these fixed pools:
+
+```text
+content:    overview=911, timeline_single=914, timeline_multi=785
+repetition: overview=2374, timeline_single=2375, timeline_multi=1771
+```
+
+This is slightly larger than the historical 5k file for content-multi (`783`) and
+repetition-multi (`1737`). The historical result remains in `full6_step_00005000.json`; the matched
+current-pool rerun is `full6_current_step_00005000.json`. New comparisons must not silently mix
+those pool versions.
+
+Content/overview full R-precision by checkpoint:
+
+| step | R@1 | R@2 | R@3 | R@5 | R@10 | plain R@1 | plain R@3 |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1k | 56.31 | 74.42 | 87.38 | 94.95 | 98.46 | 36.99 | 80.13 |
+| 2k | 55.32 | 74.42 | 88.25 | 95.06 | 98.57 | 35.89 | 80.57 |
+| 3k | 55.43 | 74.86 | 89.02 | 95.39 | 98.24 | 35.57 | 80.79 |
+| 4k | 54.56 | 74.86 | 88.14 | 94.62 | 98.02 | 35.13 | 80.46 |
+| 5k | 52.36 | 74.31 | 89.13 | 95.06 | 97.91 | 34.03 | 80.90 |
+| 6k | 53.79 | 74.20 | 87.71 | 94.73 | 97.80 | 33.92 | 79.47 |
+| 7k | 55.32 | 75.41 | 88.58 | 94.62 | 97.91 | 35.24 | 80.79 |
+| 8k | 54.88 | 74.64 | 88.25 | 94.95 | 97.80 | 36.11 | 80.02 |
+| 9k | 54.34 | 74.86 | 88.69 | 95.06 | 97.91 | 35.02 | 80.46 |
+| 10k | 54.67 | 74.75 | 88.69 | 94.84 | 97.91 | 35.46 | 80.57 |
+
+Protocol MedR is `1` and plain MedR is `2` at every step. Step 5k remains the best checkpoint under
+the explicitly chosen primary selection target: content/overview protocol and plain R@3.
+
+Full six-group `R@3 / plain R@3`; macro is the unweighted mean over the six independently scored
+groups:
+
+| step | content ov | content single | content multi | rep ov | rep single | rep multi | macro |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1k | 87.38/80.13 | 84.25/75.38 | 87.64/83.44 | 93.64/87.83 | 86.69/74.61 | 94.81/91.36 | 89.07/82.13 |
+| 2k | 88.25/80.57 | 84.14/75.27 | 87.52/83.44 | 93.56/87.91 | 87.28/75.71 | 95.60/92.38 | 89.39/82.55 |
+| 3k | 89.02/80.79 | 84.35/75.38 | 87.39/83.95 | 93.81/88.29 | 88.55/76.76 | 95.43/91.93 | 89.76/82.85 |
+| 4k | 88.14/80.46 | 83.70/75.05 | 87.26/83.82 | 93.89/88.67 | 88.13/76.84 | 95.82/92.15 | 89.49/82.83 |
+| 5k | 89.13/80.90 | 84.35/75.49 | 86.50/83.06 | 93.93/88.37 | 88.04/76.42 | 95.60/92.09 | 89.59/82.72 |
+| 6k | 87.71/79.47 | 83.81/75.49 | 86.24/82.42 | 93.89/88.50 | 88.42/77.09 | 95.71/92.26 | 89.30/82.54 |
+| 7k | 88.58/80.79 | 83.70/75.27 | 86.62/83.18 | 93.81/88.08 | 89.47/77.77 | 95.71/92.09 | 89.65/82.87 |
+| 8k | 88.25/80.02 | 84.14/75.60 | 87.13/83.44 | 93.81/88.33 | 88.84/77.26 | 95.71/92.38 | 89.65/82.84 |
+| 9k | 88.69/80.46 | 84.35/75.93 | 87.26/83.69 | 93.68/88.16 | 88.51/77.14 | 95.77/92.38 | 89.71/82.96 |
+| 10k | 88.69/80.57 | 84.35/75.93 | 87.13/83.57 | 93.68/88.21 | 88.59/77.26 | 95.77/92.38 | 89.70/82.99 |
+
+Selection readout:
+
+- 5k is the best content/overview checkpoint (`89.13/80.90`) and therefore remains the primary
+  evaluator under the established overview selection rule.
+- 3k has the best six-group macro protocol R@3 (`89.76`).
+- 10k has the best six-group macro plain R@3 (`82.99`) and case-weighted plain R@3 (`83.78`).
+- 7k has the best case-weighted protocol R@3 (`90.90`).
+- The narrow, non-monotonic spread from 1k to 10k shows early saturation of an official-model
+  fine-tune, not evidence that 5k was an undertrained from-scratch model. Calling 5k universally
+  best would nevertheless be inaccurate; 10k is a reasonable alternative when aggregate plain
+  retrieval across every prompt group is the deployment target.
+
+## 2026-07-15 portable shape-aware generation evaluation bundle
+
+The exact evaluator/runtime package used for the full-contact generation evaluation was assembled
+and uploaded to:
+
+```text
+gs://mm-jinhyung_kim/jungbin/shape_aware_motion_eval_c45_20260715/
+```
+
+The remote prefix was verified against the local payload at 404 objects and 510,225,540 bytes
+(486.59 MiB). It includes:
+
+- C45 step-5k (`step_00005000.pt`) and NVIDIA official 30-fps TMR motion stats;
+- the full-contact generator step-200k checkpoint and its proportional 283-D generator mean/std;
+- the benchmark LLM2Vec cache, shape-aware TMR code, MotionExpert code, Kimodo evaluation code, and
+  the exact Cosmos Framework 1.2.2 UniPC scheduler source;
+- reference metrics/configuration, `PROVENANCE.json`, `MANIFEST.tsv`, and `SHA256SUMS`;
+- runnable `run_all_text2motion.sh` and `smoke_test.sh` entry points.
+
+The much larger datasets were not duplicated because they already exist at:
+
+```text
+gs://mm-jinhyung_kim/jungbin/Kimodo-Motion-Gen-Benchmark-20fps/
+gs://mm-jinhyung_kim/jungbin/soma_proportional_uniegomotion_20fps/
+```
+
+Relocation smoke job `10824` loaded the vendored official UniPC implementation plus relocated C45
+and generator checkpoints, then completed an eight-case generation/retrieval/physical/shape pass.
+Checksum job `10826` removed transient bytecode, regenerated the manifest, and verified every
+payload hash. GCS object/byte totals matched exactly, and downloaded `README.md`,
+`PROVENANCE.json`, and `SHA256SUMS` compared byte-for-byte with the local bundle. The included
+generator is the completed step-200k checkpoint; the active step-500k continuation is intentionally
+not represented as complete.
