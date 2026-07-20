@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-07-18T07:06:36.401992+00:00",
+  "split": "train",
+  "rotation_head_to_upright_camera": [
+    [
+      -0.9657610058784485,
+      0.13358713686466217,
+      -0.22239650785923004
+    ],
+    [
+      -0.04043465852737427,
+      -0.9242693185806274,
+      -0.37959355115890503
+    ],
+    [
+      -0.2562630772590637,
+      -0.35760411620140076,
+      0.8980247974395752
+    ]
+  ],
+  "camera_origin_in_head_m": [
+    -0.011462880298495293,
+    0.055401213467121124,
+    0.11394084244966507
+  ],
+  "coordinate_contract": {
+    "motion": "SOMA-30 UniEgo Head joint index 6, Kimodo Y-up",
+    "camera": "upright RGB/OpenCV frame used by cam_action_upright_k1",
+    "action": "inv(T_t) @ T_t+1; translation plus rotation columns 0/1",
+    "absolute_translation_used": false,
+    "world_basis_for_rotation_only": "kimodo(x,y,z)=(aria_x,aria_z,-aria_y)"
+  },
+  "sources": {
+    "manifest": "/weka/jungbin/nymeriaplus_kimodo_proportional/video/manifest_video.jsonl",
+    "split_file": "/weka/jungbin/nymeriaplus_kimodo_proportional/train_test_split.json",
+    "uniego_root": "/weka/jungbin/nymeriaplus_kimodo_proportional/uniego_rep",
+    "camera_root": "/weka/jungbin/nymeriaplus_kimodo_proportional/camera_rgb"
+  },
+  "counts": {
+    "candidate_sequences": 642,
+    "used_sequences": 642,
+    "skipped_sequences": 0,
+    "orientation_samples": 16050,
+    "orientation_samples_kept": 14445,
+    "relative_action_samples": 61632,
+    "lever_samples_kept": 55467
+  },
+  "train_fit": {
+    "head_to_camera_rotation_deviation_deg": {
+      "mean": 14.024130744315775,
+      "median": 11.382191781837191,
+      "p90": 23.966529039390956,
+      "p99": 56.42372344312132,
+      "max": 165.12670547001503
+    },
+    "relative_rotation_error_deg": {
+      "mean": 1.5846473000193664,
+      "median": 1.4379284237095082,
+      "p90": 2.5544257806043134,
+      "p99": 4.96824920203289,
+      "max": 18.231549136119515
+    },
+    "relative_translation_error_m": {
+      "mean": 0.003089111915245075,
+      "median": 0.0015396124319443658,
+      "p90": 0.007625879195874812,
+      "p99": 0.018679530093647374,
+      "max": 0.09252778979889684
+    },
+    "relative_translation_error_without_lever_m": {
+      "mean": 0.004568809983873333,
+      "median": 0.00256354360239372,
+      "p90": 0.011054890797052488,
+      "p99": 0.02442103608293914,
+      "max": 0.09147333939875592
+    }
+  },
+  "skipped": []
+}

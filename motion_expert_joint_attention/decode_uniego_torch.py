@@ -31,8 +31,8 @@ def _se3(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
     return out
 
 
-def decode_joints(feat: torch.Tensor, n_joints: int = N_JOINTS) -> torch.Tensor:
-    """feat [B,T,D] (unnormalized) → world joints [B,T,J,3] (differentiable)."""
+def decode_transforms(feat: torch.Tensor, n_joints: int = N_JOINTS) -> torch.Tensor:
+    """feat [B,T,D] (unnormalized) -> joint SE(3) [B,T,J,4,4]."""
     B, T, _ = feat.shape
     lo = n_joints * 9
     fj = feat[..., :lo].reshape(B, T, n_joints, 9)
@@ -43,8 +43,12 @@ def decode_joints(feat: torch.Tensor, n_joints: int = N_JOINTS) -> torch.Tensor:
     for t in range(1, T):
         cMs.append(cMs[-1] @ delta[:, t])
     cM = torch.stack(cMs, dim=1)                                          # [B,T,4,4]
-    M = cM[:, :, None] @ local_T                                         # [B,T,J,4,4]
-    return M[..., :3, 3]
+    return cM[:, :, None] @ local_T                                      # [B,T,J,4,4]
+
+
+def decode_joints(feat: torch.Tensor, n_joints: int = N_JOINTS) -> torch.Tensor:
+    """feat [B,T,D] (unnormalized) -> world joints [B,T,J,3] (differentiable)."""
+    return decode_transforms(feat, n_joints=n_joints)[..., :3, 3]
 
 
 if __name__ == "__main__":

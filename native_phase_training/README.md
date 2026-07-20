@@ -44,7 +44,7 @@ The important compatibility point is that cached latents are a training input op
   - Returns dummy `video` metadata plus real `video_latents`.
   - Emits native action-SFT fields: `sequence_plan`, `action`, `raw_action_dim`, `domain_id`, `conditioning_fps`, `image_size`, tokenized text.
   - Provides `CyclingDataLoader`, an infinite wrapper over finite map-style `DataLoader` streams. This is required because native `IterativeJointDataLoader` assumes child streams do not exhaust during long training.
-  - Provides `LatentAwareIterativeJointDataLoader`, which counts cached latent patches against the native 45,056-token packing budget instead of counting the 1x1 dummy pixels.
+  - Provides `LatentAwareIterativeJointDataLoader`, which counts cached latent patches correctly when token-budget packing is selected. Production now uses a fixed four clips per GPU; `NATIVEP1_CLIPS_PER_GPU=0` restores the 45,056-token mode.
   - Formats forward/policy captions with the same `ActionPromptJsonFormatter` used by official inference, keeps inverse text exactly empty, and matches the official plain-text image-to-video duration/resolution template.
 
 - `AUDIT.md`
@@ -177,7 +177,9 @@ The raw `video` tensor is only `[3,97,1,1]` metadata, so the stock joint loader 
 latent [48,25,16,16], patch 2x2 -> 25 * 8 * 8 = 1600 vision patch tokens
 ```
 
-Packing uses `model.config.max_num_tokens_after_packing=45056` and no fixed sample-count cap. A typical action sample is roughly 1,700 tokens depending on caption length, so about 25-26 samples fit, rather than the old fixed 32 samples whose real token total exceeded the native budget. This changes effective samples per optimizer step; compare runs by both iterations and consumed samples/tokens.
+Production uses `NATIVEP1_CLIPS_PER_GPU=4`, so each rank packs exactly four samples and the eight-GPU global batch is 32 clips. Batch size is not part of the rectified-flow or official-sampler contract. The framework requires sample-count and token-count limits to be mutually exclusive, so fixed-four mode sets `max_samples_per_batch=4` and `max_sequence_length=None`. This remains below the native ceiling even at the tokenizer's 4,096-token truncation limit: four worst-case T97 action samples are below 24k tokens, versus the 45,056-token model budget. A real resolved batch on 2026-07-12 contained four samples and 7,323 tokens.
+
+Set `NATIVEP1_CLIPS_PER_GPU=0` to reproduce the earlier token-budget mode. That mode uses `max_sequence_length=45056`, fits about 25-26 typical samples per rank, and retains the latent-aware counter above. Do not compare iteration counts across these modes without also comparing consumed clips/tokens: roughly 30k token-budget steps and 190k-200k fixed-four steps expose a similar number of clips.
 
 ## Model and Optimizer
 
@@ -218,6 +220,7 @@ Optimizer and schedule:
 - betas `[0.9, 0.99]`.
 - LambdaLinear with a 500-step flat plateau and cycle length 100000. Because `f_start=f_max=0.4`, this is not an increasing warmup: the run stays at about `2e-5` effective LR for LoRA and `8e-5` for camera/action modules for 500 steps, then linearly decays toward zero.
 - grad clip 1.0.
+- native PowerEMA is enabled. Training gradients update the regular LoRA/action parameters; the framework then updates an FP32 EMA copy and official evaluation samples it with `--use-ema-weights`.
 
 Native RF/loss settings are intentionally inherited from Cosmos Nano:
 
@@ -257,7 +260,7 @@ Native Phase 1 uses the Cosmos `TensorBoardLog` callback. The entrypoint writes 
 ${RUN_DIR}/tensorboard
 ```
 
-For the default production run:
+For the in-flight token-budget job `2838`:
 
 ```bash
 /weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_tokpack_lora5e5_action4x_100k/tensorboard
@@ -274,7 +277,7 @@ events to the older shared fallback:
 To view the default production run after this patch:
 
 ```bash
-tensorboard --logdir /weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_tokpack_lora5e5_action4x_100k/tensorboard
+tensorboard --logdir /weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/tensorboard
 ```
 
 Production Slurm:
@@ -286,13 +289,13 @@ sbatch native_phase_training/sbatch_phase1_native_camera.sh
 Current production run name:
 
 ```text
-native_phase1_camera_json_tokpack_lora5e5_action4x_100k
+native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k
 ```
 
 Expected output directory:
 
 ```text
-/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_tokpack_lora5e5_action4x_100k
+/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k
 ```
 
 The launcher currently uses:
@@ -305,6 +308,8 @@ The launcher currently uses:
 - `trainer.max_iter=100000`;
 - `NATIVEP1_LORA_LR=5e-5`;
 - `NATIVEP1_ACTION_LR_MULT=4.0`.
+- `NATIVEP1_CLIPS_PER_GPU=4` (`0` opts back into 45,056-token packing).
+- native PowerEMA enabled; checkpoint evaluation uses EMA weights.
 - `NATIVEP1_AUTO_EVAL=1`, with five held-out qualitative samples by default (`NATIVEP1_VIZ_N=5`).
 
 `--exclusive` asks Slurm for exclusive allocation, but it does not kill or prevent orphan processes that are already running outside Slurm. The preflight exists to catch those before torchrun.
@@ -634,13 +639,17 @@ production job:
   state at submission: PD (Priority)
 ```
 
-Correctness audit on 2026-07-11 found that job `2801` still used legacy prose prompts for action tasks and fixed 32-sample packing based on the 1x1 dummy video. Its learned prompt contract and effective batch composition therefore differ from official action inference and native token-budget packing. The corrected launcher defaults to a new run name:
+Correctness audit on 2026-07-11 found that job `2801` still used legacy prose prompts for action tasks and fixed 32-sample packing based on the 1x1 dummy video. Its learned prompt contract and effective batch composition therefore differ from official action inference and native token-budget packing. The token-budget correction used this run name:
 
 ```text
 native_phase1_camera_json_tokpack_lora5e5_action4x_100k
 ```
 
 Do not resume job `2801`'s checkpoint into the corrected code. Cancel it only when intentionally replacing it, then restart the corrected run from the base Cosmos checkpoint under the new name. Keeping the new name prevents the DCP auto-resume path from loading the incompatible old training state.
+
+Job `2838` subsequently started the corrected JSON/token-budget recipe on 2026-07-12. It was intentionally cancelled at step 4,399 before its first 5k checkpoint, so it has no checkpoint to resume. Fixed-four replacement job `2852` ran under `native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k` and completed all 100k steps on 2026-07-14.
+
+The final 100k EMA checkpoint has a complete official-sampler evaluation under `eval_full71_inverse_forward/iter_000100000`: 71/71 inverse and 71/71 forward samples, 71 inverse camera plots, and 71 forward comparison MP4s. Inverse means are rotation `0.213036 deg`, translation-direction cosine `0.838294`, scale ratio `1.007017`, translation error `0.003177 m`, and Sim(3) ATE `0.023574 m`. Forward means, excluding conditioned frame 0, are PSNR `19.4988 dB`, SSIM `0.612583`, and LPIPS-Alex `0.285336`. This is the best fully evaluated checkpoint from 5k through 100k on the main rotation/direction/translation/ATE and PSNR/SSIM/LPIPS metrics; use the final 100k EMA DCP for native Phase-3 initialization.
 
 ## Troubleshooting
 

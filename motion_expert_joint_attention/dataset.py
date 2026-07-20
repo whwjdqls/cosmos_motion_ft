@@ -142,15 +142,29 @@ class UniegoPairsDataset(Dataset):
         self.cfg_dropout = float(cfg_dropout)
         self.source_tag = str(source_tag)
         self.ground = bool(ground)
-        self.rng = random.Random(seed)
+        self.seed = int(seed)
+        self.rng = random.Random(self.seed)
+        self._worker_rng = None
+        self._worker_rng_key = None
 
     def __len__(self) -> int:
         return len(self.rows)
 
+    def _active_rng(self) -> random.Random:
+        """Use a distinct crop/dropout stream in every persistent DataLoader worker."""
+        worker = torch.utils.data.get_worker_info()
+        if worker is None:
+            return self.rng
+        key = (int(worker.id), int(worker.seed))
+        if self._worker_rng is None or self._worker_rng_key != key:
+            self._worker_rng_key = key
+            self._worker_rng = random.Random(int(worker.seed) + 1_000_003 * self.seed)
+        return self._worker_rng
+
     def _crop_start(self, n: int, T: int) -> int:
         if n <= T:
             return 0
-        return self.rng.randint(0, n - T) if self.train else (n - T) // 2
+        return self._active_rng().randint(0, n - T) if self.train else (n - T) // 2
 
     def __getitem__(self, i: int):
         r = self.rows[i]
@@ -179,7 +193,7 @@ class UniegoPairsDataset(Dataset):
         assert nj.shape == (N_NEUTRAL_JOINTS, 3), f"neutral_joints must be (30,3); got {nj.shape}"
 
         caption = humanize_caption(r["caption"])
-        if self.train and self.rng.random() < self.cfg_dropout:
+        if self.train and self._active_rng().random() < self.cfg_dropout:
             caption = ""
 
         return {

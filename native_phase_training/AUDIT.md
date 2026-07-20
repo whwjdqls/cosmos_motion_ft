@@ -28,7 +28,9 @@ The image-to-video formatter is implemented explicitly because the framework tra
 
 The stock joint loader counted the metadata tensor `[3,97,1,1]`, producing zero spatial patch tokens and only the two vision boundary markers. Training then used a fixed 32 samples per packed batch even though each real cached latent `[48,25,16,16]` contributes 1,600 patch tokens after 2x2 patchification. A typical 32-sample action batch therefore exceeded the model's native 45,056-token target.
 
-`LatentAwareIterativeJointDataLoader` retains the parent count for text, EOS, vision markers, actions, and sound, then adds `25 * 8 * 8 = 1600` real vision patches per cached latent. The experiment now uses `max_sequence_length=${model.config.max_num_tokens_after_packing}` and `max_samples_per_batch=None`. Typical batches contain about 25-26 samples depending on prompt length.
+`LatentAwareIterativeJointDataLoader` retains the parent count for text, EOS, vision markers, actions, and sound, then adds `25 * 8 * 8 = 1600` real vision patches per cached latent. This fixed the original undercount and remains required for token-budget runs.
+
+As of 2026-07-12 production defaults to `NATIVEP1_CLIPS_PER_GPU=4`, which selects `max_samples_per_batch=4` and `max_sequence_length=None`. This is an intentional optimization-policy change, not a sampler-contract change. It is bounded safely because text is truncated to 4,096 tokens: four worst-case T97 action samples remain below 24k tokens, and a real resolved batch measured 7,323. `NATIVEP1_CLIPS_PER_GPU=0` restores the audited 45,056-token mode, where typical batches contain about 25-26 samples depending on prompt length. Token-budget job `2838` was cancelled at step 4,399 without a checkpoint; fixed-four replacement job `2852` was then submitted.
 
 ### Evaluation resolution/shift mismatch
 
@@ -54,6 +56,7 @@ Each record uses a mode-specific sample name so official inference cannot overwr
 - Loss weighting is uniform and action loss weight is 10.0.
 - The LambdaLinear schedule has `f_start=f_max=0.4`: its first 500 steps are a flat 0.4x plateau, not an increasing warmup, followed by linear decay over the 100k cycle.
 - LoRA mode trains generator `q/k/v/o_proj_moe_gen` LoRA plus `action2llm`, `llm2action`, and `action_modality_embed`. It leaves `time_embedder`, `vae2llm`, and `llm2vae` frozen.
+- PowerEMA is enabled and official evaluation uses it. The generic framework builds and updates a full FP32 `net_ema`, although only LoRA/action parameters differ from their frozen-base values; this is retained for the baseline despite the avoidable memory cost.
 
 ## Remaining Deliberate Deviations
 

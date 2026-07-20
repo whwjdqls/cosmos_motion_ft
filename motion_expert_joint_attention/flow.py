@@ -43,7 +43,13 @@ No torch.compile.
 """
 from __future__ import annotations
 
+import numpy as np
 import torch
+
+
+NATIVE_MOTION_SHIFT = 3.0
+NATIVE_NUM_TRAIN_TIMESTEPS = 1000
+NATIVE_WAVER_MODE_S = 1.29
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +211,101 @@ def sample_sigma_logitnormal(batch: int, device, m: float = 0.0, s: float = 1.0)
     return torch.sigmoid(m + s * torch.randn(batch, device=device))
 
 
+def shift_sigma(t: torch.Tensor, shift: float = NATIVE_MOTION_SHIFT) -> torch.Tensor:
+    """Apply Cosmos's rational flow shift to a normalized noise level."""
+    shift = float(shift)
+    if shift <= 0.0:
+        raise ValueError(f"shift must be positive, got {shift}")
+    return shift * t / (1.0 + (shift - 1.0) * t)
+
+
+@torch.no_grad()
+def sample_sigma_native_logitnormal(
+    batch: int,
+    device,
+    *,
+    shift: float = NATIVE_MOTION_SHIFT,
+    dtype: torch.dtype = torch.float32,
+    generator: torch.Generator | None = None,
+) -> torch.Tensor:
+    """Sample the native Cosmos shifted logit-normal training sigma.
+
+    This mirrors ``OmniMoTModel._get_train_noise_level_action``: draw the
+    logit-normal value on CPU, convert RF clean-time to diffusion sigma with
+    ``1 - t_raw``, apply the rational shift, then move/use it on the target
+    device. The logistic-normal is symmetric, so the POC's direct
+    ``shift(sigmoid(z))`` has the same distribution, but this ordering matches
+    the current framework implementation exactly.
+    """
+    if batch <= 0:
+        raise ValueError(f"batch must be positive, got {batch}")
+    raw = torch.sigmoid(torch.randn((batch,), generator=generator))
+    sigma = 1.0 - raw.to(device=device, dtype=dtype)
+    return shift_sigma(sigma, shift)
+
+
+@torch.no_grad()
+def sample_sigma_native_waver(
+    batch: int,
+    device,
+    *,
+    shift: float = NATIVE_MOTION_SHIFT,
+    dtype: torch.dtype = torch.float32,
+    generator: torch.Generator | None = None,
+) -> torch.Tensor:
+    """Sample Cosmos-3's native shifted Waver video-training sigma.
+
+    This mirrors ``TrainTimeSampler(distribution="waver")`` followed by
+    ``OmniMoTModel._get_train_noise_level_vision``: draw ``u`` in float32 on
+    CPU, transform it to RF clean-time, convert to diffusion noise-time with
+    ``1 - t_raw``, then apply the resolution shift.  Keeping the CPU draw is
+    intentional: it matches the native implementation's RNG/device contract.
+    """
+    if batch <= 0:
+        raise ValueError(f"batch must be positive, got {batch}")
+    u = torch.rand((batch,), dtype=torch.float32, generator=generator)
+    t_raw = 1.0 - u - NATIVE_WAVER_MODE_S * (
+        torch.cos(torch.pi / 2.0 * u) ** 2 - 1.0 + u
+    )
+    sigma = 1.0 - t_raw.to(device=device, dtype=dtype)
+    return shift_sigma(sigma, shift)
+
+
+def native_inference_schedule(
+    steps: int,
+    *,
+    shift: float = NATIVE_MOTION_SHIFT,
+    num_train_timesteps: int = NATIVE_NUM_TRAIN_TIMESTEPS,
+    device="cpu",
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return the exact native UniPC sigma ladder and integer timesteps.
+
+    The Phase-1 UniPC scheduler starts at ``(N-1)/N``, linearly spaces the
+    unshifted ladder to zero, applies the rational shift once, quantizes model
+    timesteps with an int64 cast, and appends a final zero sigma.
+    """
+    if steps <= 0:
+        raise ValueError(f"steps must be positive, got {steps}")
+    if num_train_timesteps <= 1:
+        raise ValueError(
+            f"num_train_timesteps must be greater than one, got {num_train_timesteps}"
+        )
+    if float(shift) <= 0.0:
+        raise ValueError(f"shift must be positive, got {shift}")
+
+    sigma_max = np.float32(
+        (num_train_timesteps - 1.0) / num_train_timesteps
+    ).item()
+    base = np.linspace(sigma_max, 0.0, steps + 1).copy()[:-1]
+    shifted = float(shift) * base / (1.0 + (float(shift) - 1.0) * base)
+    timesteps = (shifted * num_train_timesteps).astype(np.int64)
+    sigmas = np.concatenate((shifted, np.asarray([0.0]))).astype(np.float32)
+    return (
+        torch.from_numpy(sigmas).to(device=device),
+        torch.from_numpy(timesteps).to(device=device),
+    )
+
+
 def add_noise(x0: torch.Tensor, sigma: torch.Tensor):
     """x0 [B,T,D], sigma [B] -> (x_sigma, eps). (x0 itself is the prediction target.)"""
     eps = torch.randn_like(x0)
@@ -308,6 +409,144 @@ def sample_x0(
         snext = sigmas[i + 1]
         x = (1.0 - snext) * x0_hat + snext * eps_hat
     return x.to(dtype)
+
+
+@torch.no_grad()
+def sample_x0_native(
+    predict,
+    T: int,
+    motion_dim: int,
+    steps: int = 50,
+    guidance: float = 1.0,
+    predict_null=None,
+    batch: int = 1,
+    device="cuda",
+    dtype=torch.float32,
+    generator=None,
+    initial_noise: torch.Tensor | None = None,
+    sigma_eps: float = 1e-6,
+    native_shift: float = NATIVE_MOTION_SHIFT,
+    native_num_train_timesteps: int = NATIVE_NUM_TRAIN_TIMESTEPS,
+):
+    """POC-proven x0 Euler sampler on the native shifted Cosmos ladder.
+
+    ``predict`` still consumes normalized sigma in ``[0,1]``. The model sigma
+    comes from the native integer timestep divided by 1000, while integration
+    uses the scheduler's full-precision sigma. This is the generic-closure twin
+    of ``motion_expert/bs_native_flow.sample_x0``.
+    """
+    if initial_noise is None:
+        x = torch.randn(batch, T, motion_dim, device=device, dtype=dtype, generator=generator)
+    else:
+        expected = (batch, T, motion_dim)
+        if tuple(initial_noise.shape) != expected:
+            raise ValueError(f"initial_noise must have shape {expected}, got {tuple(initial_noise.shape)}")
+        x = initial_noise.to(device=device, dtype=dtype).clone()
+    sigmas, timesteps = native_inference_schedule(
+        steps,
+        shift=native_shift,
+        num_train_timesteps=native_num_train_timesteps,
+        device=device,
+    )
+    for i in range(steps):
+        sigma = sigmas[i].float().clamp(min=sigma_eps)
+        model_sigma = (
+            timesteps[i].float() / float(native_num_train_timesteps)
+        ).expand(batch)
+        x0_hat = predict(x, model_sigma).float()
+        if guidance != 1.0 and predict_null is not None:
+            x0_null = predict_null(x, model_sigma).float()
+            x0_hat = x0_null + guidance * (x0_hat - x0_null)
+        velocity = (x.float() - x0_hat) / sigma
+        x = (x.float() + (sigmas[i + 1].float() - sigma) * velocity).to(dtype)
+    return x
+
+
+@torch.no_grad()
+def sample_x0_native_unipc(
+    predict,
+    T: int,
+    motion_dim: int,
+    steps: int = 50,
+    guidance: float = 1.0,
+    predict_null=None,
+    batch: int = 1,
+    device="cuda",
+    dtype=torch.float32,
+    generator=None,
+    initial_noise: torch.Tensor | None = None,
+    sigma_eps: float = 1e-6,
+    native_shift: float = NATIVE_MOTION_SHIFT,
+    native_num_train_timesteps: int = NATIVE_NUM_TRAIN_TIMESTEPS,
+):
+    """Official Phase-1 UniPC solver driven by an x0-prediction motion model.
+
+    UniPC expects rectified-flow velocity. At each native scheduler timestep an
+    x0 prediction induces ``v=(x_sigma-x0_hat)/sigma``. CFG on x0 is equivalent
+    to CFG on that velocity because both branches share the same current state.
+    This path is solver-identical to Phase 1. The native Euler path remains
+    available for reproducing historical checkpoints and evaluations.
+    """
+    from cosmos_framework.model.vfm.diffusion.samplers.fm_solvers_unipc import (
+        FlowUniPCMultistepScheduler,
+    )
+
+    scheduler = FlowUniPCMultistepScheduler(
+        num_train_timesteps=native_num_train_timesteps,
+        shift=1.0,
+        use_dynamic_shifting=False,
+    )
+    scheduler.set_timesteps(
+        steps,
+        device=device,
+        shift=float(native_shift),
+    )
+    if initial_noise is None:
+        x = torch.randn(batch, T, motion_dim, device=device, dtype=dtype, generator=generator)
+    else:
+        expected = (batch, T, motion_dim)
+        if tuple(initial_noise.shape) != expected:
+            raise ValueError(f"initial_noise must have shape {expected}, got {tuple(initial_noise.shape)}")
+        x = initial_noise.to(device=device, dtype=dtype).clone()
+    for i, timestep in enumerate(scheduler.timesteps):
+        model_sigma = (timestep.float() / float(native_num_train_timesteps)).expand(batch)
+        x0_hat = predict(x, model_sigma).float()
+        if guidance != 1.0 and predict_null is not None:
+            x0_null = predict_null(x, model_sigma).float()
+            x0_hat = x0_null + guidance * (x0_hat - x0_null)
+        sigma = scheduler.sigmas[i].to(device=device, dtype=torch.float32).clamp(min=sigma_eps)
+        velocity = (x.float() - x0_hat) / sigma
+        x = scheduler.step(
+            model_output=velocity,
+            timestep=timestep,
+            sample=x.float(),
+            return_dict=False,
+            generator=generator,
+        )[0].to(dtype)
+    return x
+
+
+def motion_sampler(
+    objective: str,
+    schedule: str = "legacy",
+    native_solver: str = "unipc",
+):
+    """Resolve the checkpointed motion objective/schedule/solver contract."""
+    if objective == "velocity":
+        if schedule != "legacy":
+            raise ValueError("native motion scheduling is implemented only for the x0 objective")
+        return sample_velocity
+    if objective != "x0":
+        raise ValueError(f"unknown motion objective {objective!r}")
+    if schedule == "legacy":
+        return sample_x0
+    if schedule != "native":
+        raise ValueError(f"unknown motion schedule {schedule!r}")
+    if native_solver == "euler":
+        return sample_x0_native
+    if native_solver == "unipc":
+        return sample_x0_native_unipc
+    raise ValueError(f"unknown native motion solver {native_solver!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -437,6 +676,89 @@ def sample_velocity_masked(
         x = x - dt * v_hat
         x = keep * x0_clean.to(dtype) + (1.0 - keep) * x      # re-pin clean tokens each step
     return x
+
+
+@torch.no_grad()
+def sample_velocity_native_masked(
+    predict,
+    x0_clean: torch.Tensor,
+    condition_mask: torch.Tensor,
+    steps: int = 35,
+    guidance: float = 1.0,
+    predict_null=None,
+    device="cuda",
+    dtype=torch.float32,
+    generator=None,
+    native_shift: float = NATIVE_MOTION_SHIFT,
+    native_num_train_timesteps: int = NATIVE_NUM_TRAIN_TIMESTEPS,
+    pass_scheduler_sigma: bool = False,
+):
+    """Official Cosmos-3 UniPC sampling for a masked velocity target.
+
+    The target iterate is already flattened to ``[B,N,D]`` by ``sample.py``;
+    UniPC is shape-agnostic beyond requiring a batch dimension.  Clean target
+    tokens, when present, are pinned after every scheduler step.  The model
+    closure consumes normalized sigma because ``JointMotionModel`` converts it
+    back to the native raw-timestep embedding convention internally.
+    """
+    from cosmos_framework.model.vfm.diffusion.samplers.fm_solvers_unipc import (
+        FlowUniPCMultistepScheduler,
+    )
+
+    if steps <= 0:
+        raise ValueError(f"steps must be positive, got {steps}")
+    clean = condition_mask.bool()
+    keep = clean.to(torch.float32)
+    while keep.dim() < x0_clean.dim():
+        keep = keep.unsqueeze(-1)
+
+    x = torch.randn(
+        x0_clean.shape,
+        device=device,
+        dtype=torch.float32,
+        generator=generator,
+    )
+    x = keep * x0_clean.float() + (1.0 - keep) * x
+
+    scheduler = FlowUniPCMultistepScheduler(
+        num_train_timesteps=int(native_num_train_timesteps),
+        shift=1.0,
+        use_dynamic_shifting=False,
+    )
+    scheduler.set_timesteps(
+        steps,
+        device=device,
+        shift=float(native_shift),
+    )
+    batch = int(x.shape[0])
+    for i, timestep in enumerate(scheduler.timesteps):
+        model_sigma = (
+            timestep.float() / float(native_num_train_timesteps)
+        ).expand(batch)
+        scheduler_sigma = scheduler.sigmas[i].to(
+            device=device, dtype=torch.float32
+        ).expand(batch)
+        velocity = (
+            predict(x.to(dtype), model_sigma, scheduler_sigma)
+            if pass_scheduler_sigma
+            else predict(x.to(dtype), model_sigma)
+        ).float()
+        if guidance != 1.0 and predict_null is not None:
+            velocity_null = (
+                predict_null(x.to(dtype), model_sigma, scheduler_sigma)
+                if pass_scheduler_sigma
+                else predict_null(x.to(dtype), model_sigma)
+            ).float()
+            velocity = velocity_null + guidance * (velocity - velocity_null)
+        x = scheduler.step(
+            model_output=velocity,
+            timestep=timestep,
+            sample=x,
+            return_dict=False,
+            generator=generator,
+        )[0]
+        x = keep * x0_clean.float() + (1.0 - keep) * x
+    return x.to(dtype)
 
 
 @torch.no_grad()

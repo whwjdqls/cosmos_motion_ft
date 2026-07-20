@@ -26,7 +26,8 @@ export NYMERIA_RESOLUTION=${NYMERIA_RESOLUTION:-256}
 export NYMERIA_LATENT_ROOT=${NYMERIA_LATENT_ROOT:-/weka/jungbin/nymeriaplus_kimodo_proportional/joint_latents_T${NYMERIA_NUM_FRAMES}}
 export NATIVEP1_LORA_LR=${NATIVEP1_LORA_LR:-5e-5}
 export NATIVEP1_ACTION_LR_MULT=${NATIVEP1_ACTION_LR_MULT:-4.0}
-export NATIVEP1_RUN_NAME=${NATIVEP1_RUN_NAME:-native_phase1_camera_json_tokpack_lora5e5_action4x_100k}
+export NATIVEP1_CLIPS_PER_GPU=${NATIVEP1_CLIPS_PER_GPU:-4}
+export NATIVEP1_RUN_NAME=${NATIVEP1_RUN_NAME:-native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k}
 export NATIVEP1_AUTO_EVAL=${NATIVEP1_AUTO_EVAL:-1}
 export NATIVEP1_VIZ_N=${NATIVEP1_VIZ_N:-5}
 export NATIVEP1_EVAL_INPUT_DIR=${NATIVEP1_EVAL_INPUT_DIR:-/weka/jungbin/cosmos_motion_ft_runs/native_phase1_eval_inputs_viz5_256_T97_v2}
@@ -41,6 +42,7 @@ echo "[nativep1] vae=${WAN_VAE_PATH}"
 echo "[nativep1] latents=${NYMERIA_LATENT_ROOT}"
 echo "[nativep1] output_root=${IMAGINAIRE_OUTPUT_ROOT}"
 echo "[nativep1] lora_lr=${NATIVEP1_LORA_LR} action_lr_mult=${NATIVEP1_ACTION_LR_MULT}"
+echo "[nativep1] clips_per_gpu=${NATIVEP1_CLIPS_PER_GPU} (0 means 45056-token budget packing)"
 echo "[nativep1] run_name=${NATIVEP1_RUN_NAME}"
 echo "[nativep1] tensorboard=${TB_LOG_DIR:-${IMAGINAIRE_OUTPUT_ROOT}/cosmos3_camera/camera_world/${NATIVEP1_RUN_NAME}/tensorboard}"
 echo "[nativep1] auto_eval=${NATIVEP1_AUTO_EVAL} eval_inputs=${NATIVEP1_EVAL_INPUT_DIR} viz_n=${NATIVEP1_VIZ_N}"
@@ -98,6 +100,7 @@ fi
   trainer.max_iter=100000 \
   trainer.logging_iter=50 \
   checkpoint.save_iter=5000 \
+  model.config.ema.enabled=true \
   model.config.compile.enabled=false \
   model.config.parallelism.data_parallel_replicate_degree=8 \
   model.config.parallelism.data_parallel_shard_degree=1 \

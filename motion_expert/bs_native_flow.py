@@ -133,7 +133,10 @@ def inference_schedule(
 
     # FlowUniPCMultistepScheduler initializes sigma_max=(N-1)/N and then uses
     # np.linspace(sigma_max, 0, num_steps+1)[:-1] before applying the shift.
-    sigma_max = (num_train_timesteps - 1.0) / num_train_timesteps
+    # The framework materializes its base training ladder as torch.float32
+    # before reading ``sigma_max.item()`` for inference. Preserve that endpoint
+    # rounding so this helper is bit-identical, not merely numerically close.
+    sigma_max = np.float32((num_train_timesteps - 1.0) / num_train_timesteps).item()
     base = np.linspace(sigma_max, 0.0, num_steps + 1).copy()[:-1]
     shifted = shift * base / (1.0 + (shift - 1.0) * base)
     timesteps = (shifted * num_train_timesteps).astype(np.int64)

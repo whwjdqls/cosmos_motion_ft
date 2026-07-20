@@ -27,6 +27,7 @@ Output layout under ``<out_root>`` (default ``<ckpt_dir>/eval_all``)::
     motion_recon/<task>/
         pred/<seq>.npy  gt/<seq>.npy     z-scored [T,283] pred + GT motion
         motion_recon_metrics.json        (invdyn_metrics.json schema, per task)
+        head_camera_alignment_metrics.json (V2M relative action error, head-camera runs)
     viz/
         <task>_<seq>.mp4                 skeleton mp4 (motion tasks; GT|pred for video2motion)
         motimg2video_<seq>.mp4           GT|generated video side-by-side
@@ -63,8 +64,19 @@ import config as C            # noqa: E402
 import sample as S            # noqa: E402
 import task_plan as TP        # noqa: E402
 import eval_motion_recon as EMR   # noqa: E402
+from head_camera_alignment import (  # noqa: E402
+    DEFAULT_CALIBRATION,
+    head_camera_errors,
+    load_head_camera_calibration,
+    motion_to_camera_action,
+)
 from uniego_layout import FEAT_DIM, ground_features, canonicalize_frame0  # noqa: E402
-from nymeria_joint_dataset import latent_path, _load_latents  # noqa: E402
+from nymeria_joint_dataset import (  # noqa: E402
+    _load_latents,
+    _load_rgb_cam,
+    latent_path,
+    rel_action_from_window,
+)
 
 ALL_TASKS = list(TP.TASKS)
 CAMERA_TASKS = {"inverse_dynamics", "forward_dynamics", "policy"}
@@ -77,8 +89,18 @@ VIDEO_GEN_TASKS = {"motimg2video"}
 # index build at lines 264-301: uni + off + latents + rgb + caption at one (uuid,start)).
 # ============================================================================
 def build_full_index(manifest_path, split_file, split, num_frames, latent_root, uniego_root,
-                     require_latents=True):
+                     require_latents=True, windows_json=None):
     from nymeria_camera_rgb_dataset import _rgb_path
+    want = None
+    want_by_uuid = {}
+    if windows_json:
+        rows = json.load(open(windows_json))
+        want = {(row["uuid"], int(row["start"])): order for order, row in enumerate(rows)}
+        if len(want) != len(rows):
+            raise ValueError(f"{windows_json}: duplicate (uuid,start) rows")
+        for (uuid, start), order in want.items():
+            want_by_uuid.setdefault(uuid, []).append((start, order))
+
     keep = None
     if split not in ("all", None):
         sp = json.load(open(split_file))
@@ -114,6 +136,44 @@ def build_full_index(manifest_path, split_file, split, num_frames, latent_root, 
             uni = os.path.join(uniego_root, f"{uuid}.npz")
             if not os.path.isfile(uni):
                 continue
+            if want is not None:
+                windows = {int(w["start_frame"]): w for w in rec.get("t2w_windows", [])}
+                for s, order in want_by_uuid.get(uuid, []):
+                    if s + num_frames > nb:
+                        continue
+                    lp = latent_path(uuid, s, latent_root)
+                    if require_latents and not os.path.isfile(lp):
+                        continue
+                    window = windows.get(s)
+                    if window is None:
+                        continue
+                    off = window.get("ground_offset_y", None)
+                    if calibrated and off is not None:
+                        off = float(off) + deltas.get(uuid, gdelta)
+                    drop_entry = next(
+                        (
+                            entry for entry in _fc.get("dropped_windows", {}).get(uuid, [])
+                            if int(entry[0]) == int(window["start_frame"])
+                            and int(entry[1]) == int(window["end_frame"])
+                        ),
+                        None,
+                    ) if calibrated else None
+                    index.append({
+                        "uuid": uuid,
+                        "vis": vis,
+                        "rgb": rgb,
+                        "uni": uni,
+                        "s": int(s),
+                        "cap": window.get("caption", ""),
+                        "off": off,
+                        "lp": lp,
+                        "_order": order,
+                        "floor_drop_reason": (
+                            str(drop_entry[2]) if drop_entry is not None and len(drop_entry) > 2
+                            else None
+                        ),
+                    })
+                continue
             for w in rec.get("t2w_windows", []):
                 if not w.get("usable", False) or not w.get("caption"):
                     continue
@@ -131,6 +191,17 @@ def build_full_index(manifest_path, split_file, split, num_frames, latent_root, 
                         index.append({"uuid": uuid, "vis": vis, "rgb": rgb, "uni": uni,
                                       "s": int(s), "cap": w["caption"], "off": off, "lp": lp})
                     s += num_frames
+    if want is not None:
+        index.sort(key=lambda item: item["_order"])
+        found = {(item["uuid"], item["s"]) for item in index}
+        missing = [key for key, _order in sorted(want.items(), key=lambda pair: pair[1])
+                   if key not in found]
+        print(
+            f"[eval_all] windows_json: matched {len(index)}/{len(want)} requested windows",
+            flush=True,
+        )
+        if missing:
+            print(f"[eval_all] windows_json missing: {missing}", flush=True)
     return index
 
 
@@ -155,9 +226,8 @@ def load_gt_motion(uni_path, s, off, T, mean, std):
 # ============================================================================
 # Video (Wan-VAE latent) helpers -- reuse eval_camera's exact decode/write.
 # ============================================================================
-def _video_side_by_side(vae, gt_frames, gen_latents, dst_mp4, fps, dev):
+def _video_side_by_side(gt_frames, gen_frames, dst_mp4, fps):
     import eval_camera as EC
-    gen_frames = EC.latent_to_frames(vae, gen_latents, dev)
     gt_path = dst_mp4.replace(".mp4", "_gt.mp4")
     gen_path = dst_mp4.replace(".mp4", "_gen.mp4")
     if gt_frames is not None:
@@ -199,16 +269,42 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ckpt", default=None,
-                    help="train.py checkpoint (.pt). If omitted/missing -> BASE model smoke path.")
+                    help="train.py checkpoint (.pt). If omitted -> BASE model smoke path; an "
+                         "explicit missing path is an error.")
     ap.add_argument("--out_dir", default=None, help="output root (default <ckpt_dir>/eval_all)")
     ap.add_argument("--n", type=int, default=8, help="number of test windows per task")
     ap.add_argument("--tasks", nargs="*", default=ALL_TASKS, help="tasks to eval (default = all 7)")
     ap.add_argument("--windows_json", default=None,
-                    help="JSON list of {uuid,start}: evaluate EXACTLY these windows (e.g. the "
-                         "held-out full71 set shared with nymeria_world). Forwarded to eval_camera.")
+                    help="JSON list of {uuid,start}: evaluate EXACTLY these windows, in order, "
+                         "for camera, motion, and video tasks (e.g. one per held-out sequence)")
     ap.add_argument("--steps", type=int, default=50)
     ap.add_argument("--cfg", type=float, default=2.5)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--motion_native_solver",
+        choices=["euler", "unipc"],
+        default=None,
+        help="optional inference-only override for native-schedule x0 motion checkpoints; "
+             "use unipc to evaluate historical Euler-recorded checkpoints with NVIDIA's "
+             "official solver",
+    )
+    ap.add_argument(
+        "--eval_head_camera_alignment",
+        action="store_true",
+        help=(
+            "compute V2M relative head-camera action errors even when the checkpoint was "
+            "trained without head-camera alignment; this is evaluation-only and does not "
+            "change model inputs or sampling"
+        ),
+    )
+    ap.add_argument(
+        "--head_camera_calibration",
+        default=None,
+        help=(
+            "train-split head-camera calibration JSON used by the evaluation-only metric "
+            f"(default: checkpoint value, then {DEFAULT_CALIBRATION})"
+        ),
+    )
     ap.add_argument("--split", default="test", choices=["test", "train", "all"])
     ap.add_argument("--manifest", default=C.NYMERIA_MANIFEST)
     ap.add_argument("--split_file", default=C.NYMERIA_SPLIT_FILE)
@@ -224,8 +320,12 @@ def main():
     ap.add_argument("--motion_viz_limit", type=int, default=-1,
                     help="maximum number of motion-task mp4s to render per task; negative renders all. "
                          "Metrics and .npy outputs are still written for every evaluated window.")
+    ap.add_argument("--lpips_batch_size", type=int, default=16,
+                    help="frame batch size for motimg2video LPIPS-Alex evaluation")
     ap.add_argument("--device", default="cuda")
     args = ap.parse_args()
+    if args.ckpt is not None and not os.path.isfile(args.ckpt):
+        ap.error(f"--ckpt does not exist or is not a file: {args.ckpt}")
 
     tasks = [t for t in args.tasks if t in ALL_TASKS]
     bad = [t for t in args.tasks if t not in ALL_TASKS]
@@ -244,7 +344,8 @@ def main():
     print(f"[eval_all] out_root={out_root}  tasks={tasks}", flush=True)
 
     summary = {"ckpt": args.ckpt, "tasks": tasks, "n": args.n, "out_root": out_root,
-               "camera": None, "motion": {}, "video": {}, "viz": []}
+               "windows_json": args.windows_json, "camera": None, "motion": {},
+               "head_camera": None, "video": {}, "video_metrics": {}, "viz": []}
 
     # ---- 1. CAMERA tasks -> delegate to eval_camera (its schema + metric + viz) ---------------
     cam_tasks = [t for t in tasks if t in CAMERA_TASKS]
@@ -295,19 +396,34 @@ def main():
 
     # ---- model (real ckpt overlay, or BASE model smoke) ---------------------------------------
     ck_args = {}
-    if args.ckpt and os.path.isfile(args.ckpt):
-        model, cosmos, ck = S.load_joint_model(args.ckpt, device=dev)
+    if args.ckpt:
+        model, cosmos, ck = S.load_joint_model(
+            args.ckpt,
+            device=dev,
+            motion_native_solver_cli=args.motion_native_solver,
+        )
         ck_args = (ck.get("args", {}) or {}) if isinstance(ck, dict) else {}
         objective = model.objective
     else:
-        print(f"[eval_all] no ckpt ({args.ckpt!r}); BASE model (x0-motion default, smoke only)",
-              flush=True)
+        print("[eval_all] --ckpt omitted; BASE model (x0-motion default, smoke only)", flush=True)
         from cosmos_loader import FrozenCosmos
         from joint_motion_model import JointMotionModel
         cosmos = FrozenCosmos(dtype=torch.bfloat16, device=dev)
         model = JointMotionModel(cosmos, objective="x0", motion_dim=FEAT_DIM).to(dev)
         model.eval()
         objective = model.objective
+
+    summary["sampling"] = {
+        "steps": int(args.steps),
+        "cfg": float(args.cfg),
+        "seed": int(args.seed),
+        "motion_schedule": model.motion_schedule,
+        "motion_shift": float(model.motion_shift),
+        "motion_native_solver": model.motion_native_solver,
+        "gen_schedule": model.gen_schedule,
+        "gen_shift": float(model.gen_shift),
+        "gen_native_solver": model.gen_native_solver,
+    }
 
     # ---- T + latent root: default from ckpt args (mirrors eval_camera) -------------------------
     if args.num_frames is not None:
@@ -316,28 +432,114 @@ def main():
         T = int(ck_args["T"])
     else:
         T = int(C.VIDEO_NUM_FRAMES)
+    ti2m_T = int(ck_args.get("ti2m_frames") or T)
+    reasoner_ti2m = (
+        "textimg2motion" in mv_tasks
+        and getattr(model, "textimg_condition", "generator") == "reasoner"
+    )
+    needs_latents = (
+        "video2motion" in mv_tasks
+        or bool(set(mv_tasks) & VIDEO_GEN_TASKS)
+        or ("textimg2motion" in mv_tasks and not reasoner_ti2m)
+    )
+    # A Phase-2 checkpoint can use output T=200 for T2M but 97 aligned valid frames for TI2M.
+    # Build the held-out index at 97 when no selected task needs generator latents/full video.
+    index_T = ti2m_T if reasoner_ti2m and not needs_latents else T
     latent_root = args.latent_root or (
-        C.VIDEO_LATENT_ROOT if T == C.VIDEO_NUM_FRAMES else f"{C.VIDEO_LATENT_ROOT}_T{T}")
-    print(f"[eval_all] T={T}  latent_root={latent_root}  motion_objective={objective}", flush=True)
+        C.VIDEO_LATENT_ROOT
+        if index_T == C.VIDEO_NUM_FRAMES
+        else f"{C.VIDEO_LATENT_ROOT}_T{index_T}"
+    )
+    print(
+        f"[eval_all] output_T={T} ti2m_T={ti2m_T} index_T={index_T} "
+        f"needs_latents={needs_latents} latent_root={latent_root} "
+        f"motion_objective={objective}",
+        flush=True,
+    )
 
     mean = np.load(C.MOTION_STATS_MEAN).astype(np.float32)
     std = np.load(C.MOTION_STATS_STD).astype(np.float32)
 
+    evaluate_head_camera = (
+        "video2motion" in mv_tasks
+        and (args.eval_head_camera_alignment or getattr(model, "head_camera_alignment", False))
+    )
+    head_camera_rotation = None
+    camera_origin_in_head = None
+    motion_mean_t = None
+    motion_std_t = None
+    head_camera_calibration = None
+    if evaluate_head_camera:
+        head_camera_calibration = (
+            args.head_camera_calibration
+            or ck_args.get("head_camera_calibration")
+            or DEFAULT_CALIBRATION
+        )
+        if not os.path.isfile(head_camera_calibration):
+            raise FileNotFoundError(
+                f"head-camera calibration does not exist: {head_camera_calibration}"
+            )
+        head_camera_rotation, camera_origin_in_head, _ = load_head_camera_calibration(
+            head_camera_calibration
+        )
+        head_camera_rotation = head_camera_rotation.to(dev)
+        camera_origin_in_head = camera_origin_in_head.to(dev)
+        motion_mean_t = torch.from_numpy(mean).to(dev)
+        motion_std_t = torch.from_numpy(std).to(dev)
+        print(
+            "[eval_all] V2M head-camera metric enabled "
+            f"(checkpoint_alignment={getattr(model, 'head_camera_alignment', False)}, "
+            f"calibration={head_camera_calibration})",
+            flush=True,
+        )
+
     # ---- test-window index (carries every modality) -------------------------------------------
-    index = build_full_index(args.manifest, args.split_file, args.split, T, latent_root,
-                             args.uniego_root, require_latents=True)
+    index = build_full_index(
+        args.manifest,
+        args.split_file,
+        args.split,
+        index_T,
+        latent_root,
+        args.uniego_root,
+        require_latents=needs_latents,
+        windows_json=args.windows_json,
+    )
     if not index:
-        raise SystemExit(f"[eval_all] no test windows w/ latents under {latent_root} + uniego "
-                         f"(split={args.split})")
+        requirement = f"latents under {latent_root} + uniego" if needs_latents else "uniego"
+        raise SystemExit(
+            f"[eval_all] no test windows w/ {requirement} (split={args.split}, T={index_T})"
+        )
+    if args.windows_json:
+        requested_count = len(json.load(open(args.windows_json)))
+        if len(index) != requested_count:
+            raise RuntimeError(
+                f"explicit held-out set incomplete: matched {len(index)}/{requested_count} windows"
+            )
     index = index[: args.n]
     print(f"[eval_all] {len(index)} test windows for motion/video tasks", flush=True)
+    floor_flagged = {
+        seq_name(i, item["uuid"], item["s"]): item["floor_drop_reason"]
+        for i, item in enumerate(index)
+        if item.get("floor_drop_reason")
+    }
+    summary["floor_flagged_motion_gt"] = floor_flagged
+    if floor_flagged:
+        print(
+            f"[eval_all] WARNING: {len(floor_flagged)} explicit windows are flagged by floor "
+            "calibration; full-set metrics include them and a floor-valid subset is also written",
+            flush=True,
+        )
 
     # ---- VAE only if a video-gen task with pixel output -----------------------------------
     need_video = (not args.no_video) and any(t in VIDEO_GEN_TASKS for t in mv_tasks)
     vae = None
+    lpips_metric = None
     if need_video:
         from precompute_latents import load_vae
+        from native_phase_training.evaluate_inverse_forward import LPIPSAlex
+
         vae = load_vae(args.vae_path, args.resolution, T, dev)
+        lpips_metric = LPIPSAlex(dev, args.lpips_batch_size)
         print("[eval_all] Wan2.2-VAE loaded", flush=True)
 
     viz_dir = os.path.join(out_root, "viz")
@@ -346,57 +548,129 @@ def main():
     # per-task collected metric rows
     recon_rows = {t: {} for t in mv_tasks if t in MOTION_TASKS}
     motion_viz_counts = {t: 0 for t in mv_tasks if t in MOTION_TASKS}
+    video_metric_rows = {}
+    head_camera_rows = {} if evaluate_head_camera else None
 
     for i, it in enumerate(index):
         uuid, s = it["uuid"], it["s"]
         name = seq_name(i, uuid, s)
         print(f"\n[eval_all] [{i+1}/{len(index)}] {name}", flush=True)
 
-        gt_feat_z, nj = load_gt_motion(it["uni"], s, it["off"], T, mean, std)  # [k,283],[30,3]
-        nj_t = torch.from_numpy(nj).float().to(dev)[None]                      # [1,30,3]
-        vlat = torch.from_numpy(np.ascontiguousarray(_load_latents(it["lp"]))).float().to(dev)
-        C_, T_lat, h, w = vlat.shape
+        base_gt_z, nj = load_gt_motion(
+            it["uni"], s, it["off"], index_T, mean, std
+        )
+        nj_t = torch.from_numpy(nj).float().to(dev)[None]
+        vlat = None
+        T_lat = None
+        if needs_latents:
+            vlat = torch.from_numpy(
+                np.ascontiguousarray(_load_latents(it["lp"]))
+            ).float().to(dev)
+            _C, T_lat, _h, _w = vlat.shape
         cap = it["cap"]
 
         # ---- MOTION tasks: sample -> recon metric -> render ------------------------------------
         for t in [x for x in mv_tasks if x in MOTION_TASKS]:
+            task_T = ti2m_T if t == "textimg2motion" else T
+            if task_T == index_T:
+                gt_task_z = base_gt_z
+            else:
+                gt_task_z, _ = load_gt_motion(
+                    it["uni"], s, it["off"], task_T, mean, std
+                )
             if t == "text2motion":
-                pred_z = S.sample_text2motion(model, caption=cap, neutral_joints=nj_t, T=T,
+                pred_z = S.sample_text2motion(model, caption=cap, neutral_joints=nj_t, T=task_T,
                                               steps=args.steps, guidance=args.cfg,
                                               objective=objective, device=dev, seed=args.seed)
             elif t == "textimg2motion":
                 reasoner_image = None
                 if getattr(model, "textimg_condition", "generator") == "reasoner":
                     from nymeria_camera_dataset import decode_window_pyav
-                    frames0 = decode_window_pyav(it["vis"], s, T, args.fps)
+                    # Corrected reasoner-side TI2M needs only frame 0. Decoding the full T=97
+                    # clip here was pure I/O/CPU overhead and did not change conditioning.
+                    frames0 = decode_window_pyav(it["vis"], s, 1, args.fps)
                     reasoner_image = torch.from_numpy(
                         np.ascontiguousarray(frames0[0])
                     ).permute(2, 0, 1).contiguous()
-                pred_z = S.sample_textimg2motion(model, caption=cap, neutral_joints=nj_t, T=T,
-                                                 image_latent=vlat[:, 0],
+                pred_z = S.sample_textimg2motion(model, caption=cap, neutral_joints=nj_t, T=task_T,
+                                                 image_latent=(vlat[:, 0] if vlat is not None else None),
                                                  reasoner_image=reasoner_image,
                                                  steps=args.steps,
                                                  guidance=args.cfg, objective=objective,
                                                  device=dev, seed=args.seed)
             else:  # video2motion
-                pred_z = S.sample_video2motion(model, neutral_joints=nj_t, T=T, video_latents=vlat,
+                pred_z = S.sample_video2motion(model, neutral_joints=nj_t, T=task_T, video_latents=vlat,
                                                steps=args.steps, guidance=args.cfg,
                                                objective=objective, device=dev, seed=args.seed)
             # save pred + gt z-scored motion
             pd = os.path.join(out_root, "motion_recon", t, "pred"); os.makedirs(pd, exist_ok=True)
             gd = os.path.join(out_root, "motion_recon", t, "gt"); os.makedirs(gd, exist_ok=True)
             np.save(os.path.join(pd, name + ".npy"), pred_z)
-            np.save(os.path.join(gd, name + ".npy"), gt_feat_z)
+            np.save(os.path.join(gd, name + ".npy"), gt_task_z)
             # recon metric (vs the aligned GT window)
-            recon_rows[t][name] = EMR.recon_metrics(pred_z, gt_feat_z, mean, std)
+            recon_rows[t][name] = EMR.recon_metrics(pred_z, gt_task_z, mean, std)
             print(f"  [{t}] MPJPE={recon_rows[t][name]['mpjpe_m']:.3f} "
                   f"accel_err={recon_rows[t][name]['accel_err']:.3f}", flush=True)
+            if t == "video2motion" and head_camera_rows is not None:
+                camera_position, camera_rotation = _load_rgb_cam(it["rgb"])
+                camera_target = torch.from_numpy(rel_action_from_window(
+                    camera_position[s:s + task_T],
+                    camera_rotation[s:s + task_T],
+                )).float().to(dev).unsqueeze(0)
+                transition_mask = torch.ones(
+                    camera_target.shape[:2], dtype=torch.bool, device=dev
+                )
+                with torch.no_grad():
+                    pred_motion = (
+                        torch.from_numpy(np.ascontiguousarray(pred_z))
+                        .float()
+                        .to(dev)
+                        .unsqueeze(0)
+                    )
+                    gt_motion = (
+                        torch.from_numpy(np.ascontiguousarray(gt_task_z))
+                        .float()
+                        .to(dev)
+                        .unsqueeze(0)
+                    )
+                    pred_action = motion_to_camera_action(
+                        pred_motion * motion_std_t + motion_mean_t,
+                        head_camera_rotation,
+                        camera_origin_in_head,
+                    )
+                    gt_action = motion_to_camera_action(
+                        gt_motion * motion_std_t + motion_mean_t,
+                        head_camera_rotation,
+                        camera_origin_in_head,
+                    )
+                    pred_trans, pred_rot = head_camera_errors(
+                        pred_action, camera_target, transition_mask
+                    )
+                    gt_trans, gt_rot = head_camera_errors(
+                        gt_action, camera_target, transition_mask
+                    )
+                head_camera_rows[name] = {
+                    "translation_m": float(pred_trans),
+                    "rotation_deg": float(pred_rot),
+                    "gt_calibration_translation_m": float(gt_trans),
+                    "gt_calibration_rotation_deg": float(gt_rot),
+                }
+                print(
+                    f"  [video2motion head-camera] trans={float(pred_trans):.4f}m "
+                    f"rot={float(pred_rot):.3f}deg "
+                    f"(GT calibration floor={float(gt_trans):.4f}m/{float(gt_rot):.3f}deg)",
+                    flush=True,
+                )
             # viz: video2motion -> GT|pred side-by-side; generative tasks -> pred only
             if args.motion_viz_limit < 0 or motion_viz_counts[t] < args.motion_viz_limit:
                 dst = os.path.join(viz_dir, f"{t}_{name}.mp4")
                 try:
-                    p = _render_motion(pred_z, mean, std, dst, cap[:40], args.fps,
-                                       gt_feat_z=(gt_feat_z if t == "video2motion" else None))
+                    viz_caption = (
+                        f"metadata only (V2M text disabled): {cap[:40]}"
+                        if t == "video2motion" else cap[:40]
+                    )
+                    p = _render_motion(pred_z, mean, std, dst, viz_caption, args.fps,
+                                       gt_feat_z=(gt_task_z if t == "video2motion" else None))
                     summary["viz"].append(p)
                     motion_viz_counts[t] += 1
                 except Exception as e:  # noqa: BLE001
@@ -408,7 +682,7 @@ def main():
 
         # ---- motimg2video: sample video -> VAE decode -> GT|gen side-by-side -------------------
         if "motimg2video" in mv_tasks:
-            motion_clean = torch.from_numpy(gt_feat_z).float().to(dev)[None]   # [1,k,283] clean cond
+            motion_clean = torch.from_numpy(base_gt_z).float().to(dev)[None]   # [1,k,283] clean cond
             gen = S.sample_motimg2video(model, caption=cap, image_latent=vlat[:, 0],
                                         motion=motion_clean, neutral_joints=nj_t, T_lat=T_lat,
                                         steps=args.steps, guidance=args.cfg, device=dev,
@@ -417,19 +691,38 @@ def main():
             np.savez(os.path.join(vd, name + ".npz"), latents=gen.astype(np.float16))
             summary["video"].setdefault("motimg2video", []).append(name)
             if need_video:
-                try:
-                    from nymeria_camera_dataset import decode_window_pyav
-                    gt_frames = None
-                    try:
-                        gt_frames = decode_window_pyav(it["vis"], s, T, args.fps)
-                    except Exception as e:  # noqa: BLE001
-                        print(f"  [motimg2video] GT clip decode failed ({e})", flush=True)
-                    dst = os.path.join(viz_dir, f"motimg2video_{name}.mp4")
-                    p = _video_side_by_side(vae, gt_frames, gen, dst, args.fps, dev)
-                    summary["viz"].append(p)
-                    print(f"  [motimg2video] video -> {p}", flush=True)
-                except Exception as e:  # noqa: BLE001
-                    print(f"  [motimg2video] video viz failed ({e})", flush=True)
+                import eval_camera as EC
+                from native_phase_training.evaluate_inverse_forward import (
+                    _frame_metrics,
+                    _resize_gt_like_native,
+                    _summarize_frame_metrics,
+                )
+                from nymeria_camera_dataset import decode_window_pyav
+
+                gt_frames = decode_window_pyav(it["vis"], s, T, args.fps)
+                gen_frames = EC.latent_to_frames(vae, gen, dev)
+                if len(gt_frames) != T or len(gen_frames) != T:
+                    raise RuntimeError(
+                        f"{name}: expected {T} GT/generated frames, got "
+                        f"{len(gt_frames)}/{len(gen_frames)}"
+                    )
+                gt_metric_frames = _resize_gt_like_native(
+                    gt_frames, gen_frames.shape[1], gen_frames.shape[2]
+                )
+                frame_values = _frame_metrics(
+                    gt_metric_frames[1:], gen_frames[1:], lpips_metric
+                )
+                video_metric_rows[name] = _summarize_frame_metrics(frame_values)
+                metric_row = video_metric_rows[name]
+                print(
+                    f"  [motimg2video] PSNR={metric_row['psnr_db']:.3f} "
+                    f"SSIM={metric_row['ssim']:.4f} LPIPS={metric_row['lpips_alex']:.4f}",
+                    flush=True,
+                )
+                dst = os.path.join(viz_dir, f"motimg2video_{name}.mp4")
+                p = _video_side_by_side(gt_frames, gen_frames, dst, args.fps)
+                summary["viz"].append(p)
+                print(f"  [motimg2video] video -> {p}", flush=True)
 
     # ---- write motion recon metrics per task --------------------------------------------------
     for t, rows in recon_rows.items():
@@ -441,9 +734,148 @@ def main():
         summary["motion"][t] = {"metrics_json": outp,
                                 "generative": t in EMR.GENERATIVE_TASKS,
                                 "aggregate": json.load(open(outp))["aggregate"]}
+        valid_rows = {name: row for name, row in rows.items() if name not in floor_flagged}
+        if len(valid_rows) != len(rows):
+            valid_out = os.path.join(
+                out_root, "motion_recon", t, "motion_recon_metrics_floor_valid.json"
+            )
+            EMR.aggregate_and_write(
+                valid_rows,
+                valid_out,
+                tag=f"{t} floor-valid | {out_root}",
+                generative=(t in EMR.GENERATIVE_TASKS),
+            )
+            summary["motion"][t]["floor_valid_metrics_json"] = valid_out
+            summary["motion"][t]["floor_valid_n"] = len(valid_rows)
+
+    if head_camera_rows:
+        metrics_path = os.path.join(
+            out_root, "motion_recon", "video2motion", "head_camera_alignment_metrics.json"
+        )
+        payload = _aggregate_head_camera_metrics(head_camera_rows)
+        json.dump(payload, open(metrics_path, "w"), indent=2)
+        summary["head_camera"] = {
+            "metrics_json": metrics_path,
+            "aggregate": payload["aggregate"],
+            "calibration": head_camera_calibration,
+            "checkpoint_alignment_enabled": bool(
+                getattr(model, "head_camera_alignment", False)
+            ),
+            "evaluation_only_for_checkpoint": not bool(
+                getattr(model, "head_camera_alignment", False)
+            ),
+        }
+        valid_rows = {
+            name: row for name, row in head_camera_rows.items() if name not in floor_flagged
+        }
+        if len(valid_rows) != len(head_camera_rows):
+            valid_path = os.path.join(
+                out_root,
+                "motion_recon",
+                "video2motion",
+                "head_camera_alignment_metrics_floor_valid.json",
+            )
+            valid_payload = _aggregate_head_camera_metrics(valid_rows)
+            json.dump(valid_payload, open(valid_path, "w"), indent=2)
+            summary["head_camera"].update({
+                "floor_valid_metrics_json": valid_path,
+                "floor_valid_n": len(valid_rows),
+                "floor_valid_aggregate": valid_payload["aggregate"],
+            })
+
+    if video_metric_rows:
+        metrics_path = os.path.join(out_root, "video", "motimg2video_metrics.json")
+        video_payload = _aggregate_video_metrics(video_metric_rows)
+        os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
+        json.dump(video_payload, open(metrics_path, "w"), indent=2)
+        summary["video_metrics"]["motimg2video"] = {
+            "metrics_json": metrics_path,
+            "aggregate": video_payload["aggregate"],
+        }
+        valid_video_rows = {
+            name: row for name, row in video_metric_rows.items() if name not in floor_flagged
+        }
+        if len(valid_video_rows) != len(video_metric_rows):
+            valid_metrics_path = os.path.join(
+                out_root, "video", "motimg2video_metrics_floor_valid.json"
+            )
+            valid_video_payload = _aggregate_video_metrics(valid_video_rows)
+            json.dump(valid_video_payload, open(valid_metrics_path, "w"), indent=2)
+            summary["video_metrics"]["motimg2video"].update({
+                "floor_valid_metrics_json": valid_metrics_path,
+                "floor_valid_n": len(valid_video_rows),
+                "floor_valid_aggregate": valid_video_payload["aggregate"],
+            })
 
     _write_summary(out_root, summary)
     _print_summary(summary)
+
+
+def _aggregate_video_metrics(rows):
+    """Aggregate per-sequence M2V pixel metrics using the native Phase-1 schema."""
+    from native_phase_training.evaluate_inverse_forward import (
+        HORIZONS,
+        METRIC_KEYS_FORWARD,
+        _aggregate,
+    )
+
+    scalar_rows = {
+        name: {key: float(row[key]) for key in METRIC_KEYS_FORWARD}
+        for name, row in rows.items()
+    }
+    horizon_aggregate = {
+        horizon: {
+            key: {
+                "mean": float(np.mean([
+                    row["horizons"][horizon][key] for row in rows.values()
+                ])),
+                "median": float(np.median([
+                    row["horizons"][horizon][key] for row in rows.values()
+                ])),
+            }
+            for key in METRIC_KEYS_FORWARD
+        }
+        for horizon in HORIZONS
+    }
+    evaluated_frames = int(next(iter(rows.values()))["evaluated_frames"])
+    return {
+        "n": len(rows),
+        "task": "motimg2video",
+        "conditioned_frame_excluded": True,
+        "evaluated_frame_range": [1, evaluated_frames],
+        "gt_preprocessing": (
+            "native aspect-preserving bicubic antialias resize plus right/bottom reflection pad"
+        ),
+        "aggregate": _aggregate(scalar_rows, METRIC_KEYS_FORWARD),
+        "horizon_aggregate": horizon_aggregate,
+        "per_sequence": rows,
+    }
+
+
+def _aggregate_head_camera_metrics(rows):
+    """Aggregate per-window V2M relative head-camera action errors."""
+    keys = (
+        "translation_m",
+        "rotation_deg",
+        "gt_calibration_translation_m",
+        "gt_calibration_rotation_deg",
+    )
+    aggregate = {}
+    for key in keys:
+        values = np.asarray([row[key] for row in rows.values()], dtype=np.float64)
+        aggregate[key] = {
+            "mean": float(values.mean()),
+            "median": float(np.median(values)),
+            "p90": float(np.quantile(values, 0.90)),
+        }
+    return {
+        "n": len(rows),
+        "task": "video2motion",
+        "representation": "relative upright-RGB camera action (translation + SO(3))",
+        "absolute_pose_used": False,
+        "aggregate": aggregate,
+        "per_sequence": rows,
+    }
 
 
 def _write_summary(out_root, summary):
@@ -472,9 +904,26 @@ def _print_summary(summary):
               f"accel_err={a['accel_err']['mean']:.3f}  "
               f"(pred/gt jitter={a['accel_pred']['mean']/max(a['accel_gt']['mean'],1e-9):.1f}x)"
               f"{flag}")
+    head_camera = summary.get("head_camera")
+    if head_camera:
+        aggregate = head_camera["aggregate"]
+        print(
+            "v2m head-camera   "
+            f"trans={aggregate['translation_m']['mean']:.4f}m  "
+            f"rot={aggregate['rotation_deg']['mean']:.3f}deg  "
+            f"GT-floor={aggregate['gt_calibration_translation_m']['mean']:.4f}m/"
+            f"{aggregate['gt_calibration_rotation_deg']['mean']:.3f}deg"
+        )
     # video gen
     for t, names in summary.get("video", {}).items():
         print(f"{t:16s}  {len(names)} clips generated")
+    for t, info in summary.get("video_metrics", {}).items():
+        aggregate = info["aggregate"]
+        print(
+            f"{t:16s}  PSNR={aggregate['psnr_db']['mean']:.3f}dB  "
+            f"SSIM={aggregate['ssim']['mean']:.4f}  "
+            f"LPIPS={aggregate['lpips_alex']['mean']:.4f}"
+        )
     # viz
     print(f"\nviz files written ({len(summary.get('viz', []))}):")
     for p in summary.get("viz", [])[:40]:

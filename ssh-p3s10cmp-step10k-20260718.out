@@ -1,0 +1,423 @@
+[p3s10cmp] node=a3ultravis-a3ultranodeset-2 date=Sat Jul 18 22:22:50 KST 2026
+[p3s10cmp] baseline=/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/ckpt_step010000.pt
+[p3s10cmp] headcam=/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/ckpt_step010000.pt
+[p3s10cmp] contract=full71+replacement5 T97 seed0 CFG1 native-UniPC30
+[p3s10cmp] V2M and M2V visualization=all windows
+0, 0 MiB, 143157 MiB, 0 %
+1, 0 MiB, 143157 MiB, 0 %
+2, 0 MiB, 143157 MiB, 0 %
+3, 0 MiB, 143157 MiB, 0 %
+4, 0 MiB, 143157 MiB, 0 %
+5, 0 MiB, 143157 MiB, 0 %
+6, 0 MiB, 143157 MiB, 0 %
+7, 0 MiB, 143157 MiB, 0 %
+[p3s10cmp] START gpu=2 n=5 output=/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30 date=Sat Jul 18 22:22:50 KST 2026
+[p3s10cmp] START gpu=1 n=71 output=/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30 date=Sat Jul 18 22:22:50 KST 2026
+[p3s10cmp] START gpu=0 n=71 output=/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30 date=Sat Jul 18 22:22:50 KST 2026
+[p3s10cmp] START gpu=3 n=5 output=/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30 date=Sat Jul 18 22:22:50 KST 2026
+[eval_all] out_root=/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30  tasks=['video2motion', 'motimg2video']
+[eval_all] out_root=/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30  tasks=['video2motion', 'motimg2video']
+[eval_all] out_root=/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30  tasks=['video2motion', 'motimg2video']
+[eval_all] out_root=/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30  tasks=['video2motion', 'motimg2video']
+[load] remapped=814 loaded=808 skipped(shape/miss)=6 | net _moe_gen params=397 loaded _moe_gen=397
+[07-18 22:29:50|INFO|cosmos_framework/data/vfm/processors/base.py:122:__init__] Successfully loaded processor from local cache
+[load] remapped=814 loaded=808 skipped(shape/miss)=6 | net _moe_gen params=397 loaded _moe_gen=397
+[07-18 22:29:50|INFO|cosmos_framework/data/vfm/processors/base.py:122:__init__] Successfully loaded processor from local cache
+[load] remapped=814 loaded=808 skipped(shape/miss)=6 | net _moe_gen params=397 loaded _moe_gen=397
+[07-18 22:29:50|INFO|cosmos_framework/data/vfm/processors/base.py:122:__init__] Successfully loaded processor from local cache
+[load] remapped=814 loaded=808 skipped(shape/miss)=6 | net _moe_gen params=397 loaded _moe_gen=397
+[07-18 22:29:50|INFO|cosmos_framework/data/vfm/processors/base.py:122:__init__] Successfully loaded processor from local cache
+[FrozenCosmos] layers=36 hidden=4096 heads=32 kv_heads=8 head_dim=128 params=15.18B (all frozen)
+[sample] overriding checkpoint native motion solver 'euler' -> 'unipc'; weights/schedule unchanged
+[07-18 22:29:51|INFO|cosmos_framework/utils/vfm/lora.py:129:inject_lora_pre_fsdp] Injecting LoRA on meta device: rank=16, alpha=32, targets=['q_proj_moe_gen', 'k_proj_moe_gen', 'v_proj_moe_gen', 'o_proj_moe_gen']
+[FrozenCosmos] layers=36 hidden=4096 heads=32 kv_heads=8 head_dim=128 params=15.18B (all frozen)
+[sample] overriding checkpoint native motion solver 'euler' -> 'unipc'; weights/schedule unchanged
+[07-18 22:29:51|INFO|cosmos_framework/utils/vfm/lora.py:129:inject_lora_pre_fsdp] Injecting LoRA on meta device: rank=16, alpha=32, targets=['q_proj_moe_gen', 'k_proj_moe_gen', 'v_proj_moe_gen', 'o_proj_moe_gen']
+[07-18 22:29:51|INFO|cosmos_framework/utils/vfm/lora.py:149:inject_lora_pre_fsdp] LoRA injection successful: 144 modules wrapped, 15,335,424 trainable LoRA params, 15,176,167,985 frozen base params (0.101% trainable)
+[07-18 22:29:51|INFO|cosmos_framework/utils/vfm/lora.py:149:inject_lora_pre_fsdp] LoRA injection successful: 144 modules wrapped, 15,335,424 trainable LoRA params, 15,176,167,985 frozen base params (0.101% trainable)
+[FrozenCosmos] layers=36 hidden=4096 heads=32 kv_heads=8 head_dim=128 params=15.18B (all frozen)
+[07-18 22:29:51|INFO|cosmos_framework/utils/vfm/lora.py:129:inject_lora_pre_fsdp] Injecting LoRA on meta device: rank=16, alpha=32, targets=['q_proj_moe_gen', 'k_proj_moe_gen', 'v_proj_moe_gen', 'o_proj_moe_gen']
+[FrozenCosmos] layers=36 hidden=4096 heads=32 kv_heads=8 head_dim=128 params=15.18B (all frozen)
+[07-18 22:29:51|INFO|cosmos_framework/utils/vfm/lora.py:129:inject_lora_pre_fsdp] Injecting LoRA on meta device: rank=16, alpha=32, targets=['q_proj_moe_gen', 'k_proj_moe_gen', 'v_proj_moe_gen', 'o_proj_moe_gen']
+[07-18 22:29:51|INFO|cosmos_framework/utils/vfm/lora.py:149:inject_lora_pre_fsdp] LoRA injection successful: 144 modules wrapped, 15,335,424 trainable LoRA params, 15,176,167,985 frozen base params (0.101% trainable)
+[07-18 22:29:51|INFO|cosmos_framework/utils/vfm/lora.py:149:inject_lora_pre_fsdp] LoRA injection successful: 144 modules wrapped, 15,335,424 trainable LoRA params, 15,176,167,985 frozen base params (0.101% trainable)
+/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention/checkpoint_utils.py:83: FutureWarning: `load_state_dict` is deprecated and will be removed in future versions. Please use `load` instead.
+  load_state_dict(selected, storage_reader=reader, no_dist=True)
+/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention/checkpoint_utils.py:83: FutureWarning: `load_state_dict` is deprecated and will be removed in future versions. Please use `load` instead.
+  load_state_dict(selected, storage_reader=reader, no_dist=True)
+/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention/checkpoint_utils.py:83: FutureWarning: `load_state_dict` is deprecated and will be removed in future versions. Please use `load` instead.
+  load_state_dict(selected, storage_reader=reader, no_dist=True)
+/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention/checkpoint_utils.py:83: FutureWarning: `load_state_dict` is deprecated and will be removed in future versions. Please use `load` instead.
+  load_state_dict(selected, storage_reader=reader, no_dist=True)
+[sample][init_gen] /weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/checkpoints/iter_000100000: loaded 293 gen keys (skipped missing=0 shape-mismatch=0; native_dcp_weights=ema)
+[sample][init_motion] /weka/jungbin/cosmos_motion_ft_runs/ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d/ckpt_step200000.pt: loaded 149 motion keys (skipped missing=0 shape-mismatch=0)
+[sample] loaded /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/ckpt_step010000.pt (step 10000) | motion_objective=x0 schedule=native shift=3 native_solver=unipc | gen_objective=velocity schedule=native shift=3 native_solver=unipc packing=native fps=20 margin=15000 | motion_mrope=cosmos3d | coupling=bridge_local textimg_condition=reasoner reasoner_image_size=256 head_camera_alignment=True | overlaid 96 trainable tensors (skipped 0)
+[eval_all] output_T=97 ti2m_T=97 index_T=97 needs_latents=True latent_root=/weka/jungbin/nymeriaplus_kimodo_proportional/joint_latents_T97 motion_objective=x0
+[eval_all] V2M head-camera metric enabled (checkpoint_alignment=True, calibration=/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention/head_camera_calibration_train.json)
+[sample][init_gen] /weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/checkpoints/iter_000100000: loaded 293 gen keys (skipped missing=0 shape-mismatch=0; native_dcp_weights=ema)
+[sample][init_motion] /weka/jungbin/cosmos_motion_ft_runs/ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d/ckpt_step200000.pt: loaded 149 motion keys (skipped missing=0 shape-mismatch=0)
+[sample] loaded /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/ckpt_step010000.pt (step 10000) | motion_objective=x0 schedule=native shift=3 native_solver=unipc | gen_objective=velocity schedule=native shift=3 native_solver=unipc packing=native fps=20 margin=15000 | motion_mrope=cosmos3d | coupling=bridge_local textimg_condition=reasoner reasoner_image_size=256 head_camera_alignment=False | overlaid 96 trainable tensors (skipped 0)
+[eval_all] output_T=97 ti2m_T=97 index_T=97 needs_latents=True latent_root=/weka/jungbin/nymeriaplus_kimodo_proportional/joint_latents_T97 motion_objective=x0
+[eval_all] V2M head-camera metric enabled (checkpoint_alignment=False, calibration=/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention/head_camera_calibration_train.json)
+[sample][init_gen] /weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/checkpoints/iter_000100000: loaded 293 gen keys (skipped missing=0 shape-mismatch=0; native_dcp_weights=ema)
+[sample][init_motion] /weka/jungbin/cosmos_motion_ft_runs/ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d/ckpt_step200000.pt: loaded 149 motion keys (skipped missing=0 shape-mismatch=0)
+[sample] loaded /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/ckpt_step010000.pt (step 10000) | motion_objective=x0 schedule=native shift=3 native_solver=unipc | gen_objective=velocity schedule=native shift=3 native_solver=unipc packing=native fps=20 margin=15000 | motion_mrope=cosmos3d | coupling=bridge_local textimg_condition=reasoner reasoner_image_size=256 head_camera_alignment=False | overlaid 96 trainable tensors (skipped 0)
+[eval_all] output_T=97 ti2m_T=97 index_T=97 needs_latents=True latent_root=/weka/jungbin/nymeriaplus_kimodo_proportional/joint_latents_T97 motion_objective=x0
+[eval_all] V2M head-camera metric enabled (checkpoint_alignment=False, calibration=/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention/head_camera_calibration_train.json)
+[sample][init_gen] /weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/checkpoints/iter_000100000: loaded 293 gen keys (skipped missing=0 shape-mismatch=0; native_dcp_weights=ema)
+[sample][init_motion] /weka/jungbin/cosmos_motion_ft_runs/ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d/ckpt_step200000.pt: loaded 149 motion keys (skipped missing=0 shape-mismatch=0)
+[sample] loaded /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/ckpt_step010000.pt (step 10000) | motion_objective=x0 schedule=native shift=3 native_solver=unipc | gen_objective=velocity schedule=native shift=3 native_solver=unipc packing=native fps=20 margin=15000 | motion_mrope=cosmos3d | coupling=bridge_local textimg_condition=reasoner reasoner_image_size=256 head_camera_alignment=True | overlaid 96 trainable tensors (skipped 0)
+[eval_all] output_T=97 ti2m_T=97 index_T=97 needs_latents=True latent_root=/weka/jungbin/nymeriaplus_kimodo_proportional/joint_latents_T97 motion_objective=x0
+[eval_all] V2M head-camera metric enabled (checkpoint_alignment=True, calibration=/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention/head_camera_calibration_train.json)
+[eval_all] windows_json: matched 71/71 requested windows
+[eval_all] 71 test windows for motion/video tasks
+[eval_all] WARNING: 5 explicit windows are flagged by floor calibration; full-set metrics include them and a floor-valid subset is also written
+[eval_all] windows_json: matched 71/71 requested windows
+[eval_all] 71 test windows for motion/video tasks
+[eval_all] WARNING: 5 explicit windows are flagged by floor calibration; full-set metrics include them and a floor-valid subset is also written
+[eval_all] windows_json: matched 5/5 requested windows
+[eval_all] 5 test windows for motion/video tasks
+[eval_all] windows_json: matched 5/5 requested windows
+[eval_all] 5 test windows for motion/video tasks
+[07-18 22:30:43|INFO|cosmos_framework/model/vfm/tokenizers/wan2pt2_vae_4x16x16.py:1015:_video_vae] loading /weka/jungbin/wan22_vae/Wan2.2_VAE.pth
+/home/jungbin_cho/miniforge3/envs/cosmos/lib/python3.13/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/home/jungbin_cho/miniforge3/envs/cosmos/lib/python3.13/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=AlexNet_Weights.IMAGENET1K_V1`. You can also use `weights=AlexNet_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+[07-18 22:30:43|INFO|cosmos_framework/model/vfm/tokenizers/wan2pt2_vae_4x16x16.py:1015:_video_vae] loading /weka/jungbin/wan22_vae/Wan2.2_VAE.pth
+[07-18 22:30:43|INFO|cosmos_framework/model/vfm/tokenizers/wan2pt2_vae_4x16x16.py:1015:_video_vae] loading /weka/jungbin/wan22_vae/Wan2.2_VAE.pth
+/home/jungbin_cho/miniforge3/envs/cosmos/lib/python3.13/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/home/jungbin_cho/miniforge3/envs/cosmos/lib/python3.13/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=AlexNet_Weights.IMAGENET1K_V1`. You can also use `weights=AlexNet_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/jungbin_cho/miniforge3/envs/cosmos/lib/python3.13/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/home/jungbin_cho/miniforge3/envs/cosmos/lib/python3.13/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=AlexNet_Weights.IMAGENET1K_V1`. You can also use `weights=AlexNet_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+[07-18 22:30:44|INFO|cosmos_framework/model/vfm/tokenizers/wan2pt2_vae_4x16x16.py:1015:_video_vae] loading /weka/jungbin/wan22_vae/Wan2.2_VAE.pth
+/home/jungbin_cho/miniforge3/envs/cosmos/lib/python3.13/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/home/jungbin_cho/miniforge3/envs/cosmos/lib/python3.13/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=AlexNet_Weights.IMAGENET1K_V1`. You can also use `weights=AlexNet_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+[eval_all] Wan2.2-VAE loaded
+[eval_all] Wan2.2-VAE loaded
+[eval_all] Wan2.2-VAE loaded
+
+[eval_all] [1/71] t0_S07_20231013_s0_shelley_jones_act3_w23p1b_0
+[eval_all] Wan2.2-VAE loaded
+
+[eval_all] [1/5] t0_S19_20230919_s1_jessica_webster_act3_sry5zc_2040
+
+[eval_all] [1/5] t0_S19_20230919_s1_jessica_webster_act3_sry5zc_2040
+
+[eval_all] [1/71] t0_S07_20231013_s0_shelley_jones_act3_w23p1b_0
+  [video2motion] MPJPE=0.580 accel_err=0.016
+  [video2motion] MPJPE=0.279 accel_err=0.010
+  [video2motion head-camera] trans=0.0068m rot=1.006deg (GT calibration floor=0.0051m/1.203deg)
+  [video2motion head-camera] trans=0.0186m rot=2.187deg (GT calibration floor=0.0041m/2.085deg)
+  [video2motion] MPJPE=0.569 accel_err=0.018
+  [video2motion head-camera] trans=0.0205m rot=1.395deg (GT calibration floor=0.0041m/2.085deg)
+  [video2motion] MPJPE=0.163 accel_err=0.009
+  [video2motion head-camera] trans=0.0085m rot=1.735deg (GT calibration floor=0.0051m/1.203deg)
+  [motimg2video] PSNR=13.536 SSIM=0.3696 LPIPS=0.5335
+  [motimg2video] PSNR=13.134 SSIM=0.3480 LPIPS=0.5316
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t0_S19_20230919_s1_jessica_webster_act3_sry5zc_2040.mp4
+
+[eval_all] [2/5] t1_S12_20231004_s0_corey_coleman_act3_45q7f3_200
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t0_S19_20230919_s1_jessica_webster_act3_sry5zc_2040.mp4
+
+[eval_all] [2/5] t1_S12_20231004_s0_corey_coleman_act3_45q7f3_200
+  [motimg2video] PSNR=14.610 SSIM=0.4227 LPIPS=0.4817
+  [motimg2video] PSNR=14.852 SSIM=0.4441 LPIPS=0.4703
+  [video2motion] MPJPE=0.368 accel_err=0.013
+  [video2motion head-camera] trans=0.0138m rot=2.242deg (GT calibration floor=0.0049m/2.259deg)
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t0_S07_20231013_s0_shelley_jones_act3_w23p1b_0.mp4
+
+[eval_all] [2/71] t1_S12_20230706_s0_breanna_reese_act0_cfg468_0
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t0_S07_20231013_s0_shelley_jones_act3_w23p1b_0.mp4
+
+[eval_all] [2/71] t1_S12_20230706_s0_breanna_reese_act0_cfg468_0
+  [video2motion] MPJPE=0.286 accel_err=0.013
+  [video2motion head-camera] trans=0.0117m rot=1.548deg (GT calibration floor=0.0049m/2.259deg)
+  [video2motion] MPJPE=0.239 accel_err=0.004
+  [video2motion head-camera] trans=0.0040m rot=1.033deg (GT calibration floor=0.0016m/0.629deg)
+  [video2motion] MPJPE=0.257 accel_err=0.004
+  [video2motion head-camera] trans=0.0053m rot=1.377deg (GT calibration floor=0.0016m/0.629deg)
+  [motimg2video] PSNR=20.156 SSIM=0.6187 LPIPS=0.3872
+  [motimg2video] PSNR=17.857 SSIM=0.5939 LPIPS=0.4286
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t1_S12_20231004_s0_corey_coleman_act3_45q7f3_200.mp4
+
+[eval_all] [3/5] t2_S19_20231117_s0_randy_martin_act4_hernaf_800
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t1_S12_20231004_s0_corey_coleman_act3_45q7f3_200.mp4
+
+[eval_all] [3/5] t2_S19_20231117_s0_randy_martin_act4_hernaf_800
+  [motimg2video] PSNR=17.117 SSIM=0.4614 LPIPS=0.3275
+  [video2motion] MPJPE=0.381 accel_err=0.010
+  [video2motion head-camera] trans=0.0124m rot=1.581deg (GT calibration floor=0.0043m/1.685deg)
+  [video2motion] MPJPE=0.189 accel_err=0.010
+  [video2motion head-camera] trans=0.0110m rot=1.082deg (GT calibration floor=0.0043m/1.685deg)
+  [motimg2video] PSNR=14.890 SSIM=0.3921 LPIPS=0.4253
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t1_S12_20230706_s0_breanna_reese_act0_cfg468_0.mp4
+
+[eval_all] [3/71] t2_S01_20230706_s1_morgan_terrell_act3_9ops7e_0
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t1_S12_20230706_s0_breanna_reese_act0_cfg468_0.mp4
+
+[eval_all] [3/71] t2_S01_20230706_s1_morgan_terrell_act3_9ops7e_0
+  [video2motion] MPJPE=0.144 accel_err=0.006
+  [video2motion head-camera] trans=0.0075m rot=1.460deg (GT calibration floor=0.0030m/1.387deg)
+  [video2motion] MPJPE=0.097 accel_err=0.006
+  [video2motion head-camera] trans=0.0091m rot=1.962deg (GT calibration floor=0.0030m/1.387deg)
+  [motimg2video] PSNR=11.796 SSIM=0.2088 LPIPS=0.5732
+  [motimg2video] PSNR=12.824 SSIM=0.2271 LPIPS=0.4874
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t2_S19_20231117_s0_randy_martin_act4_hernaf_800.mp4
+
+[eval_all] [4/5] t3_S19_20231020_s0_anthony_chen_act1_vhzag9_2140
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t2_S19_20231117_s0_randy_martin_act4_hernaf_800.mp4
+
+[eval_all] [4/5] t3_S19_20231020_s0_anthony_chen_act1_vhzag9_2140
+  [motimg2video] PSNR=14.653 SSIM=0.4243 LPIPS=0.4418
+  [video2motion] MPJPE=0.192 accel_err=0.009
+  [video2motion head-camera] trans=0.0120m rot=1.736deg (GT calibration floor=0.0030m/1.455deg)
+  [motimg2video] PSNR=12.161 SSIM=0.3640 LPIPS=0.5662
+  [video2motion] MPJPE=0.349 accel_err=0.009
+  [video2motion head-camera] trans=0.0115m rot=1.040deg (GT calibration floor=0.0030m/1.455deg)
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t2_S01_20230706_s1_morgan_terrell_act3_9ops7e_0.mp4
+
+[eval_all] [4/71] t3_S19_20230919_s1_jessica_webster_act3_sry5zc_0
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t2_S01_20230706_s1_morgan_terrell_act3_9ops7e_0.mp4
+
+[eval_all] [4/71] t3_S19_20230919_s1_jessica_webster_act3_sry5zc_0
+  [video2motion] MPJPE=0.694 accel_err=0.005
+  [video2motion head-camera] trans=0.0043m rot=0.797deg (GT calibration floor=0.0035m/1.011deg)
+  [video2motion] MPJPE=0.716 accel_err=0.005
+  [video2motion head-camera] trans=0.0040m rot=1.170deg (GT calibration floor=0.0035m/1.011deg)
+  [motimg2video] PSNR=15.046 SSIM=0.3615 LPIPS=0.4221
+  [motimg2video] PSNR=13.002 SSIM=0.3310 LPIPS=0.5204
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t3_S19_20231020_s0_anthony_chen_act1_vhzag9_2140.mp4
+
+[eval_all] [5/5] t4_S01_20230726_s1_thomas_nixon_act3_vvy3pz_880
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t3_S19_20231020_s0_anthony_chen_act1_vhzag9_2140.mp4
+
+[eval_all] [5/5] t4_S01_20230726_s1_thomas_nixon_act3_vvy3pz_880
+  [motimg2video] PSNR=18.781 SSIM=0.5188 LPIPS=0.3144
+  [video2motion] MPJPE=0.396 accel_err=0.004
+  [video2motion head-camera] trans=0.0014m rot=0.315deg (GT calibration floor=0.0010m/0.573deg)
+  [video2motion] MPJPE=0.366 accel_err=0.004
+  [video2motion head-camera] trans=0.0015m rot=0.396deg (GT calibration floor=0.0010m/0.573deg)
+  [motimg2video] PSNR=17.136 SSIM=0.4844 LPIPS=0.5387
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t3_S19_20230919_s1_jessica_webster_act3_sry5zc_0.mp4
+
+[eval_all] [5/71] t4_S13_20230717_s0_danielle_ortiz_act1_kn2tq7_0
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t3_S19_20230919_s1_jessica_webster_act3_sry5zc_0.mp4
+
+[eval_all] [5/71] t4_S13_20230717_s0_danielle_ortiz_act1_kn2tq7_0
+  [video2motion] MPJPE=0.144 accel_err=0.006
+  [video2motion head-camera] trans=0.0061m rot=0.517deg (GT calibration floor=0.0030m/0.563deg)
+  [video2motion] MPJPE=0.173 accel_err=0.008
+  [video2motion head-camera] trans=0.0096m rot=0.908deg (GT calibration floor=0.0030m/0.563deg)
+  [motimg2video] PSNR=20.840 SSIM=0.7027 LPIPS=0.1442
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t4_S01_20230726_s1_thomas_nixon_act3_vvy3pz_880.mp4
+
+=== motion-recon eval | 5 windows | video2motion | /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30 ===
+sequence                              mpjpe_m   pa_mpjpe_m     feat_mse    accel_err   accel_pred     accel_gt   root_err_m
+---------------------------------------------------------------------------------------------------------------------------
+t0_S19_20230919_s1_jessica_webst       0.5799       0.3781       0.4876       0.0162       0.0098       0.0152       0.5326
+t1_S12_20231004_s0_corey_coleman       0.3676       0.2396       0.5180       0.0130       0.0083       0.0105       0.3363
+t2_S19_20231117_s0_randy_martin_       0.3812       0.1789       0.3594       0.0100       0.0072       0.0083       0.3484
+t3_S19_20231020_s0_anthony_chen_       0.1917       0.1642       0.2535       0.0093       0.0056       0.0081       0.1770
+t4_S01_20230726_s1_thomas_nixon_       0.3656       0.1660       1.9910       0.0038       0.0025       0.0027       0.3409
+---------------------------------------------------------------------------------------------------------------------------
+MEAN                                   0.3772       0.2254       0.7219       0.0104       0.0067       0.0089       0.3470
+MEDIAN                                 0.3676       0.1789       0.4876       0.0100       0.0072       0.0083       0.3409
+guide: mpjpe_m/pa_mpjpe_m/root_err_m/accel_err all lower-better (m); accel_pred vs accel_gt = jitter ratio; feat_mse in z-scored space
+
+==============================================================================
+EVAL SUMMARY  |  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30
+==============================================================================
+video2motion      MPJPE=0.377m  PA-MPJPE=0.225m  accel_err=0.010  (pred/gt jitter=0.7x)
+v2m head-camera   trans=0.0117m  rot=1.628deg  GT-floor=0.0035m/1.611deg
+motimg2video      5 clips generated
+motimg2video      PSNR=15.866dB  SSIM=0.4461  LPIPS=0.4317
+
+viz files written (10):
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/video2motion_t0_S19_20230919_s1_jessica_webster_act3_sry5zc_2040.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t0_S19_20230919_s1_jessica_webster_act3_sry5zc_2040.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/video2motion_t1_S12_20231004_s0_corey_coleman_act3_45q7f3_200.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t1_S12_20231004_s0_corey_coleman_act3_45q7f3_200.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/video2motion_t2_S19_20231117_s0_randy_martin_act4_hernaf_800.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t2_S19_20231117_s0_randy_martin_act4_hernaf_800.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/video2motion_t3_S19_20231020_s0_anthony_chen_act1_vhzag9_2140.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t3_S19_20231020_s0_anthony_chen_act1_vhzag9_2140.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/video2motion_t4_S01_20230726_s1_thomas_nixon_act3_vvy3pz_880.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t4_S01_20230726_s1_thomas_nixon_act3_vvy3pz_880.mp4
+==============================================================================
+  [motimg2video] PSNR=21.106 SSIM=0.7091 LPIPS=0.1642
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t4_S01_20230726_s1_thomas_nixon_act3_vvy3pz_880.mp4
+
+=== motion-recon eval | 5 windows | video2motion | /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30 ===
+sequence                              mpjpe_m   pa_mpjpe_m     feat_mse    accel_err   accel_pred     accel_gt   root_err_m
+---------------------------------------------------------------------------------------------------------------------------
+t0_S19_20230919_s1_jessica_webst       0.5693       0.3862       0.5300       0.0176       0.0114       0.0152       0.5192
+t1_S12_20231004_s0_corey_coleman       0.2862       0.1932       0.4358       0.0126       0.0082       0.0105       0.2449
+t2_S19_20231117_s0_randy_martin_       0.1893       0.1199       0.3446       0.0099       0.0074       0.0083       0.1608
+t3_S19_20231020_s0_anthony_chen_       0.3487       0.1879       0.2396       0.0089       0.0054       0.0081       0.3535
+t4_S01_20230726_s1_thomas_nixon_       0.3957       0.1605       1.4441       0.0037       0.0023       0.0027       0.3627
+---------------------------------------------------------------------------------------------------------------------------
+MEAN                                   0.3578       0.2095       0.5988       0.0105       0.0069       0.0089       0.3282
+MEDIAN                                 0.3487       0.1879       0.4358       0.0099       0.0074       0.0083       0.3535
+guide: mpjpe_m/pa_mpjpe_m/root_err_m/accel_err all lower-better (m); accel_pred vs accel_gt = jitter ratio; feat_mse in z-scored space
+
+==============================================================================
+EVAL SUMMARY  |  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30
+==============================================================================
+video2motion      MPJPE=0.358m  PA-MPJPE=0.210m  accel_err=0.011  (pred/gt jitter=0.8x)
+v2m head-camera   trans=0.0112m  rot=1.076deg  GT-floor=0.0035m/1.611deg
+motimg2video      5 clips generated
+motimg2video      PSNR=15.993dB  SSIM=0.4479  LPIPS=0.4068
+
+viz files written (10):
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/video2motion_t0_S19_20230919_s1_jessica_webster_act3_sry5zc_2040.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t0_S19_20230919_s1_jessica_webster_act3_sry5zc_2040.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/video2motion_t1_S12_20231004_s0_corey_coleman_act3_45q7f3_200.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t1_S12_20231004_s0_corey_coleman_act3_45q7f3_200.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/video2motion_t2_S19_20231117_s0_randy_martin_act4_hernaf_800.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t2_S19_20231117_s0_randy_martin_act4_hernaf_800.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/video2motion_t3_S19_20231020_s0_anthony_chen_act1_vhzag9_2140.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t3_S19_20231020_s0_anthony_chen_act1_vhzag9_2140.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/video2motion_t4_S01_20230726_s1_thomas_nixon_act3_vvy3pz_880.mp4
+  /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30/viz/motimg2video_t4_S01_20230726_s1_thomas_nixon_act3_vvy3pz_880.mp4
+==============================================================================
+[p3s10cmp] COMPLETE output=/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_motion_clean_replacement5_step010000_unipc30 date=Sat Jul 18 22:35:52 KST 2026
+[p3s10cmp] COMPLETE output=/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_motion_clean_replacement5_step010000_unipc30 date=Sat Jul 18 22:35:52 KST 2026
+  [motimg2video] PSNR=21.298 SSIM=0.6913 LPIPS=0.1179
+  [motimg2video] PSNR=16.644 SSIM=0.5682 LPIPS=0.3261
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t4_S13_20230717_s0_danielle_ortiz_act1_kn2tq7_0.mp4
+
+[eval_all] [6/71] t5_S02_20231011_s1_daniel_kim_act2_6lxp22_101
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t4_S13_20230717_s0_danielle_ortiz_act1_kn2tq7_0.mp4
+
+[eval_all] [6/71] t5_S02_20231011_s1_daniel_kim_act2_6lxp22_101
+  [video2motion] MPJPE=0.214 accel_err=0.005
+  [video2motion head-camera] trans=0.0038m rot=0.953deg (GT calibration floor=0.0052m/0.906deg)
+  [video2motion] MPJPE=0.216 accel_err=0.005
+  [video2motion head-camera] trans=0.0039m rot=0.728deg (GT calibration floor=0.0052m/0.906deg)
+  [motimg2video] PSNR=15.588 SSIM=0.4635 LPIPS=0.4734
+  [motimg2video] PSNR=17.008 SSIM=0.5075 LPIPS=0.3726
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t5_S02_20231011_s1_daniel_kim_act2_6lxp22_101.mp4
+
+[eval_all] [7/71] t6_S14_20230726_s1_thomas_nixon_act1_k0zomm_0
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t5_S02_20231011_s1_daniel_kim_act2_6lxp22_101.mp4
+
+[eval_all] [7/71] t6_S14_20230726_s1_thomas_nixon_act1_k0zomm_0
+  [video2motion] MPJPE=0.116 accel_err=0.004
+  [video2motion head-camera] trans=0.0039m rot=0.921deg (GT calibration floor=0.0016m/0.781deg)
+  [video2motion] MPJPE=0.130 accel_err=0.005
+  [video2motion head-camera] trans=0.0038m rot=0.848deg (GT calibration floor=0.0016m/0.781deg)
+  [motimg2video] PSNR=17.705 SSIM=0.6480 LPIPS=0.2660
+  [motimg2video] PSNR=14.659 SSIM=0.5523 LPIPS=0.4039
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t6_S14_20230726_s1_thomas_nixon_act1_k0zomm_0.mp4
+
+[eval_all] [8/71] t7_S02_20230614_s1_matthew_harper_act1_cimupu_0
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t6_S14_20230726_s1_thomas_nixon_act1_k0zomm_0.mp4
+
+[eval_all] [8/71] t7_S02_20230614_s1_matthew_harper_act1_cimupu_0
+  [video2motion] MPJPE=0.112 accel_err=0.007
+  [video2motion head-camera] trans=0.0100m rot=1.236deg (GT calibration floor=0.0053m/1.231deg)
+  [video2motion] MPJPE=0.246 accel_err=0.007
+  [video2motion head-camera] trans=0.0123m rot=1.586deg (GT calibration floor=0.0053m/1.231deg)
+  [motimg2video] PSNR=15.137 SSIM=0.5256 LPIPS=0.5114
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t7_S02_20230614_s1_matthew_harper_act1_cimupu_0.mp4
+
+[eval_all] [9/71] t8_S02_20231003_s1_allen_evans_act0_1w2b7b_0
+  [motimg2video] PSNR=16.099 SSIM=0.5342 LPIPS=0.4597
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t7_S02_20230614_s1_matthew_harper_act1_cimupu_0.mp4
+
+[eval_all] [9/71] t8_S02_20231003_s1_allen_evans_act0_1w2b7b_0
+  [video2motion] MPJPE=0.092 accel_err=0.004
+  [video2motion head-camera] trans=0.0065m rot=1.438deg (GT calibration floor=0.0024m/0.826deg)
+  [video2motion] MPJPE=0.103 accel_err=0.005
+  [video2motion head-camera] trans=0.0053m rot=1.086deg (GT calibration floor=0.0024m/0.826deg)
+  [motimg2video] PSNR=14.286 SSIM=0.5392 LPIPS=0.4767
+  [motimg2video] PSNR=14.887 SSIM=0.5559 LPIPS=0.4035
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t8_S02_20231003_s1_allen_evans_act0_1w2b7b_0.mp4
+
+[eval_all] [10/71] t9_S02_20231128_s1_michael_vargas_act0_yvskcx_0
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t8_S02_20231003_s1_allen_evans_act0_1w2b7b_0.mp4
+
+[eval_all] [10/71] t9_S02_20231128_s1_michael_vargas_act0_yvskcx_0
+  [video2motion] MPJPE=0.303 accel_err=0.007
+  [video2motion head-camera] trans=0.0174m rot=3.710deg (GT calibration floor=0.0043m/2.414deg)
+  [video2motion] MPJPE=0.241 accel_err=0.007
+  [video2motion head-camera] trans=0.0124m rot=2.527deg (GT calibration floor=0.0043m/2.414deg)
+  [motimg2video] PSNR=16.096 SSIM=0.5900 LPIPS=0.5047
+  [motimg2video] PSNR=14.261 SSIM=0.5587 LPIPS=0.5264
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t9_S02_20231128_s1_michael_vargas_act0_yvskcx_0.mp4
+
+[eval_all] [11/71] t10_S11_20230816_s1_jeffery_bryant_act1_2a6fxu_0
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t9_S02_20231128_s1_michael_vargas_act0_yvskcx_0.mp4
+
+[eval_all] [11/71] t10_S11_20230816_s1_jeffery_bryant_act1_2a6fxu_0
+  [video2motion] MPJPE=0.303 accel_err=0.007
+  [video2motion head-camera] trans=0.0100m rot=1.306deg (GT calibration floor=0.0064m/1.373deg)
+  [video2motion] MPJPE=0.204 accel_err=0.007
+  [video2motion head-camera] trans=0.0118m rot=1.757deg (GT calibration floor=0.0064m/1.373deg)
+  [motimg2video] PSNR=13.936 SSIM=0.4631 LPIPS=0.5338
+  [motimg2video] PSNR=15.154 SSIM=0.4586 LPIPS=0.4614
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t10_S11_20230816_s1_jeffery_bryant_act1_2a6fxu_0.mp4
+
+[eval_all] [12/71] t11_S05_20230817_s1_rebecca_ward_act2_39a7o2_200
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t10_S11_20230816_s1_jeffery_bryant_act1_2a6fxu_0.mp4
+
+[eval_all] [12/71] t11_S05_20230817_s1_rebecca_ward_act2_39a7o2_200
+  [video2motion] MPJPE=0.499 accel_err=0.008
+  [video2motion head-camera] trans=0.0122m rot=1.722deg (GT calibration floor=0.0087m/1.126deg)
+  [video2motion] MPJPE=0.454 accel_err=0.007
+  [video2motion head-camera] trans=0.0100m rot=1.103deg (GT calibration floor=0.0087m/1.126deg)
+  [motimg2video] PSNR=16.046 SSIM=0.5045 LPIPS=0.4425
+  [motimg2video] PSNR=14.925 SSIM=0.4815 LPIPS=0.4735
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t11_S05_20230817_s1_rebecca_ward_act2_39a7o2_200.mp4
+
+[eval_all] [13/71] t12_S08_20230728_s0_lauren_mayer_act0_wv6a30_0
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t11_S05_20230817_s1_rebecca_ward_act2_39a7o2_200.mp4
+
+[eval_all] [13/71] t12_S08_20230728_s0_lauren_mayer_act0_wv6a30_0
+  [video2motion] MPJPE=0.145 accel_err=0.007
+  [video2motion head-camera] trans=0.0049m rot=0.949deg (GT calibration floor=0.0012m/0.774deg)
+  [video2motion] MPJPE=0.128 accel_err=0.005
+  [video2motion head-camera] trans=0.0041m rot=1.171deg (GT calibration floor=0.0012m/0.774deg)
+  [motimg2video] PSNR=17.046 SSIM=0.5709 LPIPS=0.3219
+  [motimg2video] PSNR=18.177 SSIM=0.6013 LPIPS=0.3073
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t12_S08_20230728_s0_lauren_mayer_act0_wv6a30_0.mp4
+
+[eval_all] [14/71] t13_S12_20231004_s0_corey_coleman_act3_45q7f3_0
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t12_S08_20230728_s0_lauren_mayer_act0_wv6a30_0.mp4
+
+[eval_all] [14/71] t13_S12_20231004_s0_corey_coleman_act3_45q7f3_0
+  [video2motion] MPJPE=2.411 accel_err=0.010
+  [video2motion head-camera] trans=0.0174m rot=1.932deg (GT calibration floor=0.0042m/2.107deg)
+  [video2motion] MPJPE=2.383 accel_err=0.010
+  [video2motion head-camera] trans=0.0145m rot=1.204deg (GT calibration floor=0.0042m/2.107deg)
+  [motimg2video] PSNR=16.085 SSIM=0.4138 LPIPS=0.4740
+  [motimg2video] PSNR=15.977 SSIM=0.4075 LPIPS=0.5108
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t13_S12_20231004_s0_corey_coleman_act3_45q7f3_0.mp4
+
+[eval_all] [15/71] t14_S10_20230719_s0_shane_smith_act3_sfxa5j_0
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t13_S12_20231004_s0_corey_coleman_act3_45q7f3_0.mp4
+
+[eval_all] [15/71] t14_S10_20230719_s0_shane_smith_act3_sfxa5j_0
+  [video2motion] MPJPE=0.090 accel_err=0.005
+  [video2motion head-camera] trans=0.0046m rot=1.891deg (GT calibration floor=0.0018m/1.283deg)
+  [video2motion] MPJPE=0.154 accel_err=0.005
+  [video2motion head-camera] trans=0.0058m rot=1.270deg (GT calibration floor=0.0018m/1.283deg)
+  [motimg2video] PSNR=17.393 SSIM=0.5322 LPIPS=0.3116
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_full71_step010000_unipc30/viz/motimg2video_t14_S10_20230719_s0_shane_smith_act3_sfxa5j_0.mp4
+
+[eval_all] [16/71] t15_S16_20230926_s1_megan_mejia_act1_bxit2f_180
+  [motimg2video] PSNR=18.551 SSIM=0.5709 LPIPS=0.2737
+  [motimg2video] video -> /weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_full71_step010000_unipc30/viz/motimg2video_t14_S10_20230719_s0_shane_smith_act3_sfxa5j_0.mp4
+
+[eval_all] [16/71] t15_S16_20230926_s1_megan_mejia_act1_bxit2f_180
+  [video2motion] MPJPE=0.308 accel_err=0.008
+  [video2motion head-camera] trans=0.0165m rot=1.988deg (GT calibration floor=0.0080m/1.434deg)
+  [video2motion] MPJPE=0.389 accel_err=0.008
+  [video2motion head-camera] trans=0.0128m rot=1.162deg (GT calibration floor=0.0080m/1.434deg)

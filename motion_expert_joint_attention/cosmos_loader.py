@@ -193,6 +193,27 @@ class FrozenCosmos:
             ids = [SPECIAL_TOKENS["eos_token_id"]]
         return torch.tensor([ids], dtype=torch.long, device=self.device)
 
+    def tokenize_generation(self, text: str) -> torch.LongTensor:
+        """Tokenize the native Cosmos generator reasoner prefix.
+
+        ``sequence_packing._pack_text_tokens`` wraps raw tokenizer IDs as
+        ``[BOS, raw text, EOS, start_of_generation]`` whenever generation
+        tokens follow.  The historical joint path passed only raw IDs (and a
+        lone EOS for empty text), which changes both the reasoner states and
+        every downstream mRoPE offset.  Keep ``tokenize`` untouched for old
+        motion checkpoints and expose the exact native generation form here.
+        """
+        text = "" if text is None else str(text)
+        enc = self.proc.tokenizer(text, add_special_tokens=False)
+        raw_ids = list(enc.get("input_ids", []))
+        ids = []
+        if "bos_token_id" in SPECIAL_TOKENS:
+            ids.append(SPECIAL_TOKENS["bos_token_id"])
+        ids.extend(raw_ids)
+        ids.append(SPECIAL_TOKENS["eos_token_id"])
+        ids.append(SPECIAL_TOKENS["start_of_generation"])
+        return torch.tensor([ids], dtype=torch.long, device=self.device)
+
     def load_standalone_visual_tower(self, snapshot: str | None = None):
         """Attach the separately shipped Cosmos Nano Qwen3-VL vision tower.
 
@@ -255,13 +276,22 @@ class FrozenCosmos:
         return visual
 
     @torch.no_grad()
-    def encode_reasoner_image_text(self, text: str, image_chw: torch.Tensor) -> dict:
+    def encode_reasoner_image_text(
+        self,
+        text: str,
+        image_chw: torch.Tensor,
+        *,
+        image_size: int | None = None,
+    ) -> dict:
         """Prepare one image+text prompt for the frozen Qwen3-VL reasoner path.
 
         ``image_chw`` is a uint8 or float tensor in ``[3,H,W]`` layout. The returned dict is
         intentionally tensor-only so ``JointMotionModel.forward`` can consume it without touching
         PIL/processor state. The visual tower and token embeddings are frozen, so this runs under
-        ``no_grad``; any reasoner LoRA still applies later inside the decoder layers.
+        ``no_grad``; any reasoner LoRA still applies later inside the decoder layers. When
+        ``image_size`` is set, resize to that square before the processor. Cosmos Nano's released
+        processor accepts 256x256 as its minimum image area; that produces 64 merged visual tokens
+        instead of the 400 produced by a 640x640 Nymeria frame.
         """
         if not callable(getattr(self.proc, "apply_chat_template", None)):
             raise RuntimeError(
@@ -281,6 +311,18 @@ class FrozenCosmos:
             img = img.clamp(0, 255).to(torch.uint8)
         if img.dim() != 3 or img.shape[0] != 3:
             raise ValueError(f"image_chw must be [3,H,W], got {tuple(img.shape)}")
+        if image_size is not None:
+            image_size = int(image_size)
+            if image_size <= 0:
+                raise ValueError(f"image_size must be positive or None, got {image_size}")
+            if tuple(img.shape[-2:]) != (image_size, image_size):
+                img = torch.nn.functional.interpolate(
+                    img.float().unsqueeze(0),
+                    size=(image_size, image_size),
+                    mode="bilinear",
+                    align_corners=False,
+                    antialias=True,
+                ).squeeze(0).round().clamp_(0, 255).to(torch.uint8)
         pil = Image.fromarray(img.permute(1, 2, 0).contiguous().numpy(), mode="RGB")
 
         messages = [{
