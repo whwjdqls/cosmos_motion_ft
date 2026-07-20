@@ -81,7 +81,7 @@ CAMERA_MAX_ACTION_DIM = 64  # zero-pad target before action2llm (Cosmos default)
 ACTION_LOSS_WEIGHT = 10.0  # camera flow-matching MSE on channels [:9] is up-weighted
 
 # ----------------------------------------------------------------------------
-# 7-task joint-attention mixture (see DESIGN_7TASK.md per-task masking table).
+# Seven base tasks plus two opt-in Phase-3 joint-target objectives.
 # Each mode is a single string consumed by task_plan.build_task_plan(mode).
 # TASK_WEIGHTS is MOTION-WEIGHTED: motion-producing tasks dominate early so the
 # fully-trained motion expert + MotionHeads get the most signal; the camera
@@ -96,6 +96,8 @@ TASKS = [
     "textimg2motion",     # 5. text+image   -> motion
     "motimg2video",       # 6. motion+text+image -> video
     "video2motion",       # 7. video        -> motion           (no text)
+    "video2camera_motion", # 8. video       -> camera+motion    (experimental, no text)
+    "camimg2video_motion", # 9. camera+image -> video+motion    (experimental, no text)
 ]
 
 # Motion-weighted mixture (relative; normalized at sample time). The four
@@ -110,6 +112,8 @@ TASK_WEIGHTS = {
     "textimg2motion":   0.15,
     "motimg2video":     0.08,
     "video2motion":     0.15,
+    "video2camera_motion": 0.0,
+    "camimg2video_motion": 0.0,
 }
 assert set(TASK_WEIGHTS) == set(TASKS), "TASK_WEIGHTS must cover exactly TASKS"
 

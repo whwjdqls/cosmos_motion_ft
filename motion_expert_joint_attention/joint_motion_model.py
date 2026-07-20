@@ -55,12 +55,19 @@ from __future__ import annotations
 
 from typing import Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
 
 import task_plan as TP
+import config
 from cosmos_loader import FrozenCosmos
 from gen_heads import GenHeads
+from head_camera_alignment import (
+    DEFAULT_CALIBRATION,
+    load_head_camera_calibration,
+    motion_to_camera_action,
+)
 from modality_bridge import BridgeMeta, LocalModalityBridge
 from mot_joint_attention import build_offsets
 from mot_joint_layer import MoTJointLayer
@@ -159,7 +166,7 @@ class JointMotionModel(nn.Module):
         motion_schedule: str = "legacy",
         motion_shift: float = 3.0,
         motion_num_train_timesteps: int = 1000,
-        motion_native_solver: str = "euler",
+        motion_native_solver: str = "unipc",
         gen_schedule: str = "legacy",
         gen_shift: float = 3.0,
         gen_num_train_timesteps: int = 1000,
@@ -180,6 +187,8 @@ class JointMotionModel(nn.Module):
         coupling: str = "joint",
         textimg_condition: str = "reasoner",
         reasoner_image_size: int = 256,
+        head_camera_alignment: bool = False,
+        head_camera_calibration: str = DEFAULT_CALIBRATION,
     ):
         super().__init__()
         if gen_lora and gen_full:
@@ -259,6 +268,13 @@ class JointMotionModel(nn.Module):
             )
         self.coupling = coupling
         self.textimg_condition = textimg_condition
+        self.head_camera_alignment = bool(head_camera_alignment)
+        self.head_camera_calibration = str(head_camera_calibration)
+        if self.head_camera_alignment and self.coupling != "bridge_local":
+            raise ValueError(
+                "head-camera alignment is an isolated Phase-3 bridge feature and requires "
+                "coupling='bridge_local'"
+            )
         if int(reasoner_image_size) <= 0:
             raise ValueError(
                 f"reasoner_image_size must be positive, got {reasoner_image_size}"
@@ -276,6 +292,24 @@ class JointMotionModel(nn.Module):
         self.hidden = cosmos.hidden
         self.head_dim = cosmos.head_dim
         self.n_layers = cosmos.n_layers
+
+        if self.head_camera_alignment:
+            head_camera_rotation, camera_origin_in_head, _ = load_head_camera_calibration(
+                self.head_camera_calibration
+            )
+            motion_mean = torch.from_numpy(np.load(config.MOTION_STATS_MEAN)).float()
+            motion_std = torch.from_numpy(np.load(config.MOTION_STATS_STD)).float()
+        else:
+            head_camera_rotation = torch.eye(3, dtype=torch.float32)
+            camera_origin_in_head = torch.zeros(3, dtype=torch.float32)
+            motion_mean = torch.zeros(self.motion_dim, dtype=torch.float32)
+            motion_std = torch.ones(self.motion_dim, dtype=torch.float32)
+        # Rebuilt from recorded checkpoint args at load time; keeping these non-persistent avoids
+        # changing historical trainable-delta checkpoint contents.
+        self.register_buffer("head_camera_rotation", head_camera_rotation, persistent=False)
+        self.register_buffer("camera_origin_in_head", camera_origin_in_head, persistent=False)
+        self.register_buffer("head_camera_motion_mean", motion_mean, persistent=False)
+        self.register_buffer("head_camera_motion_std", motion_std, persistent=False)
 
         tm = cosmos.tm  # the transformer module that owns .layers / embed_tokens / norm / rotary
 
@@ -355,6 +389,22 @@ class JointMotionModel(nn.Module):
         # ---- freeze: motion (unless freeze_motion); gen/reasoner per the toggles (LoRA already
         # injected above, before the layers captured their `_moe_gen` references) --------------
         self.freeze()
+
+    def motion_to_camera_action(self, normalized_motion: torch.Tensor) -> torch.Tensor:
+        """Derive upright-camera actions from normalized UniEgo motion."""
+        if not self.head_camera_alignment:
+            raise RuntimeError("motion_to_camera_action requires head_camera_alignment=True")
+        mean = self.head_camera_motion_mean.to(
+            device=normalized_motion.device, dtype=normalized_motion.dtype
+        )
+        std = self.head_camera_motion_std.to(
+            device=normalized_motion.device, dtype=normalized_motion.dtype
+        )
+        return motion_to_camera_action(
+            normalized_motion * std + mean,
+            self.head_camera_rotation,
+            self.camera_origin_in_head,
+        )
 
     def _build_motion_positions(
         self,
@@ -753,7 +803,7 @@ class JointMotionModel(nn.Module):
         self,
         input_ids_list: list[torch.Tensor],   # per-sample reasoner token ids [T_text_s] (long)
         x_t: Optional[torch.Tensor] = None,    # [B, Tm, 283] noised motion (padded to batch-max)
-        t_or_sigma: torch.Tensor = None,       # [B] flow time / sigma (shared across modalities)
+        t_or_sigma: torch.Tensor = None,       # [B] backward-compatible shared flow time / sigma
         neutral_joints: Optional[torch.Tensor] = None,   # [B, 30, 3] actor skeleton (motion tasks)
         motion_pad_mask: Optional[torch.Tensor] = None,  # [B, Tm] True = padded motion frame
         noisy_frame_mask: Optional[torch.Tensor] = None, # [B, Tm] True = noised motion frame
@@ -762,6 +812,8 @@ class JointMotionModel(nn.Module):
         video_latents: Optional[list[Optional[torch.Tensor]]] = None,  # per-sample [C,T_lat,h,w]
         camera_action: Optional[list[Optional[torch.Tensor]]] = None,  # per-sample [T-1,9]
         reasoner_inputs: Optional[list[Optional[dict]]] = None,
+        motion_t_or_sigma: Optional[torch.Tensor] = None,  # [B] motion x0 schedule coordinate
+        gen_t_or_sigma: Optional[torch.Tensor] = None,     # [B] video/camera velocity coordinate
         return_dict: Optional[bool] = None,
     ):
         """Run the joint forward over a (possibly mixed-mode) batch.
@@ -780,9 +832,11 @@ class JointMotionModel(nn.Module):
               `{motion_pred, video_pred, camera_pred, resolved}` so the trainer applies the
               per-task flow losses; condition-only / absent modalities are omitted.
 
-        `t_or_sigma[s]` is the single flow time/sigma for sample `s`, shared by every NOISED
-        token of that sample (motion frames AND any noised gen frames), matching the rectified-flow
-        contract used across modalities.
+        Historical one-target calls pass ``t_or_sigma``. Joint generator+motion targets pass
+        ``motion_t_or_sigma`` and ``gen_t_or_sigma`` separately because the frozen motion expert
+        was pretrained with shifted logit-normal x0 noise while the frozen generator was trained
+        with shifted Waver velocity noise. Missing modality-specific values fall back to the shared
+        value, preserving every old checkpoint/sampler call.
         """
         if return_dict is None:
             return_dict = modes is not None
@@ -806,17 +860,30 @@ class JointMotionModel(nn.Module):
             camera_action = [None] * B
         if reasoner_inputs is None:
             reasoner_inputs = [None] * B
-        if t_or_sigma is None:
-            t_or_sigma = torch.zeros(B, device=device)
+        shared_sigma = t_or_sigma
+        if shared_sigma is None:
+            shared_sigma = torch.zeros(B, device=device)
+        if motion_t_or_sigma is None:
+            motion_t_or_sigma = shared_sigma
+        if gen_t_or_sigma is None:
+            gen_t_or_sigma = shared_sigma
+        motion_t_or_sigma = motion_t_or_sigma.to(device=device).reshape(-1)
+        gen_t_or_sigma = gen_t_or_sigma.to(device=device).reshape(-1)
+        if motion_t_or_sigma.numel() != B or gen_t_or_sigma.numel() != B:
+            raise ValueError(
+                "flow-time batch mismatch: "
+                f"B={B} motion={tuple(motion_t_or_sigma.shape)} gen={tuple(gen_t_or_sigma.shape)}"
+            )
         # ---- TIMESTEP PRE-SCALE (the fix for "loss drops but samples are noise") ---------------
-        # `t_or_sigma` is the true flow time in [0,1] (used for NOISING upstream, outside forward).
+        # These are true flow times in [0,1] (used for NOISING upstream, outside forward).
         # Both the motion head (motion_heads.encode_motion) and the gen path (gen_heads/Cosmos)
         # embed `t * timestep_scale` internally (Cosmos convention, timestep_scale=1e-3). Feeding raw
         # t makes the embedder see t*1e-3 -> a ~constant, non-discriminative signal (t=0 vs t=1
         # indistinguishable), so the model learns only the t-averaged velocity. Pre-divide by
         # TIMESTEP_SCALE so `t/scale * scale == t` reaches the embedder. Mirrors train_motion_ft.py.
         # Noising already happened upstream with the true t, so this is embedding-only.
-        t_or_sigma = t_or_sigma / TIMESTEP_SCALE
+        motion_embed_sigma = motion_t_or_sigma / TIMESTEP_SCALE
+        gen_embed_sigma = gen_t_or_sigma / TIMESTEP_SCALE
 
         # Whether ANY sample uses [3, N] mRoPE positions -> decides 1-D vs 3D rotary build.
         any_3d_positions = False
@@ -832,8 +899,12 @@ class JointMotionModel(nn.Module):
         gen_frame_list: list[torch.Tensor] = []
         gen_clean_list: list[torch.Tensor] = []
         motion_frame_list: list[torch.Tensor] = []
+        motion_clean_list: list[torch.Tensor] = []
+        gen_source_start_list: list[torch.Tensor] = []
+        gen_source_end_list: list[torch.Tensor] = []
         reasoner_visual_masks: list[Optional[torch.Tensor]] = []
         reasoner_deepstacks: list[Optional[list[torch.Tensor]]] = []
+        derived_camera_actions: list[Optional[torch.Tensor]] = [None] * B
 
         for s in range(B):
             r_in = reasoner_inputs[s]
@@ -877,7 +948,7 @@ class JointMotionModel(nn.Module):
                              else valid.view(1, Tm))
                 shape_tok = self.heads.encode_shape(neutral_joints[s:s + 1])[0]   # [1, hidden]
                 mtoks = self.heads.encode_motion(
-                    x_t[s:s + 1], t_or_sigma[s:s + 1], nfm_s
+                    x_t[s:s + 1], motion_embed_sigma[s:s + 1], nfm_s
                 )[0]                                                             # [Tm, hidden]
                 mtoks_valid = mtoks[vidx]                                       # [n_mot_s, hidden]
                 mrow = torch.cat([shape_tok.to(dtype), mtoks_valid.to(dtype)], dim=0)  # [1+n_mot, h]
@@ -885,10 +956,15 @@ class JointMotionModel(nn.Module):
                     torch.full((1,), -1, device=device, dtype=torch.long),
                     vidx.to(device=device, dtype=torch.long),
                 ], dim=0))
+                motion_clean_list.append(torch.cat([
+                    torch.ones(1, device=device, dtype=torch.bool),
+                    (~nfm_s[0, vidx]).to(device=device, dtype=torch.bool),
+                ], dim=0))
             else:
                 valid_frame_idx.append(None)
                 mrow = und_emb.new_zeros(0, self.hidden)
                 motion_frame_list.append(torch.empty(0, device=device, dtype=torch.long))
+                motion_clean_list.append(torch.empty(0, device=device, dtype=torch.bool))
             mot_rows.append(mrow)
 
             # ---- generator segment (present iff the task carries image/video/camera) ---------
@@ -903,7 +979,17 @@ class JointMotionModel(nn.Module):
                     t_lat = 1 if (plan.image.present and not plan.video.present) else int(vlat.shape[1])
                 n_camera = 0
                 cam = camera_action[s]
-                if plan.camera.present and cam is not None:
+                derived_camera_condition = False
+                if self.head_camera_alignment and mode == "motimg2video":
+                    if plan.motion.clean_policy != "all":
+                        raise RuntimeError(
+                            "motion-derived camera conditioning requires clean M2V motion"
+                        )
+                    valid_motion = x_t[s:s + 1].index_select(1, valid_frame_idx[s])
+                    cam = self.motion_to_camera_action(valid_motion)[0]
+                    derived_camera_actions[s] = cam
+                    derived_camera_condition = True
+                if (plan.camera.present or derived_camera_condition) and cam is not None:
                     n_camera = int(cam.shape[0])
                 mvm = None
                 if plan.motion.present:
@@ -912,6 +998,7 @@ class JointMotionModel(nn.Module):
                 resolved = TP.resolve_sample(
                     mode, t_lat=t_lat, n_camera=n_camera,
                     motion_valid_mask=mvm, has_shape_token=plan.motion.present,
+                    derived_camera_condition=derived_camera_condition,
                 )
                 native_gen_pack = self.gen_packing == "native"
                 gen_temporal_offset = (
@@ -923,7 +1010,7 @@ class JointMotionModel(nn.Module):
                     resolved,
                     video_latents=vlat,
                     camera_action=cam,
-                    sigma=t_or_sigma[s:s + 1].reshape(1),
+                    sigma=gen_embed_sigma[s:s + 1].reshape(1),
                     temporal_offset=gen_temporal_offset,
                     fps=self.gen_fps if native_gen_pack else None,
                 )
@@ -936,20 +1023,38 @@ class JointMotionModel(nn.Module):
                 gen_mrope = seg.mrope_ids.to(device)                           # [3, N_gen]
                 next_off = seg.next_temporal_offset
                 g_frames = torch.full((seg.tokens.shape[0],), -1, device=device, dtype=torch.long)
+                g_source_start = torch.full_like(g_frames, -1)
+                g_source_end = torch.full_like(g_frames, -1)
                 for pname, (rs, re) in seg.offsets.items():
                     part = seg.parts[pname]
                     if pname in ("video", "image"):
                         spatial = int(part.grid[1] * part.grid[2])
                         frames = torch.arange(part.grid[0], device=device, dtype=torch.long)
-                        g_frames[rs:re] = frames.repeat_interleave(spatial)
+                        frame_rows = frames.repeat_interleave(spatial)
+                        g_frames[rs:re] = frame_rows
+                        g_source_start[rs:re] = torch.where(
+                            frame_rows == 0, frame_rows, 4 * frame_rows - 3
+                        )
+                        g_source_end[rs:re] = 4 * frame_rows
+                    elif pname == "camera":
+                        transitions = torch.arange(
+                            part.grid[0], device=device, dtype=torch.long
+                        )
+                        # camera[i] is the relative transition from source frame i to i+1.
+                        g_source_start[rs:re] = transitions
+                        g_source_end[rs:re] = transitions + 1
                 gen_frame_list.append(g_frames)
                 gen_clean_list.append(seg.condition_mask.to(device).bool())
+                gen_source_start_list.append(g_source_start)
+                gen_source_end_list.append(g_source_end)
             else:
                 gen_rows.append(und_emb.new_zeros(0, self.hidden))
                 gen_mrope = None
                 next_off = T_text_s
                 gen_frame_list.append(torch.empty(0, device=device, dtype=torch.long))
                 gen_clean_list.append(torch.empty(0, device=device, dtype=torch.bool))
+                gen_source_start_list.append(torch.empty(0, device=device, dtype=torch.long))
+                gen_source_end_list.append(torch.empty(0, device=device, dtype=torch.long))
 
             # ---- rotary positions for this sample's packed rows ------------------------------
             # Reasoner: causal 0..T_text_s-1. Gen: the segment's 3D-mRoPE ids (already offset by
@@ -1226,8 +1331,6 @@ class JointMotionModel(nn.Module):
                 if ge <= gs or me <= ms:
                     continue
                 mode_s = modes[s]
-                if mode_s not in ("video2motion", "motimg2video"):
-                    continue
                 g = cur[gs:ge]
                 m = cur[ms:me]
                 meta = BridgeMeta(
@@ -1235,6 +1338,9 @@ class JointMotionModel(nn.Module):
                     gen_frame=gen_frame_list[s].to(device),
                     gen_clean=gen_clean_list[s].to(device),
                     motion_frame=motion_frame_list[s].to(device),
+                    motion_clean=motion_clean_list[s].to(device),
+                    gen_source_start=gen_source_start_list[s].to(device),
+                    gen_source_end=gen_source_end_list[s].to(device),
                 )
                 g2, m2 = bridge(g, m, meta)
                 cur = cur.index_copy(0, torch.arange(gs, ge, device=device), g2)
@@ -1338,6 +1444,7 @@ class JointMotionModel(nn.Module):
                         camera_pred[s] = self.gen.decode_camera(gen_hidden_noisy)
         out["video_pred"] = video_pred
         out["camera_pred"] = camera_pred
+        out["derived_camera_action"] = derived_camera_actions
 
         if return_dict:
             return out

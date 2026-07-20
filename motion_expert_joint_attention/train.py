@@ -1,7 +1,7 @@
-"""Train the 7-TASK joint-attention multimodal model on Cosmos-3 Nano (cosmos env).
+"""Train the multimodal joint-attention/bridge model on Cosmos-3 Nano (cosmos env).
 
-This generalizes the original text->motion trainer to the full 7-task joint-attention
-model (text / image / video / camera / motion in ONE packed sequence). The single per-task
+This generalizes the original text->motion trainer to seven base tasks plus opt-in Phase-3
+joint-target tasks (text / image / video / camera / motion in ONE packed sequence). The per-task
 contract lives in ``task_plan.py``; the data seam in ``nymeria_joint_dataset.py``; the
 per-modality rectified-flow helpers in ``flow.py``; the gen I/O adapter in ``gen_heads.py``;
 and the packed forward (real ``gen_idx`` + per-modality encode/decode + dict output) in
@@ -19,7 +19,7 @@ and the packed forward (real ``gen_idx`` + per-modality encode/decode + dict out
   latent flow MSE; camera: flow MSE chan[:9] x10) and SUM only the supervised modalities ->
   backward -> log per-modality + per-task scalars.
 
-The 7 tasks (``task_plan.TASKS``):
+The seven base tasks:
   inverse_dynamics  video                 -> camera     (no text)
   forward_dynamics  camera + text + image -> video
   policy            text + image          -> camera + video
@@ -27,6 +27,10 @@ The 7 tasks (``task_plan.TASKS``):
   textimg2motion    text + image          -> motion
   motimg2video      motion + text + image -> video
   video2motion      video                 -> motion     (no text)
+
+Optional Phase-3 bridge tasks (zero default weight):
+  video2camera_motion  video              -> camera + motion
+  camimg2video_motion  camera + image     -> video + motion
 
 TRAIN SCOPE (DESIGN_7TASK.md section 5; all toggles, defaults reproduce text->motion):
   motion is ALWAYS fully trained (_moe_motion + MotionHeads + norm_moe_motion).
@@ -64,7 +68,13 @@ import task_plan as TP
 from checkpoint_utils import load_gen_init_state, load_joint_pt
 from cosmos_loader import FrozenCosmos
 from decode_uniego_torch import decode_joints
+from head_camera_alignment import (
+    DEFAULT_CALIBRATION,
+    head_camera_alignment_losses,
+    head_camera_errors,
+)
 from joint_motion_model import JointMotionModel
+from motion_losses import contact_aware_losses
 from nymeria_joint_dataset import NymeriaJointDataset, collate_joint
 from uniego_layout import FEAT_DIM
 
@@ -151,8 +161,9 @@ def main():
     ap = argparse.ArgumentParser()
     # data / mixture
     ap.add_argument("--tasks", nargs="*", default=None,
-                    help="subset of task_plan.TASKS to train (default: all 7). Tasks not listed "
-                         "get zero mixture weight.")
+                    help="subset of task_plan.TASKS to train (default: configured positive-weight "
+                         "base tasks). Tasks not listed get zero mixture weight; experimental "
+                         "joint-target tasks default to zero.")
     ap.add_argument("--task_weights", default=None,
                     help="JSON dict of {mode: weight} overriding config.TASK_WEIGHTS (relative).")
     ap.add_argument("--bones_frac", type=float, default=0.5,
@@ -193,10 +204,10 @@ def main():
     ap.add_argument("--motion_num_train_timesteps", type=int,
                     default=flow.NATIVE_NUM_TRAIN_TIMESTEPS,
                     help="native motion scheduler timestep scale/quantization range (default: 1000).")
-    ap.add_argument("--motion_native_solver", choices=["euler", "unipc"], default="euler",
-                    help="inference/viz solver for native-schedule x0 checkpoints. euler is the "
-                         "straight-path solver validated by bs_native_flow; unipc converts x0 "
-                         "predictions to velocity and runs NVIDIA's official Phase-1 UniPC solver.")
+    ap.add_argument("--motion_native_solver", choices=["euler", "unipc"], default="unipc",
+                    help="inference/viz solver for native-schedule x0 checkpoints. unipc converts "
+                         "x0 predictions to velocity and runs NVIDIA's official Phase-1 UniPC "
+                         "solver (default); euler remains available for historical comparisons.")
     ap.add_argument("--gen_schedule", choices=["legacy", "native"], default="legacy",
                     help="noise-time schedule for VIDEO/CAMERA velocity targets. legacy is the "
                          "historical uniform-time training plus linear Euler sampler. native "
@@ -261,8 +272,32 @@ def main():
     ap.add_argument("--w_feat", type=float, default=config.TRAIN_DEFAULTS["w_feat"])
     ap.add_argument("--w_joint", type=float, default=config.TRAIN_DEFAULTS["w_joint"])
     ap.add_argument("--w_smooth", type=float, default=config.TRAIN_DEFAULTS["w_smooth"])
+    ap.add_argument("--w_contact", type=float, default=0.0,
+                    help="balanced raw-contact BCE weight (GT occupancy supplies pos_weight).")
+    ap.add_argument("--w_foot_vel", type=float, default=0.0,
+                    help="GT-contact-masked horizontal foot velocity weight, in physical m/s.")
+    ap.add_argument("--w_foot_height", type=float, default=0.0,
+                    help="GT-contact-masked raw foot-height reconstruction weight, in metres.")
+    ap.add_argument("--contact_logit_scale", type=float, default=2.0,
+                    help="raw-contact logit slope around the evaluation boundary 0.5.")
+    ap.add_argument("--motion_fps", type=float, default=20.0,
+                    help="motion frame rate used to convert planted-foot displacement to m/s.")
     ap.add_argument("--w_vision", type=float, default=config.TRAIN_DEFAULTS["w_vision"])
     ap.add_argument("--w_camera", type=float, default=config.TRAIN_DEFAULTS["w_camera"])
+    ap.add_argument("--head_camera_alignment", action="store_true",
+                    help="Phase-3 bridge variant: derive a clean upright-camera condition from "
+                         "clean motion for motimg2video and supervise video2motion head-relative "
+                         "SE(3) against synchronized camera actions. GT camera is never a V2M input.")
+    ap.add_argument("--head_camera_calibration", default=DEFAULT_CALIBRATION,
+                    help="train-split rigid head-joint to upright-camera calibration JSON.")
+    ap.add_argument("--w_head_camera_trans", type=float, default=0.0,
+                    help="V2M relative head-camera translation-loss weight.")
+    ap.add_argument("--w_head_camera_rot", type=float, default=0.0,
+                    help="V2M relative head-camera rotation-loss weight.")
+    ap.add_argument("--head_camera_translation_scale", type=float, default=0.02,
+                    help="metres corresponding to one normalized robust translation-error unit.")
+    ap.add_argument("--head_camera_rotation_scale_deg", type=float, default=5.0,
+                    help="degrees corresponding to one normalized robust rotation-error unit.")
     ap.add_argument("--cfg_dropout", type=float, default=config.TRAIN_DEFAULTS["cfg_dropout"])
     # train scope toggles (DESIGN_7TASK.md section 5)
     ap.add_argument("--gen_lora", action="store_true",
@@ -298,6 +333,10 @@ def main():
                          "heads + norm_moe_motion) from a Phase-2 checkpoint by name, strict=False.")
     # misc
     ap.add_argument("--num_workers", type=int, default=8)
+    ap.add_argument("--prefetch_factor", type=int, default=2,
+                    help="batches prefetched by each DataLoader worker; ignored with zero workers")
+    ap.add_argument("--dataloader_timeout", type=float, default=0.0,
+                    help="seconds to wait for a worker batch before failing; zero disables timeout")
     ap.add_argument("--fp32_master", action="store_true",
                     help="cast trainable params to fp32 master (else keep bf16)")
     ap.add_argument("--out", default=None, help="run name under RUN_ROOT")
@@ -351,14 +390,10 @@ def main():
     #   VISION/CAMERA -> ALWAYS velocity (flow.add_noise_velocity_masked, target = eps - x0).
     #                    --gen_schedule selects legacy uniform time or native shifted-Waver time;
     #                    args.objective NEVER touches the gen pathway.
-    # This split is well-defined because NO task noises motion AND vision/camera in the same
-    # sample (task_plan.py: motion-target tasks keep video/image clean; gen-target tasks keep
-    # motion clean/absent), so each sample carries exactly ONE noised-objective semantics and
-    # ONE per-sample t_or_sigma (sampled up front in step_loss and fed to BOTH the noiser and
-    # model.forward -- the invariant whose violation caused the bug above). The checkpoint
-    # stores vars(args) (incl. objective), so sample.load_joint_model keeps auto-pairing the
-    # MOTION sampler (sample_x0 vs sample_velocity) with the trained motion objective; the
-    # gen samplers are velocity unconditionally.
+    # The seven base tasks noise at most one specialist. Experimental Phase-3 joint-target tasks
+    # noise both, using separate per-sample coordinates: motion keeps its pretrained x0/logit-normal
+    # marginal and generator targets keep their velocity/Waver marginal. The checkpoint stores both
+    # contracts so sampling can co-integrate them on the common native UniPC ladder.
     if args.objective not in ("velocity", "x0"):
         raise SystemExit(f"--objective {args.objective!r} not implemented (choices: velocity, x0)")
     if args.motion_schedule == "native" and args.objective != "x0":
@@ -381,8 +416,35 @@ def main():
         ap.error("--gen_schedule native requires --gen_packing native for Phase-1 parity")
     if args.reasoner_image_size <= 0:
         ap.error("--reasoner_image_size must be positive")
+    motion_loss_weights = (
+        args.w_feat,
+        args.w_joint,
+        args.w_smooth,
+        args.w_contact,
+        args.w_foot_vel,
+        args.w_foot_height,
+    )
+    if any(weight < 0.0 for weight in motion_loss_weights):
+        ap.error("motion loss weights must be non-negative")
+    if args.w_head_camera_trans < 0.0 or args.w_head_camera_rot < 0.0:
+        ap.error("head-camera loss weights must be non-negative")
+    if args.head_camera_translation_scale <= 0.0 or args.head_camera_rotation_scale_deg <= 0.0:
+        ap.error("head-camera translation/rotation scales must be positive")
+    if (args.w_head_camera_trans > 0.0 or args.w_head_camera_rot > 0.0) \
+            and not args.head_camera_alignment:
+        ap.error("head-camera loss weights require --head_camera_alignment")
+    if args.head_camera_alignment and not os.path.isfile(args.head_camera_calibration):
+        ap.error(f"head-camera calibration JSON is missing: {args.head_camera_calibration}")
+    if args.contact_logit_scale <= 0.0 or args.motion_fps <= 0.0:
+        ap.error("--contact_logit_scale and --motion_fps must be positive")
     if args.viz_frame_stride <= 0:
         ap.error("--viz_frame_stride must be positive")
+    if args.num_workers < 0:
+        ap.error("--num_workers must be non-negative")
+    if args.prefetch_factor <= 0:
+        ap.error("--prefetch_factor must be positive")
+    if args.dataloader_timeout < 0.0:
+        ap.error("--dataloader_timeout must be non-negative")
     if args.require_viz and args.viz_n <= 0:
         ap.error("--require_viz requires --viz_n > 0")
     if args.viz_only and args.viz_n <= 0:
@@ -430,6 +492,15 @@ def main():
     if not task_weights:
         raise ValueError("no active tasks (empty positive-weight mixture)")
     active_tasks = list(task_weights)
+    if args.head_camera_alignment:
+        unsupported_alignment_tasks = set(active_tasks) - {"video2motion", "motimg2video"}
+        if unsupported_alignment_tasks:
+            ap.error(
+                "--head_camera_alignment is isolated to Phase-3 V2M/M2V; unsupported active "
+                f"tasks: {sorted(unsupported_alignment_tasks)}"
+            )
+        if args.coupling != "bridge_local":
+            ap.error("--head_camera_alignment requires --coupling bridge_local")
     aligned_frames = args.T if args.ti2m_frames is None else int(args.ti2m_frames)
     if not 1 <= aligned_frames <= args.T:
         ap.error(f"--ti2m_frames must be in [1, --T]; got {aligned_frames} with --T {args.T}")
@@ -463,6 +534,22 @@ def main():
         f"[motion_lengths] output_T={args.T} ti2m_aligned_T={aligned_frames} "
         f"reasoner_image={args.reasoner_image_size}x{args.reasoner_image_size}"
     )
+    log(
+        f"[motion_loss] feat={args.w_feat:g} joint={args.w_joint:g} "
+        f"smooth={args.w_smooth:g} contact={args.w_contact:g} "
+        f"foot_vel={args.w_foot_vel:g} foot_height={args.w_foot_height:g} "
+        f"contact_logit_scale={args.contact_logit_scale:g} fps={args.motion_fps:g}"
+    )
+    log(
+        f"[head_camera] enabled={args.head_camera_alignment} "
+        f"calibration={args.head_camera_calibration} "
+        f"w_trans={args.w_head_camera_trans:g} w_rot={args.w_head_camera_rot:g} "
+        f"trans_scale_m={args.head_camera_translation_scale:g} "
+        f"rot_scale_deg={args.head_camera_rotation_scale_deg:g}"
+    )
+    log(
+        f"[motion_stats] mean={config.MOTION_STATS_MEAN} std={config.MOTION_STATS_STD}"
+    )
     if args.textimg_condition == "generator" and "textimg2motion" in active_tasks:
         log("[DEPRECATED] --textimg_condition generator packs the TI2M image as a clean generator "
             "latent frame. Use --textimg_condition reasoner for new TI2M training; generator mode "
@@ -476,7 +563,7 @@ def main():
     log("[build] loading FrozenCosmos (reasoner + generator)...")
     cosmos = FrozenCosmos(device=dev)
 
-    # ---- 7-task joint model: trainable _moe_motion + heads + (toggled) gen/reasoner adapters ----
+    # ---- joint model: trainable _moe_motion + heads + (toggled) gen/reasoner adapters ----
     model = JointMotionModel(
         cosmos,
         objective=args.objective,
@@ -497,6 +584,8 @@ def main():
         coupling=args.coupling,
         textimg_condition=args.textimg_condition,
         reasoner_image_size=args.reasoner_image_size,
+        head_camera_alignment=args.head_camera_alignment,
+        head_camera_calibration=args.head_camera_calibration,
         gen_lora=args.gen_lora,
         gen_lora_rank=args.gen_lora_rank,
         gen_lora_alpha=args.gen_lora_alpha,
@@ -676,6 +765,7 @@ def main():
             force_on_the_fly=args.force_on_the_fly, train=train,
             reasoner_image_for_textimg=(args.textimg_condition == "reasoner"),
             reasoner_image_size=args.reasoner_image_size,
+            camera_head_alignment=args.head_camera_alignment,
             max_samples=max_samples, seed=rank,
         )
 
@@ -689,14 +779,26 @@ def main():
     if args.ddp and world > 1:
         sampler = torch.utils.data.distributed.DistributedSampler(
             ds, num_replicas=world, rank=rank, shuffle=True)
-    dl = DataLoader(
-        ds, batch_size=args.batch_size, shuffle=(sampler is None), sampler=sampler,
-        num_workers=args.num_workers, collate_fn=collate_joint, drop_last=True, pin_memory=True,
-        persistent_workers=args.num_workers > 0,
-    )
+    loader_kwargs = {
+        "dataset": ds,
+        "batch_size": args.batch_size,
+        "shuffle": sampler is None,
+        "sampler": sampler,
+        "num_workers": args.num_workers,
+        "collate_fn": collate_joint,
+        "drop_last": True,
+        "pin_memory": True,
+        "persistent_workers": args.num_workers > 0,
+        "timeout": args.dataloader_timeout,
+    }
+    if args.num_workers > 0:
+        loader_kwargs["prefetch_factor"] = args.prefetch_factor
+    dl = DataLoader(**loader_kwargs)
     log(
         f"[data] dataset={len(ds)} output_T={args.T} aligned_T={aligned_frames} "
-        f"has_bones={ds.has_bones}"
+        f"has_bones={ds.has_bones} workers={args.num_workers} "
+        f"prefetch={args.prefetch_factor if args.num_workers > 0 else 0} "
+        f"timeout={args.dataloader_timeout:g}s"
     )
 
     # ---- optimizer ----
@@ -723,6 +825,31 @@ def main():
         "motion_shift": float(args.motion_shift),
         "motion_num_train_timesteps": int(args.motion_num_train_timesteps),
         "motion_native_solver": args.motion_native_solver,
+        "motion_stats_mean": config.MOTION_STATS_MEAN,
+        "motion_stats_std": config.MOTION_STATS_STD,
+        "head_camera_alignment": {
+            "enabled": bool(args.head_camera_alignment),
+            "calibration": args.head_camera_calibration,
+            "m2v_condition": "relative_camera_action_derived_only_from_clean_motion",
+            "v2m_supervision": "training_only_synchronized_camera_action_target",
+            "absolute_pose_used": False,
+            "w_translation": float(args.w_head_camera_trans),
+            "w_rotation": float(args.w_head_camera_rot),
+            "translation_scale_m": float(args.head_camera_translation_scale),
+            "rotation_scale_deg": float(args.head_camera_rotation_scale_deg),
+        },
+        "motion_loss": {
+            "w_feat": float(args.w_feat),
+            "w_joint": float(args.w_joint),
+            "w_smooth": float(args.w_smooth),
+            "w_contact": float(args.w_contact),
+            "w_foot_vel": float(args.w_foot_vel),
+            "w_foot_height": float(args.w_foot_height),
+            "contact_logit_scale": float(args.contact_logit_scale),
+            "motion_fps": float(args.motion_fps),
+            "contact_mask": "ground_truth",
+            "foot_joints": [24, 25, 28, 29],
+        },
         "gen_schedule": args.gen_schedule,
         "gen_train_time_distribution": (
             "waver" if args.gen_schedule == "native" else "uniform"
@@ -784,6 +911,11 @@ def main():
                 "gen_packing", "gen_fps", "gen_temporal_margin",
                 "gen_lora_rank", "gen_lora_alpha", "init_gen_dcp_weights",
                 "coupling", "textimg_condition", "reasoner_image_size", "ti2m_frames",
+                "w_feat", "w_joint", "w_smooth", "w_contact", "w_foot_vel",
+                "w_foot_height", "contact_logit_scale", "motion_fps",
+                "head_camera_alignment", "head_camera_calibration",
+                "w_head_camera_trans", "w_head_camera_rot",
+                "head_camera_translation_scale", "head_camera_rotation_scale_deg",
             ):
                 prev = prev_args.get(key)
                 cur = getattr(args, key)
@@ -855,19 +987,17 @@ def main():
                 reasoner_inputs[s] = r
                 input_ids_list[s] = r["input_ids"].view(1, -1)
 
-        # ---- per-sample flow time/sigma (PER-MODALITY objectives) ------------------------
-        # ONE t_or_sigma per sample, shared between EVERY noiser call below and
-        # model.forward's t_or_sigma (INVARIANT: the SAME tensor feeds the noising and the
-        # timestep embedding -- a past bug fed forward a different t than the noising used).
-        # No task noises motion AND vision/camera in the same sample (task_plan.py), so each
-        # sample's value carries exactly ONE semantics:
+        # ---- per-sample flow time/sigma (PER-SPECIALIST objectives) ----------------------
+        # The exact tensor used to noise a specialist is also sent to that specialist's timestep
+        # embedding. Motion and generator coordinates are separate because their frozen Phase-2
+        # and Phase-1 pretraining distributions differ:
         #   motion-noised samples (text2motion/textimg2motion/video2motion): the MOTION
         #     objective's schedule -- logit-normal sigma for x0 (bs_train recipe), uniform t
         #     for velocity.
         #   gen-noised samples (fwd/inv/policy/motimg2video): velocity with either the legacy
         #     uniform schedule or native shifted-Waver schedule.
-        # Samples whose modality is condition-only get sigma_eff=0 per-token in the noisers,
-        # so their t_sample value is inert there.
+        # Samples whose modality is condition-only get sigma_eff=0 per-token, so that specialist's
+        # sampled value is inert. Joint-target samples intentionally draw the two values independently.
         motion_noised = torch.tensor(
             [TP.build_task_plan(m).motion.supervised for m in modes],
             dtype=torch.bool,
@@ -882,35 +1012,28 @@ def main():
             dtype=torch.bool,
             device=dev,
         )
-        if (motion_noised & gen_noised).any():
-            bad_idx = torch.nonzero(motion_noised & gen_noised).view(-1).cpu().tolist()
-            bad_modes = [modes[i] for i in bad_idx]
-            raise RuntimeError(
-                "one sample cannot use both motion-x0 and generator-velocity schedules; "
-                f"got {bad_modes}"
-            )
-
-        t_sample = torch.rand(B, device=dev)
+        motion_sigma = torch.rand(B, device=dev)
         if motion_x0:
             if args.motion_schedule == "native":
                 sampled_motion_sigma = flow.sample_sigma_native_logitnormal(
                     B,
                     dev,
                     shift=args.motion_shift,
-                    dtype=t_sample.dtype,
+                    dtype=motion_sigma.dtype,
                 )
             else:
                 sampled_motion_sigma = flow.sample_sigma_logitnormal(B, dev)
-            t_sample = torch.where(
-                motion_noised, sampled_motion_sigma, t_sample)
-        if args.gen_schedule == "native" and gen_noised.any():
+            motion_sigma = torch.where(motion_noised, sampled_motion_sigma, motion_sigma)
+
+        gen_sigma = torch.rand(B, device=dev)
+        if args.gen_schedule == "native":
             sampled_gen_sigma = flow.sample_sigma_native_waver(
                 B,
                 dev,
                 shift=args.gen_shift,
-                dtype=t_sample.dtype,
+                dtype=gen_sigma.dtype,
             )
-            t_sample = torch.where(gen_noised, sampled_gen_sigma, t_sample)
+            gen_sigma = torch.where(gen_noised, sampled_gen_sigma, gen_sigma)
 
         # ---- motion modality (dense [B,Tm,283]; None if no sample carries motion) --------
         motion = batch["motion"]
@@ -931,16 +1054,16 @@ def main():
                 if plan.motion.present and plan.motion.clean_policy != "all":
                     cond_motion[s] = pad[s]                     # clean only the pad frames
             # MOTION objective dispatch (per-modality design; see the flag/guard above):
-            #   x0 (default) -> add_noise_x0_masked  : t_sample rows are logit-normal sigma,
+            #   x0 (default) -> add_noise_x0_masked  : motion_sigma rows are logit-normal sigma,
             #                   target_motion = x0 itself.
             #   velocity     -> add_noise_velocity_masked : uniform t, target = eps - x0.
             # Both take (x0, condition_mask, t_or_sigma) positionally and return the same
-            # tuple structure; passing t_sample keeps the noiser and forward's t_or_sigma
-            # on the SAME per-sample value (t_motion comes back == t_sample).
+            # tuple structure; passing motion_sigma keeps the noiser and forward's motion sigma
+            # on the SAME per-sample value (t_motion comes back == motion_sigma).
             motion_noiser = (flow.add_noise_x0_masked if motion_x0
                              else flow.add_noise_velocity_masked)
             x_t, t_motion, target_motion, noised_motion = motion_noiser(
-                x0, cond_motion, t_sample)
+                x0, cond_motion, motion_sigma)
             # the model's motion encoder expects noisy_frame_mask True=NOISED (loss target).
             noisy_frame_mask = noised_motion & valid           # noised AND valid
 
@@ -949,6 +1072,11 @@ def main():
         # internally from the same plan; the target velocity (eps - x0) is kept here for the loss.
         cam_dense = batch["camera_action"]                     # [B,Tc,9] or None
         cam_pad = batch["camera_pad_mask"]                     # [B,Tc] True=pad or None
+        alignment_dense = batch.get("camera_alignment_action")
+        alignment_pad = batch.get("camera_alignment_pad_mask")
+        if alignment_dense is not None:
+            alignment_dense = alignment_dense.to(dev)
+            alignment_pad = alignment_pad.to(dev)
         vid_list = list(batch["video_latents"])                # list[Optional[C,T_lat,h,w]]
         frm_list = batch["video_frames"]                       # list[Optional[uint8 [3,T,H,W]]]
 
@@ -972,10 +1100,6 @@ def main():
                 if lat is not None:
                     vid_list[s] = lat
 
-        # t_sample was sampled ONCE up top (per-sample, per-modality-objective semantics) and
-        # already fed the motion noiser; the gen noisers below reuse the SAME tensor, and it
-        # is what model.forward receives as t_or_sigma.
-
         noised_vid: list = [None] * B
         target_vid: list = [None] * B
         noised_cam_dense = camera_target = None
@@ -987,7 +1111,7 @@ def main():
         for s in range(B):
             plan = TP.build_task_plan(modes[s])
             reasoner_textimg = args.textimg_condition == "reasoner" and modes[s] == "textimg2motion"
-            ts = t_sample[s:s + 1]
+            ts = gen_sigma[s:s + 1]
             # video / image
             vlat = vid_list[s]
             if (plan.video.present or plan.image.present) and (not reasoner_textimg) and vlat is not None:
@@ -1023,7 +1147,7 @@ def main():
                 else:
                     cond_cam[s] = cam_pad[s]                   # clean only pads -> noise valid
             noised_cam_dense, _, camera_target, _ = flow.add_noise_velocity_masked(
-                cam_dense, cond_cam, t=t_sample)
+                cam_dense, cond_cam, t=gen_sigma)
             # zero out the velocity target on pad frames (kept clean) for the loss mask later.
         noised_cam_list = [None] * B
         if noised_cam_dense is not None:
@@ -1037,7 +1161,8 @@ def main():
         out = model.forward(
             input_ids_list,
             x_t=x_t,
-            t_or_sigma=t_sample,
+            motion_t_or_sigma=motion_sigma,
+            gen_t_or_sigma=gen_sigma,
             neutral_joints=nj if motion is not None else None,
             motion_pad_mask=pad if motion is not None else None,
             noisy_frame_mask=noisy_frame_mask,
@@ -1050,15 +1175,20 @@ def main():
 
         scalars = {}
         if motion_x0 and motion_noised.any():
-            active_sigma = t_sample[motion_noised]
+            active_sigma = motion_sigma[motion_noised]
             scalars["motion_sigma_mean"] = float(active_sigma.mean())
             scalars["motion_sigma_min"] = float(active_sigma.min())
             scalars["motion_sigma_max"] = float(active_sigma.max())
         if gen_noised.any():
-            active_gen_sigma = t_sample[gen_noised]
+            active_gen_sigma = gen_sigma[gen_noised]
             scalars["gen_sigma_mean"] = float(active_gen_sigma.mean())
             scalars["gen_sigma_min"] = float(active_gen_sigma.min())
             scalars["gen_sigma_max"] = float(active_gen_sigma.max())
+        joint_noised = motion_noised & gen_noised
+        if joint_noised.any():
+            scalars["joint_sigma_abs_delta"] = float(
+                (motion_sigma[joint_noised] - gen_sigma[joint_noised]).abs().mean()
+            )
         total = torch.zeros((), device=dev)
         per_task = {m: torch.zeros((), device=dev) for m in set(modes)}
 
@@ -1069,56 +1199,86 @@ def main():
             # supervise only frames that were noised (motion-target tasks), and valid.
             mloss_mask = noisy_frame_mask                      # [B,Tm] True=supervised
             if mloss_mask.any():
-                l_feat = masked_mse(motion_pred, target_motion, mloss_mask)
-                # decoded geometric terms on x0_hat:
-                #   x0 objective       -> x0_hat = the prediction itself (bs_train recipe:
-                #                         geometric losses supervise the net output directly).
-                #   velocity objective -> x0_hat = x_t - t*v_hat (ODE relation at t).
-                l_joint = x0.new_zeros(())
-                l_smooth = x0.new_zeros(())
-                if args.w_joint > 0 or args.w_smooth > 0:
-                    if motion_x0:
-                        x0_hat = motion_pred
-                    else:
-                        tb_ = t_motion.view(-1, *([1] * (x_t.dim() - 1)))
-                        x0_hat = x_t - tb_ * motion_pred
-                    j_hat = decode_joints(x0_hat * std + mean)             # [B,T,30,3]
+                # Decode once, then reduce per task so experimental two-target modes can use a
+                # half branch weight without changing historical one-target task weights.
+                if motion_x0:
+                    x0_hat = motion_pred
+                else:
+                    tb_ = t_motion.view(-1, *([1] * (x_t.dim() - 1)))
+                    x0_hat = x_t - tb_ * motion_pred
+                contact_enabled = any(
+                    weight > 0.0
+                    for weight in (args.w_contact, args.w_foot_vel, args.w_foot_height)
+                )
+                need_decoded = args.w_joint > 0 or args.w_smooth > 0 or contact_enabled
+                j_hat = j_gt = rel_hat = rel_gt = None
+                if need_decoded:
+                    j_hat = decode_joints(x0_hat * std + mean)
                     with torch.no_grad():
                         j_gt = decode_joints(x0 * std + mean).detach()
                     if torch.isfinite(j_hat).all():
                         rel_hat = j_hat - j_hat.mean(dim=2, keepdim=True)
                         rel_gt = j_gt - j_gt.mean(dim=2, keepdim=True)
-                        if args.w_joint > 0:
-                            l_joint = masked_mse(rel_hat, rel_gt, mloss_mask)
-                        if args.w_smooth > 0:
-                            vmask = mloss_mask[:, 1:] & mloss_mask[:, :-1]
-                            l_smooth = masked_mse(j_hat[:, 1:] - j_hat[:, :-1],
-                                                  j_gt[:, 1:] - j_gt[:, :-1], vmask)
-                m_total = args.w_feat * l_feat + args.w_joint * l_joint + args.w_smooth * l_smooth
-                # ``m_total`` is already a mean over all active motion-target rows. Scale it
-                # by the fraction of batch samples carrying a motion target so every sample
-                # has weight 1/B in a mixed V2M/M2V batch. This is exactly unchanged for the
-                # all-motion Phase-2 case (n_motion == B).
-                motion_counts = {
-                    m: sum(
-                        1
-                        for s in range(B)
-                        if modes[s] == m and TP.build_task_plan(modes[s]).motion.supervised
+
+                metric_terms = {k: [] for k in (
+                    "motion_feat", "motion_joint", "motion_smooth", "motion_contact",
+                    "motion_foot_vel", "motion_foot_height"
+                )}
+                for mode in sorted(set(modes)):
+                    plan = TP.build_task_plan(mode)
+                    if not plan.motion.supervised:
+                        continue
+                    rows = torch.tensor(
+                        [m == mode for m in modes], dtype=torch.bool, device=dev
                     )
-                    for m in set(modes)
-                }
-                n_motion = sum(motion_counts.values())
-                motion_contrib = m_total * (float(n_motion) / float(B))
-                total = total + motion_contrib
-                scalars["motion_feat"] = float(l_feat.detach())
-                scalars["motion_joint"] = float(l_joint.detach())
-                scalars["motion_smooth"] = float(l_smooth.detach())
-                # Logging only: attribute the batch-level motion loss once per active
-                # motion-target mode. Do not add it once per sample, which inflates
-                # loss/task/<mode> by batch size in single-task Phase-2 runs.
-                for m, count in motion_counts.items():
-                    if count:
-                        per_task[m] = per_task[m] + m_total * (float(count) / float(B))
+                    mode_mask = mloss_mask & rows[:, None]
+                    if not mode_mask.any():
+                        continue
+                    l_feat = masked_mse(motion_pred, target_motion, mode_mask)
+                    l_joint = x0.new_zeros(())
+                    l_smooth = x0.new_zeros(())
+                    l_contact = x0.new_zeros(())
+                    l_foot_vel = x0.new_zeros(())
+                    l_foot_height = x0.new_zeros(())
+                    if rel_hat is not None:
+                        if args.w_joint > 0:
+                            l_joint = masked_mse(rel_hat, rel_gt, mode_mask)
+                        if args.w_smooth > 0:
+                            vmask = mode_mask[:, 1:] & mode_mask[:, :-1]
+                            l_smooth = masked_mse(
+                                j_hat[:, 1:] - j_hat[:, :-1],
+                                j_gt[:, 1:] - j_gt[:, :-1],
+                                vmask,
+                            )
+                        if contact_enabled:
+                            l_contact, l_foot_vel, l_foot_height = contact_aware_losses(
+                                x0_hat, x0, j_hat, mode_mask, mean, std,
+                                fps=args.motion_fps,
+                                contact_logit_scale=args.contact_logit_scale,
+                            )
+                    m_total = (
+                        args.w_feat * l_feat
+                        + args.w_joint * l_joint
+                        + args.w_smooth * l_smooth
+                        + args.w_contact * l_contact
+                        + args.w_foot_vel * l_foot_vel
+                        + args.w_foot_height * l_foot_height
+                    )
+                    count = int(rows.sum().item())
+                    branch_scale = plan.motion.loss_weight / TP.W_MOTION
+                    contribution = m_total * (float(count) / float(B)) * branch_scale
+                    total = total + contribution
+                    per_task[mode] = per_task[mode] + contribution
+                    for key, value in zip(metric_terms, (
+                        l_feat, l_joint, l_smooth, l_contact, l_foot_vel, l_foot_height
+                    )):
+                        metric_terms[key].append((value, count))
+
+                for key, terms in metric_terms.items():
+                    if terms:
+                        denom = float(sum(count for _, count in terms))
+                        value = sum(term * count for term, count in terms) / denom
+                        scalars[key] = float(value.detach())
 
         # ---- VISION loss (per-sample latent flow MSE on noised frames) -----------------
         video_pred = out.get("video_pred") or [None] * B
@@ -1139,8 +1299,11 @@ def main():
             # flatten to [1, T_lat, C*h*w] and mask to noised frames.
             p_flat = vp5.reshape(1, T_lat, -1)
             t_flat = tgt.reshape(1, T_lat, -1)
-            lv = flow.vision_flow_loss(p_flat, t_flat, noised_frames.view(1, T_lat),
-                                       weight=args.w_vision)
+            branch_scale = plan.video.loss_weight / TP.W_VISION
+            lv = flow.vision_flow_loss(
+                p_flat, t_flat, noised_frames.view(1, T_lat),
+                weight=args.w_vision * branch_scale,
+            )
             vis_accum.append(lv)
             batch_lv = lv / float(B)
             total = total + batch_lv
@@ -1164,14 +1327,98 @@ def main():
             # (clean_policy=="none") that is every real frame.
             n = cp.shape[0]
             noised_mask = torch.ones((1, n), dtype=torch.bool, device=dev)
-            lc = flow.camera_flow_loss(cp.unsqueeze(0), tgt[:n].unsqueeze(0), noised_mask,
-                                       weight=args.w_camera)
+            branch_scale = plan.camera.loss_weight / TP.ACTION_LOSS_WEIGHT
+            lc = flow.camera_flow_loss(
+                cp.unsqueeze(0), tgt[:n].unsqueeze(0), noised_mask,
+                weight=args.w_camera * branch_scale,
+            )
             cam_accum.append(lc)
             batch_lc = lc / float(B)
             total = total + batch_lc
             per_task[modes[s]] = per_task[modes[s]] + batch_lc
         if cam_accum:
             scalars["camera"] = float((sum(cam_accum) / len(cam_accum)).detach())
+
+        # ---- RELATIVE HEAD<->CAMERA alignment -------------------------------------------
+        # V2M receives only clean video and predicts motion. The synchronized camera action is
+        # a training-only target here; it is never packed into the V2M forward. M2V receives a
+        # clean camera condition derived deterministically from its clean motion inside the model,
+        # never the GT camera action. Absolute world positions are intentionally unused.
+        if args.head_camera_alignment:
+            if alignment_dense is None or alignment_pad is None:
+                raise RuntimeError(
+                    "head-camera alignment is enabled but the dataset emitted no camera target"
+                )
+            if motion_pred is None or x0 is None or valid is None:
+                raise RuntimeError("head-camera alignment requires motion rows in every sample")
+            if motion_x0:
+                alignment_x0_hat = motion_pred
+            else:
+                alignment_t = t_motion.view(-1, *([1] * (x_t.dim() - 1)))
+                alignment_x0_hat = x_t - alignment_t * motion_pred
+            predicted_alignment = model.motion_to_camera_action(alignment_x0_hat)
+            if predicted_alignment.shape[:2] != alignment_dense.shape[:2]:
+                raise RuntimeError(
+                    "head-camera transition mismatch: derived "
+                    f"{tuple(predicted_alignment.shape)} vs target {tuple(alignment_dense.shape)}"
+                )
+
+            v2m_rows = torch.tensor(
+                [mode == "video2motion" for mode in modes],
+                dtype=torch.bool,
+                device=dev,
+            )
+            transition_valid = valid[:, 1:] & valid[:, :-1] & (~alignment_pad)
+            v2m_transition_mask = transition_valid & v2m_rows[:, None]
+            n_v2m = int(v2m_rows.sum().item())
+            if v2m_transition_mask.any():
+                head_trans, head_rot = head_camera_alignment_losses(
+                    predicted_alignment,
+                    alignment_dense,
+                    v2m_transition_mask,
+                    translation_scale_m=args.head_camera_translation_scale,
+                    rotation_scale_deg=args.head_camera_rotation_scale_deg,
+                )
+                head_total = (
+                    args.w_head_camera_trans * head_trans
+                    + args.w_head_camera_rot * head_rot
+                )
+                head_contrib = head_total * (float(n_v2m) / float(B))
+                total = total + head_contrib
+                per_task["video2motion"] = per_task.get(
+                    "video2motion", total.new_zeros(())
+                ) + head_contrib
+                with torch.no_grad():
+                    trans_m, rot_deg = head_camera_errors(
+                        predicted_alignment,
+                        alignment_dense,
+                        v2m_transition_mask,
+                    )
+                scalars["head_camera_v2m_trans_loss"] = float(head_trans.detach())
+                scalars["head_camera_v2m_rot_loss"] = float(head_rot.detach())
+                scalars["head_camera_v2m_trans_m"] = float(trans_m)
+                scalars["head_camera_v2m_rot_deg"] = float(rot_deg)
+
+            # Calibration/input diagnostic for M2V. This is not a loss: the derived camera is a
+            # deterministic condition, and reporting its GT discrepancy makes calibration quality
+            # visible without accidentally supervising M2V with target camera tokens.
+            derived_camera = out.get("derived_camera_action") or [None] * B
+            m2v_trans = []
+            m2v_rot = []
+            with torch.no_grad():
+                for s, mode in enumerate(modes):
+                    if mode != "motimg2video" or derived_camera[s] is None:
+                        continue
+                    n = int(derived_camera[s].shape[0])
+                    target_s = alignment_dense[s:s + 1, :n]
+                    pred_s = derived_camera[s].unsqueeze(0).to(target_s.dtype)
+                    mask_s = (~alignment_pad[s:s + 1, :n])
+                    trans_m, rot_deg = head_camera_errors(pred_s, target_s, mask_s)
+                    m2v_trans.append(trans_m)
+                    m2v_rot.append(rot_deg)
+            if m2v_trans:
+                scalars["head_camera_m2v_condition_trans_m"] = float(torch.stack(m2v_trans).mean())
+                scalars["head_camera_m2v_condition_rot_deg"] = float(torch.stack(m2v_rot).mean())
 
         if args.coupling == "bridge_local":
             gates_g = torch.stack([b.gate_g.detach().float() for b in model.bridges.values()])
@@ -1202,11 +1449,13 @@ def main():
         # candidate smoke tasks: text2motion (always), + a video task if latents exist.
         smoke_tasks = [t for t in ("text2motion", "video2motion", "textimg2motion",
                                    "forward_dynamics", "inverse_dynamics", "policy",
-                                   "motimg2video") if t in active_tasks]
+                                   "motimg2video", "video2camera_motion",
+                                   "camimg2video_motion") if t in active_tasks]
 
         model.train()
         ok = True
         ran = 0
+        bridge_core_seen = False
         for tmode in smoke_tasks:
             batch = one_sample_batch(tmode)
             if batch is None:
@@ -1234,6 +1483,17 @@ def main():
             train_grad = sum(p.grad.abs().sum().item()
                              for n, p in model.named_all_parameters()
                              if model._is_trainable_name(n) and p.grad is not None)
+            bridge_gate_grad = sum(
+                p.grad.abs().sum().item()
+                for n, p in model.named_all_parameters()
+                if "bridges." in n and ".gate_" in n and p.grad is not None
+            )
+            bridge_core_grad = sum(
+                p.grad.abs().sum().item()
+                for n, p in model.named_all_parameters()
+                if "bridges." in n and ".gate_" not in n and p.grad is not None
+            )
+            bridge_core_seen = bridge_core_seen or bridge_core_grad > 0.0
             try:
                 model.assert_frozen_grads_zero()
                 frozen_ok = True
@@ -1241,27 +1501,45 @@ def main():
                 logline(f"[smoke] '{tmode}' FROZEN-GRAD LEAK: {str(e)[:200]}")
                 frozen_ok = False
             fin = bool(torch.isfinite(loss).item())
+            step_finite = fin and grads_finite(trainable)
+            if tmode == "video2camera_motion":
+                step_finite = step_finite and "motion_feat" in sc and "camera" in sc
+            if tmode == "camimg2video_motion":
+                step_finite = step_finite and "motion_feat" in sc and "vision" in sc
+            if args.grad_clip > 0:
+                clip_grads(trainable, args.grad_clip)
+            smoke_lrf = lr_factor(ran, args.warmup, args.steps, args.lr_schedule)
+            for group in opt.param_groups:
+                group["lr"] = args.lr * smoke_lrf
             logline(f"[smoke] {tmode:16s} loss={loss.item():.4f} finite={fin} "
-                    f"train_grad={train_grad:.3f} frozen_ok={frozen_ok} "
+                    f"train_grad={train_grad:.3f} gate_grad={bridge_gate_grad:.3f} "
+                    f"core_grad={bridge_core_grad:.3f} frozen_ok={frozen_ok} "
                     f"{ {k: round(v, 3) for k, v in sc.items()} }")
-            ok = ok and fin and (train_grad > 0) and frozen_ok
-            opt.step()
+            ok = ok and step_finite and (train_grad > 0) and frozen_ok
+            if step_finite:
+                opt.step()
             ran += 1
         if ran == 0:
             logline("[smoke] FAIL: ran 0 tasks")
             ok = False
+        if args.coupling == "bridge_local" and ran >= 3 and not bridge_core_seen:
+            logline("[smoke] FAIL: bridge q/k/v/o parameters never received a nonzero gradient")
+            ok = False
         print("[smoke] PASS" if ok else "[smoke] FAIL", flush=True)
+        if not ok:
+            raise RuntimeError("training smoke failed")
         return
 
     # ----------------------------------------------------------------------------------
     # In-train held-out visualization. Motion pretraining balances T2M/TI2M. Bridge training
-    # balances V2M/M2V: V2M writes the source video plus GT|pred motion, while M2V writes
-    # GT|generated RGB video. Samples are fixed for the entire run so checkpoints are comparable.
+    # covers every active corner/joint mode. Samples are fixed for the entire run so checkpoints
+    # are comparable.
     # ----------------------------------------------------------------------------------
     viz_items = []
     viz_modes = [
         m for m in (
-            "text2motion", "textimg2motion", "video2motion", "motimg2video"
+            "text2motion", "textimg2motion", "video2motion", "motimg2video",
+            "video2camera_motion", "camimg2video_motion",
         ) if m in active_tasks
     ]
     viz_vae = wan_vae
@@ -1297,6 +1575,11 @@ def main():
                     "video_latents": (
                         torch.as_tensor(video_latents_v).float().clone()
                         if video_latents_v is not None
+                        else None
+                    ),
+                    "camera_action": (
+                        torch.as_tensor(item["camera_action"]).float().clone()
+                        if item.get("camera_action") is not None
                         else None
                     ),
                 }
@@ -1356,7 +1639,10 @@ def main():
                     seen.add(cap)
                     viz_items.append(_viz_record(item, "textimg2motion"))
 
-            for mode in ("video2motion", "motimg2video"):
+            for mode in (
+                "video2motion", "motimg2video", "video2camera_motion",
+                "camimg2video_motion",
+            ):
                 target = quotas.get(mode, 0)
                 if target <= 0:
                     continue
@@ -1377,6 +1663,10 @@ def main():
                         item.get("motion") is None
                         or item.get("neutral_joints") is None
                         or item.get("video_latents") is None
+                        or (
+                            mode in ("video2camera_motion", "camimg2video_motion")
+                            and item.get("camera_action") is None
+                        )
                     ):
                         continue
                     viz_items.append(_viz_record(item, mode))
@@ -1462,14 +1752,17 @@ def main():
         EC.frames_to_mp4(frames, path, fps)
         return frames
 
-    def _hstack_videos(left_path, right_path, out_path, left_label, right_label):
+    def _hstack_videos(left_path, right_path, out_path, left_label, right_label, *, fps=None):
         """Best-effort labeled comparison; the two component MP4s remain authoritative."""
         import subprocess
 
+        rate = f"fps={int(fps)}," if fps is not None else ""
         fc = (
-            f"[0:v]scale=-2:400,pad=iw:ih+26:0:26:black,drawtext=text='{left_label}':"
+            f"[0:v]{rate}setpts=PTS-STARTPTS,scale=-2:400,pad=iw:ih+26:0:26:black,"
+            f"drawtext=text='{left_label}':"
             "x=6:y=3:fontcolor=yellow:fontsize=18[a];"
-            f"[1:v]scale=-2:400,pad=iw:ih+26:0:26:black,drawtext=text='{right_label}':"
+            f"[1:v]{rate}setpts=PTS-STARTPTS,scale=-2:400,pad=iw:ih+26:0:26:black,"
+            f"drawtext=text='{right_label}':"
             "x=6:y=3:fontcolor=yellow:fontsize=18[b];"
             "[a][b]hstack=inputs=2:shortest=1"
         )
@@ -1479,6 +1772,68 @@ def main():
             check=False,
         )
         return out_path if result.returncode == 0 else None
+
+    def _plot_camera_actions(gt_action, pred_action, out_path):
+        """Plot metric relative-action trajectories from a common identity origin."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import eval_inverse_dynamics as EID
+
+        gt = np.asarray(gt_action, dtype=np.float64)
+        pred = np.asarray(pred_action, dtype=np.float64)
+        n = min(len(gt), len(pred))
+        gt = gt[:n]
+        pred = pred[:n]
+        gt_pos = EID.pred_abs(gt[:, :3], EID.rot6d_to_R(gt[:, 3:9]))
+        pred_pos = EID.pred_abs(pred[:, :3], EID.rot6d_to_R(pred[:, 3:9]))
+        ate = float(np.sqrt(np.square(gt_pos - pred_pos).sum(axis=1).mean()))
+        fig = plt.figure(figsize=(6.4, 5.6))
+        ax = fig.add_subplot(111, projection="3d")
+        ax.plot(*gt_pos.T, color="tab:green", linewidth=1.8, label="GT camera")
+        ax.plot(*pred_pos.T, color="tab:red", linewidth=1.8, label="generated camera")
+        ax.scatter(*gt_pos[0], color="black", s=24)
+        all_pos = np.concatenate([gt_pos, pred_pos], axis=0)
+        center = all_pos.mean(axis=0)
+        radius = float(np.abs(all_pos - center).max() * 1.1 + 1e-6)
+        ax.set_xlim(center[0] - radius, center[0] + radius)
+        ax.set_ylim(center[1] - radius, center[1] + radius)
+        ax.set_zlim(center[2] - radius, center[2] + radius)
+        ax.set_title(f"Joint video -> camera + motion | direct ATE={ate:.3f} m")
+        ax.legend(fontsize=8)
+        ax.view_init(elev=24, azim=-60)
+        fig.tight_layout()
+        fig.savefig(out_path, dpi=130)
+        plt.close(fig)
+        return ate
+
+    def _render_joint_motion(x0_np, it, vdir, stem):
+        """Decode and render normalized generated motion with its aligned GT."""
+        from render_motion import render_motion_mp4
+
+        x0v = torch.from_numpy(np.asarray(x0_np, dtype=np.float32)).to(dev).unsqueeze(0)
+        joints = decode_joints(x0v[0].float().unsqueeze(0) * std + mean)[0].cpu().numpy()
+        gt_feat = it["gt_motion"].to(dev) * std + mean
+        gt_joints = decode_joints(gt_feat.unsqueeze(0))[0].cpu().numpy()
+        pred_path = os.path.join(vdir, stem + "_pred_motion.npy")
+        gt_path = os.path.join(vdir, stem + "_gt_motion.npy")
+        np.save(pred_path, joints)
+        np.save(gt_path, gt_joints)
+        motion_mp4 = os.path.join(vdir, stem + "_gt_pred_motion.mp4")
+        render_motion_mp4(
+            joints,
+            motion_mp4,
+            caption="joint physical generation (no text condition)",
+            fps=max(1, round(20 / args.viz_frame_stride)),
+            gt_joints=gt_joints,
+            frame_stride=args.viz_frame_stride,
+        )
+        return {
+            "pred_joints_npy": pred_path,
+            "gt_joints_npy": gt_path,
+            "motion_video": motion_mp4,
+        }
 
     @torch.no_grad()
     def do_viz(step):
@@ -1496,6 +1851,124 @@ def main():
                 src = it.get("source", "nymeria")
                 tag = it["caption"][:28].replace(" ", "_").replace("/", "_") or "no_text"
                 stem = f"{i}_{mode}_{src}_{tag}"
+
+                if mode == "video2camera_motion":
+                    from sample import sample_video2camera_motion
+
+                    vlat = it["video_latents"].to(dev)
+                    gt_camera = it["camera_action"].to(dev)
+                    generated = sample_video2camera_motion(
+                        model,
+                        video_latents=vlat,
+                        neutral_joints=nj_v,
+                        T=sample_T,
+                        camera_T=int(gt_camera.shape[0]),
+                        steps=args.viz_steps,
+                        guidance=args.viz_guidance,
+                        device=dev,
+                        seed=i,
+                    )
+                    motion_files = _render_joint_motion(
+                        generated["motion"], it, vdir, stem
+                    )
+                    condition_video = os.path.join(vdir, stem + "_condition_video.mp4")
+                    _write_latent_video(
+                        vlat, condition_video, frame_stride=args.viz_frame_stride
+                    )
+                    comparison_video = os.path.join(vdir, stem + ".mp4")
+                    comparison = _hstack_videos(
+                        condition_video,
+                        motion_files["motion_video"],
+                        comparison_video,
+                        "condition video",
+                        "GT | jointly generated motion",
+                    )
+                    gt_camera_path = os.path.join(vdir, stem + "_gt_camera.npy")
+                    pred_camera_path = os.path.join(vdir, stem + "_pred_camera.npy")
+                    camera_plot = os.path.join(vdir, stem + "_camera_trajectory.png")
+                    np.save(gt_camera_path, gt_camera.float().cpu().numpy())
+                    np.save(pred_camera_path, generated["camera"])
+                    camera_ate = _plot_camera_actions(
+                        gt_camera.float().cpu().numpy(), generated["camera"], camera_plot
+                    )
+                    manifest.append({
+                        "i": i,
+                        "mode": mode,
+                        "source": src,
+                        "caption": "",
+                        "condition_video": condition_video,
+                        "comparison_video": comparison,
+                        "gt_camera_npy": gt_camera_path,
+                        "generated_camera_npy": pred_camera_path,
+                        "camera_trajectory_png": camera_plot,
+                        "camera_direct_ate_m": camera_ate,
+                        **motion_files,
+                        "T": sample_T,
+                        "sampling_steps": args.viz_steps,
+                        "guidance": args.viz_guidance,
+                        "joint_sampler": "single_state_unipc",
+                    })
+                    continue
+
+                if mode == "camimg2video_motion":
+                    from sample import sample_camimg2video_motion
+
+                    vlat = it["video_latents"].to(dev)
+                    gt_camera = it["camera_action"].to(dev)
+                    generated = sample_camimg2video_motion(
+                        model,
+                        image_latent=vlat[:, 0],
+                        camera_action=gt_camera,
+                        neutral_joints=nj_v,
+                        T=sample_T,
+                        T_lat=int(vlat.shape[1]),
+                        steps=args.viz_steps,
+                        guidance=args.viz_guidance,
+                        device=dev,
+                        seed=i,
+                    )
+                    motion_files = _render_joint_motion(
+                        generated["motion"], it, vdir, stem
+                    )
+                    gt_npz = os.path.join(vdir, stem + "_gt_latents.npz")
+                    gen_npz = os.path.join(vdir, stem + "_generated_latents.npz")
+                    np.savez(gt_npz, latents=vlat.float().cpu().numpy().astype(np.float16))
+                    np.savez(gen_npz, latents=generated["video"].astype(np.float16))
+                    gt_mp4 = os.path.join(vdir, stem + "_gt_video.mp4")
+                    gen_mp4 = os.path.join(vdir, stem + "_generated_video.mp4")
+                    _write_latent_video(vlat, gt_mp4)
+                    _write_latent_video(generated["video"], gen_mp4)
+                    video_comparison = os.path.join(vdir, stem + "_gt_generated_video.mp4")
+                    _hstack_videos(
+                        gt_mp4, gen_mp4, video_comparison, "GT video", "jointly generated video"
+                    )
+                    joint_comparison_path = os.path.join(vdir, stem + ".mp4")
+                    joint_comparison = _hstack_videos(
+                        gen_mp4,
+                        motion_files["motion_video"],
+                        joint_comparison_path,
+                        "jointly generated video",
+                        "GT | jointly generated motion",
+                        fps=max(1, round(20 / args.viz_frame_stride)),
+                    )
+                    manifest.append({
+                        "i": i,
+                        "mode": mode,
+                        "source": src,
+                        "caption": "",
+                        "gt_latents_npz": gt_npz,
+                        "generated_latents_npz": gen_npz,
+                        "gt_video": gt_mp4,
+                        "generated_video": gen_mp4,
+                        "video_comparison": video_comparison,
+                        "comparison_video": joint_comparison,
+                        **motion_files,
+                        "T": sample_T,
+                        "sampling_steps": args.viz_steps,
+                        "guidance": args.viz_guidance,
+                        "joint_sampler": "single_state_unipc",
+                    })
+                    continue
 
                 if mode == "motimg2video":
                     from sample import sample_motimg2video

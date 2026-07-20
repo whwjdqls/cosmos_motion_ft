@@ -1,7 +1,7 @@
-"""Central per-task contract for the 7-task joint-attention multimodal model.
+"""Central per-task contract for the joint-attention multimodal model.
 
-THE SINGLE SOURCE OF TRUTH for how each of the 7 tasks packs / conditions / supervises
-the 5 modalities ``{text, image, video, camera, motion}``. Every other file imports from
+THE SINGLE SOURCE OF TRUTH for how the seven base and two opt-in experimental tasks pack,
+condition, and supervise the 5 modalities ``{text, image, video, camera, motion}``. Every other file imports from
 here so the dataset (which fields to emit / when to blank the caption), the model
 (``joint_motion_model.forward`` building ``condition_mask`` + ``gen_idx``), and the trainer
 (``train.step_loss`` selecting + weighting the per-modality flow losses) all agree.
@@ -10,7 +10,8 @@ Authoritative design: ``DESIGN_7TASK.md`` (per-task masking table). This file en
 table programmatically. Pure python -- NO torch, NO cosmos_framework -- exactly like
 ``config.py`` so it stays cheap to import from any process.
 
-The 7 tasks (exact names, used as the ``mode`` string everywhere)::
+The seven base tasks plus two experimental Phase-3 joint-target tasks (exact names,
+used as the ``mode`` string everywhere)::
 
     inverse_dynamics   video                 -> camera           (NO text instruction)
     forward_dynamics   camera + text + image -> video
@@ -19,6 +20,8 @@ The 7 tasks (exact names, used as the ``mode`` string everywhere)::
     textimg2motion     text + image          -> motion
     motimg2video       motion + text + image -> video
     video2motion       video                 -> motion           (NO text instruction)
+    video2camera_motion video                -> camera + motion  (NO text instruction)
+    camimg2video_motion camera + image        -> video + motion   (NO text instruction)
 
 The five modalities and their carriers in the packed sequence
 ``[ reasoner(text) | generator(image|video|camera) | motion ]``:
@@ -52,10 +55,11 @@ LOSS WEIGHTS (per modality, summed over the supervised modalities of a task):
 TEXT POLICY (per task):
 
     "empty"    : caption is ALWAYS "" (the task has no instruction).  -> inverse_dynamics,
-                 video2motion. Structurally present (1 eos token) so the causal reasoner block
-                 always has >= 1 row and the CFG-null contract is preserved.
+                 video2motion, video2camera_motion, camimg2video_motion. Structurally present
+                 (1 eos token) so the causal reasoner block always has >= 1 row and the CFG-null
+                 contract is preserved.
     "cfg_drop" : the real caption, dropped to "" with prob ``cfg_dropout`` (default 0.10) per
-                 train sample -> a valid CFG-null at inference. All other 5 tasks.
+                 train sample -> a valid CFG-null at inference. All other five base tasks.
 """
 from __future__ import annotations
 
@@ -74,6 +78,8 @@ TASKS: Tuple[str, ...] = (
     "textimg2motion",
     "motimg2video",
     "video2motion",
+    "video2camera_motion",
+    "camimg2video_motion",
 )
 
 MODALITIES: Tuple[str, ...] = ("text", "image", "video", "camera", "motion")
@@ -103,6 +109,10 @@ TASK_WEIGHTS: Dict[str, float] = {
     "policy":           0.10,
     "forward_dynamics": 0.08,
     "inverse_dynamics": 0.07,
+    # Experimental Phase-3 objectives are opt-in. Production launchers must assign
+    # explicit positive weights rather than silently changing the historical 7-task mix.
+    "video2camera_motion": 0.0,
+    "camimg2video_motion": 0.0,
 }
 
 # Which DATA SOURCE each task can draw from. NymeriaPlus windows have ALL 5 modalities aligned
@@ -117,6 +127,8 @@ TASK_SOURCES: Dict[str, Tuple[str, ...]] = {
     "textimg2motion":   ("nymeria",),
     "motimg2video":     ("nymeria",),
     "video2motion":     ("nymeria",),
+    "video2camera_motion": ("nymeria",),
+    "camimg2video_motion": ("nymeria",),
 }
 
 
@@ -159,8 +171,8 @@ class TaskPlan:
     """The full per-task contract: one ModalityPlan per modality + text policy + sources.
 
     text_policy
-        "empty"    -> caption always "" (no instruction): inverse_dynamics, video2motion.
-        "cfg_drop" -> real caption, dropped to "" with prob cfg_dropout: all other tasks.
+        "empty"    -> caption always "" for tasks without an instruction.
+        "cfg_drop" -> real caption, dropped to "" with prob cfg_dropout for instructed tasks.
     sources
         Data sources that can serve this task (see TASK_SOURCES).
     weight
@@ -202,7 +214,7 @@ class TaskPlan:
 
 
 # ============================================================================
-# The 7 task plans (one row per task in DESIGN_7TASK.md's masking table).
+# The seven base task plans plus opt-in Phase-3 joint-target plans.
 # ============================================================================
 def _absent() -> ModalityPlan:
     return ModalityPlan(present=False, role="absent", clean_policy="all",
@@ -310,6 +322,40 @@ _PLANS["video2motion"] = TaskPlan(
     text_policy="empty",
     sources=TASK_SOURCES["video2motion"],
     weight=TASK_WEIGHTS["video2motion"],
+)
+
+# Phase-3 multitask A: clean video -> jointly denoise camera and motion. Each target branch
+# carries half its normal weight so one two-target sample has the same total branch budget as
+# one single-target sample. Camera keeps its established relative up-weight inside that half.
+_PLANS["video2camera_motion"] = TaskPlan(
+    mode="video2camera_motion",
+    text=_text("empty"),
+    image=_absent(),
+    video=ModalityPlan(True, "condition", "all", supervised=False, loss_weight=0.0),
+    camera=ModalityPlan(True, "target", "none", supervised=True,
+                        loss_weight=0.5 * ACTION_LOSS_WEIGHT),
+    motion=ModalityPlan(True, "target", "shape_only", supervised=True,
+                        loss_weight=0.5 * W_MOTION),
+    text_policy="empty",
+    sources=TASK_SOURCES["video2camera_motion"],
+    weight=TASK_WEIGHTS["video2camera_motion"],
+)
+
+# Phase-3 multitask B: clean camera + frame-0 image -> jointly denoise future video and
+# motion. Text is deliberately empty: the experiment tests physical cross-modal coupling,
+# not whether a caption can independently explain the body motion.
+_PLANS["camimg2video_motion"] = TaskPlan(
+    mode="camimg2video_motion",
+    text=_text("empty"),
+    image=ModalityPlan(True, "condition", "frame0", supervised=False, loss_weight=0.0),
+    video=ModalityPlan(True, "target", "frame0", supervised=True,
+                       loss_weight=0.5 * W_VISION),
+    camera=ModalityPlan(True, "condition", "all", supervised=False, loss_weight=0.0),
+    motion=ModalityPlan(True, "target", "shape_only", supervised=True,
+                        loss_weight=0.5 * W_MOTION),
+    text_policy="empty",
+    sources=TASK_SOURCES["camimg2video_motion"],
+    weight=TASK_WEIGHTS["camimg2video_motion"],
 )
 
 assert set(_PLANS) == set(TASKS), "every task in TASKS must have a TaskPlan"
@@ -420,6 +466,7 @@ def resolve_sample(
     n_camera: int = 0,
     motion_valid_mask: Optional[List[bool]] = None,
     has_shape_token: bool = True,
+    derived_camera_condition: bool = False,
 ) -> ResolvedPlan:
     """Resolve a TaskPlan against ONE sample's per-modality frame counts.
 
@@ -430,8 +477,9 @@ def resolve_sample(
             frame); for tasks with the full video stack (inverse/forward/policy/motimg2video/
             video2motion) it is the Wan-VAE latent length of the T=33 pixel window. Ignored for
             reasoner-image textimg2motion and tasks with no video/image.
-        n_camera: number of camera action frames (== T-1 for a T-frame window). Ignored for
-            tasks with no camera.
+        n_camera: number of camera action frames (== T-1 for a T-frame window). Normally ignored
+            for tasks with no camera. With ``derived_camera_condition=True``, motimg2video packs
+            clean camera actions deterministically derived from its clean motion condition.
         motion_valid_mask: per-VALID-frame list (already pad-filtered) for the motion segment;
             its length is the motion frame-token count. Required for motion tasks.
         has_shape_token: whether the motion segment leads with the (always-clean) shape token.
@@ -463,16 +511,32 @@ def resolve_sample(
             loss_channels=None,
         )
 
-    # ---- camera: (T-1) action frames, channels [:9] supervised when a target.
-    if plan.camera.present:
+    if derived_camera_condition and mode != "motimg2video":
+        raise ValueError(
+            "derived_camera_condition is only valid for motimg2video; "
+            f"got mode={mode!r}"
+        )
+
+    # ---- camera: native task camera, or a clean motion-derived M2V condition.
+    if plan.camera.present or derived_camera_condition:
         if n_camera <= 0:
             raise ValueError(f"task {mode!r} packs camera but n_camera={n_camera}")
-        cmask = ([True] * n_camera if plan.camera.clean_policy == "all"
-                 else [False] * n_camera)
+        camera_plan = plan.camera
+        if derived_camera_condition:
+            cmask = [True] * n_camera
+            supervised = False
+            loss_weight = 0.0
+            loss_channels = None
+        else:
+            cmask = ([True] * n_camera if camera_plan.clean_policy == "all"
+                     else [False] * n_camera)
+            supervised = camera_plan.supervised
+            loss_weight = camera_plan.loss_weight
+            loss_channels = (0, CAMERA_RAW_DIM) if camera_plan.supervised else None
         out["camera"] = ModalityResolved(
             present=True, n_tokens=n_camera, condition_mask=cmask,
-            supervised=plan.camera.supervised, loss_weight=plan.camera.loss_weight,
-            loss_channels=(0, CAMERA_RAW_DIM) if plan.camera.supervised else None,
+            supervised=supervised, loss_weight=loss_weight,
+            loss_channels=loss_channels,
         )
 
     # ---- motion: [shape_tok?] + valid frames.
@@ -490,12 +554,12 @@ def resolve_sample(
         mode=mode,
         text_is_empty=plan.caption_always_empty,
         modalities=out,
-        has_gen=plan.has_gen,
+        has_gen=plan.has_gen or derived_camera_condition,
     )
 
 
 # ============================================================================
-# __main__ self-check: print the 7 plans + a resolved example.
+# __main__ self-check: print every plan + a resolved example.
 # ============================================================================
 def _fmt_modplan(m: ModalityPlan) -> str:
     if not m.present:
@@ -510,7 +574,7 @@ if __name__ == "__main__":
     assert set(TASK_SOURCES) == set(TASKS)
 
     print("=" * 100)
-    print("7-TASK JOINT-ATTENTION PLANS  (DESIGN_7TASK.md masking table)")
+    print("JOINT-ATTENTION TASK PLANS")
     print("=" * 100)
     for mode in TASKS:
         p = build_task_plan(mode)
@@ -533,6 +597,10 @@ if __name__ == "__main__":
         ("textimg2motion",   dict(t_lat=1, motion_valid_mask=[True] * 33)),
         ("motimg2video",     dict(t_lat=T_LAT, motion_valid_mask=[True] * 33)),
         ("video2motion",     dict(t_lat=T_LAT, motion_valid_mask=[True] * 33)),
+        ("video2camera_motion", dict(t_lat=T_LAT, n_camera=N_CAM,
+                                      motion_valid_mask=[True] * 33)),
+        ("camimg2video_motion", dict(t_lat=T_LAT, n_camera=N_CAM,
+                                      motion_valid_mask=[True] * 33)),
     ]
     for mode, kw in examples:
         r = resolve_sample(mode, **kw)
@@ -547,4 +615,4 @@ if __name__ == "__main__":
                   f"noised={n_noised:3d}{shp}{sup}")
         print(f"    supervised_losses={r.supervised_losses()}")
 
-    print("\nOK: all 7 task plans + resolutions built and self-checked.")
+    print(f"\nOK: all {len(TASKS)} task plans + resolutions built and self-checked.")

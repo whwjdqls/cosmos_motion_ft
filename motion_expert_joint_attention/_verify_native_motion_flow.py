@@ -78,9 +78,47 @@ def main() -> None:
     )
     torch.testing.assert_close(unipc, target, rtol=1e-4, atol=1e-4)
 
+    fixed_noise = torch.randn(2, 7, 5, generator=torch.Generator().manual_seed(91))
+    unipc_fixed_a = flow.sample_x0_native_unipc(
+        perfect_x0,
+        T=7,
+        motion_dim=5,
+        steps=12,
+        batch=2,
+        device="cpu",
+        generator=torch.Generator().manual_seed(1),
+        initial_noise=fixed_noise,
+    )
+    unipc_fixed_b = flow.sample_x0_native_unipc(
+        perfect_x0,
+        T=7,
+        motion_dim=5,
+        steps=12,
+        batch=2,
+        device="cpu",
+        generator=torch.Generator().manual_seed(2),
+        initial_noise=fixed_noise,
+    )
+    torch.testing.assert_close(unipc_fixed_a, unipc_fixed_b, rtol=0, atol=0)
+    try:
+        flow.sample_x0_native_unipc(
+            perfect_x0,
+            T=7,
+            motion_dim=5,
+            steps=2,
+            batch=2,
+            device="cpu",
+            initial_noise=torch.zeros(1, 7, 5),
+        )
+    except ValueError as error:
+        assert "initial_noise" in str(error)
+    else:
+        raise AssertionError("native UniPC must reject an initial-noise shape mismatch")
+
     assert flow.motion_sampler("x0", "legacy", "euler") is flow.sample_x0
     assert flow.motion_sampler("x0", "native", "euler") is flow.sample_x0_native
     assert flow.motion_sampler("x0", "native", "unipc") is flow.sample_x0_native_unipc
+    assert flow.motion_sampler("x0", "native") is flow.sample_x0_native_unipc
     assert uses_native_motion_index("text2motion", needs_video=False, needs_camera=False)
     assert not uses_native_motion_index("textimg2motion", needs_video=False, needs_camera=False)
     assert not uses_native_motion_index("textimg2motion", needs_video=True, needs_camera=False)
@@ -88,7 +126,7 @@ def main() -> None:
 
     print(
         "native motion flow PASS: training sigma, POC/native ladder, official UniPC ladder, "
-        "perfect-x0 Euler/UniPC, and T2M/TI2M index routing"
+        "perfect-x0 Euler/UniPC, fixed initial noise, and T2M/TI2M index routing"
     )
 
 

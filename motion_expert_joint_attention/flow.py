@@ -423,6 +423,7 @@ def sample_x0_native(
     device="cuda",
     dtype=torch.float32,
     generator=None,
+    initial_noise: torch.Tensor | None = None,
     sigma_eps: float = 1e-6,
     native_shift: float = NATIVE_MOTION_SHIFT,
     native_num_train_timesteps: int = NATIVE_NUM_TRAIN_TIMESTEPS,
@@ -434,7 +435,13 @@ def sample_x0_native(
     uses the scheduler's full-precision sigma. This is the generic-closure twin
     of ``motion_expert/bs_native_flow.sample_x0``.
     """
-    x = torch.randn(batch, T, motion_dim, device=device, dtype=dtype, generator=generator)
+    if initial_noise is None:
+        x = torch.randn(batch, T, motion_dim, device=device, dtype=dtype, generator=generator)
+    else:
+        expected = (batch, T, motion_dim)
+        if tuple(initial_noise.shape) != expected:
+            raise ValueError(f"initial_noise must have shape {expected}, got {tuple(initial_noise.shape)}")
+        x = initial_noise.to(device=device, dtype=dtype).clone()
     sigmas, timesteps = native_inference_schedule(
         steps,
         shift=native_shift,
@@ -467,6 +474,7 @@ def sample_x0_native_unipc(
     device="cuda",
     dtype=torch.float32,
     generator=None,
+    initial_noise: torch.Tensor | None = None,
     sigma_eps: float = 1e-6,
     native_shift: float = NATIVE_MOTION_SHIFT,
     native_num_train_timesteps: int = NATIVE_NUM_TRAIN_TIMESTEPS,
@@ -476,8 +484,8 @@ def sample_x0_native_unipc(
     UniPC expects rectified-flow velocity. At each native scheduler timestep an
     x0 prediction induces ``v=(x_sigma-x0_hat)/sigma``. CFG on x0 is equivalent
     to CFG on that velocity because both branches share the same current state.
-    This path is solver-identical to Phase 1; the native Euler path remains the
-    production default because it is the solver directly validated by the POC.
+    This path is solver-identical to Phase 1. The native Euler path remains
+    available for reproducing historical checkpoints and evaluations.
     """
     from cosmos_framework.model.vfm.diffusion.samplers.fm_solvers_unipc import (
         FlowUniPCMultistepScheduler,
@@ -493,7 +501,13 @@ def sample_x0_native_unipc(
         device=device,
         shift=float(native_shift),
     )
-    x = torch.randn(batch, T, motion_dim, device=device, dtype=dtype, generator=generator)
+    if initial_noise is None:
+        x = torch.randn(batch, T, motion_dim, device=device, dtype=dtype, generator=generator)
+    else:
+        expected = (batch, T, motion_dim)
+        if tuple(initial_noise.shape) != expected:
+            raise ValueError(f"initial_noise must have shape {expected}, got {tuple(initial_noise.shape)}")
+        x = initial_noise.to(device=device, dtype=dtype).clone()
     for i, timestep in enumerate(scheduler.timesteps):
         model_sigma = (timestep.float() / float(native_num_train_timesteps)).expand(batch)
         x0_hat = predict(x, model_sigma).float()
@@ -515,7 +529,7 @@ def sample_x0_native_unipc(
 def motion_sampler(
     objective: str,
     schedule: str = "legacy",
-    native_solver: str = "euler",
+    native_solver: str = "unipc",
 ):
     """Resolve the checkpointed motion objective/schedule/solver contract."""
     if objective == "velocity":
@@ -677,6 +691,7 @@ def sample_velocity_native_masked(
     generator=None,
     native_shift: float = NATIVE_MOTION_SHIFT,
     native_num_train_timesteps: int = NATIVE_NUM_TRAIN_TIMESTEPS,
+    pass_scheduler_sigma: bool = False,
 ):
     """Official Cosmos-3 UniPC sampling for a masked velocity target.
 
@@ -716,13 +731,24 @@ def sample_velocity_native_masked(
         shift=float(native_shift),
     )
     batch = int(x.shape[0])
-    for timestep in scheduler.timesteps:
+    for i, timestep in enumerate(scheduler.timesteps):
         model_sigma = (
             timestep.float() / float(native_num_train_timesteps)
         ).expand(batch)
-        velocity = predict(x.to(dtype), model_sigma).float()
+        scheduler_sigma = scheduler.sigmas[i].to(
+            device=device, dtype=torch.float32
+        ).expand(batch)
+        velocity = (
+            predict(x.to(dtype), model_sigma, scheduler_sigma)
+            if pass_scheduler_sigma
+            else predict(x.to(dtype), model_sigma)
+        ).float()
         if guidance != 1.0 and predict_null is not None:
-            velocity_null = predict_null(x.to(dtype), model_sigma).float()
+            velocity_null = (
+                predict_null(x.to(dtype), model_sigma, scheduler_sigma)
+                if pass_scheduler_sigma
+                else predict_null(x.to(dtype), model_sigma)
+            ).float()
             velocity = velocity_null + guidance * (velocity - velocity_null)
         x = scheduler.step(
             model_output=velocity,

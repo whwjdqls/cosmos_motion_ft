@@ -21,14 +21,18 @@ class BridgeMeta:
     gen_frame: torch.Tensor       # [N_gen], -1 for non-video/image tokens
     gen_clean: torch.Tensor       # [N_gen] bool, True == clean condition
     motion_frame: torch.Tensor    # [N_mot], -1 for shape/non-frame token
+    motion_clean: torch.Tensor    # [N_mot] bool, True == clean condition/shape
+    gen_source_start: torch.Tensor  # [N_gen], inclusive source-frame interval, -1 if absent
+    gen_source_end: torch.Tensor    # [N_gen], inclusive source-frame interval, -1 if absent
 
 
 class LocalModalityBridge(nn.Module):
     """Small gated self-attention bridge over ``[G | M]`` tokens.
 
-    Cross-modal attention is directional:
-      * video2motion: noised motion rows may attend local clean video rows.
-      * motimg2video: noised video rows may attend local clean motion rows.
+    Cross-modal attention is role-driven rather than task-name-driven. A noised target row may
+    attend aligned rows from the other modality; clean cross-modal query rows never read targets.
+    This gives the two historical directions as one-sided masks and joint video/motion targets as
+    a bidirectional mask without changing bridge parameters.
 
     Same-modality attention is allowed within the bridge input, but the residual gates are
     zero-initialized so the bridge is an exact no-op at initialization.
@@ -64,6 +68,19 @@ class LocalModalityBridge(nn.Module):
         valid = (gf >= 0) & (mf >= 0)
         return valid & (torch.div(mf + 3, 4, rounding_mode="floor") == gf)
 
+    def _source_interval_pair_mask(self, meta: BridgeMeta) -> torch.Tensor:
+        """Pair generator rows with motion frames in their physical source-frame interval.
+
+        Video latent intervals are ``{0}, {1..4}, ...``. Camera action ``i`` spans source
+        transition ``i -> i+1`` and therefore uses interval ``[i, i+1]``. The union preserves
+        the historical video locality while adding direct local action-motion edges.
+        """
+        starts = meta.gen_source_start.view(-1, 1)
+        ends = meta.gen_source_end.view(-1, 1)
+        motion = meta.motion_frame.view(1, -1)
+        valid = (starts >= 0) & (ends >= starts) & (motion >= 0)
+        return valid & (motion >= starts) & (motion <= ends)
+
     def _attention_mask(self, meta: BridgeMeta) -> torch.Tensor:
         device = meta.gen_frame.device
         ng = int(meta.gen_frame.numel())
@@ -75,22 +92,25 @@ class LocalModalityBridge(nn.Module):
         if nm:
             mask[ng:, ng:] = True
 
-        local = self._local_pair_mask(meta.gen_frame, meta.motion_frame)
-        if meta.mode == "video2motion":
-            # Motion frame rows are noisy targets; allow them to read local clean video.
-            motion_rows = meta.motion_frame >= 0
-            if motion_rows.any() and local.any():
-                mask[ng:, :ng] |= local.T & motion_rows.view(-1, 1)
-        elif meta.mode == "motimg2video":
-            # Video future rows are noisy targets; allow only those rows to read local clean motion.
-            gen_noisy_rows = (~meta.gen_clean.bool()) & (meta.gen_frame >= 0)
-            motion_frame_rows = meta.motion_frame >= 0
-            if gen_noisy_rows.any() and motion_frame_rows.any() and local.any():
-                mask[:ng, ng:] |= local & gen_noisy_rows.view(-1, 1) & motion_frame_rows.view(1, -1)
-            # The motion shape token is clean conditioning and may be read by noisy video rows.
-            shape_cols = meta.motion_frame < 0
-            if gen_noisy_rows.any() and shape_cols.any():
-                mask[:ng, ng:] |= gen_noisy_rows.view(-1, 1) & shape_cols.view(1, -1)
+        local = self._source_interval_pair_mask(meta)
+        gen_noisy_rows = ~meta.gen_clean.bool()
+        motion_noisy_rows = (~meta.motion_clean.bool()) & (meta.motion_frame >= 0)
+        motion_frame_rows = meta.motion_frame >= 0
+
+        # Motion targets read local generator rows, whether those rows are clean conditions or
+        # sibling noisy targets. Clean motion rows never receive a cross-modal residual update.
+        if motion_noisy_rows.any() and local.any():
+            mask[ng:, :ng] |= local.T & motion_noisy_rows.view(-1, 1)
+
+        # Generator targets read local motion frames. In a joint task those are sibling targets;
+        # in M2V they are clean conditions. Shape is globally available to every noisy gen row.
+        if gen_noisy_rows.any() and motion_frame_rows.any() and local.any():
+            mask[:ng, ng:] |= (
+                local & gen_noisy_rows.view(-1, 1) & motion_frame_rows.view(1, -1)
+            )
+        shape_cols = meta.motion_frame < 0
+        if gen_noisy_rows.any() and shape_cols.any():
+            mask[:ng, ng:] |= gen_noisy_rows.view(-1, 1) & shape_cols.view(1, -1)
         return mask
 
     def forward(

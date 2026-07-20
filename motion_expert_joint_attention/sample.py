@@ -1,4 +1,4 @@
-"""Sampling for the 7-task joint-attention multimodal model (cosmos env).
+"""Sampling for the joint-attention multimodal model (cosmos env).
 
 A single packed-sequence model ``JointMotionModel`` (frozen reasoner + frozen/LoRA
 generator + trainable ``_moe_motion`` motion expert) generates ONE of three target
@@ -18,13 +18,15 @@ The 7 tasks + their (conditioning -> target) modality contract (task_plan.py):
     textimg2motion     text + image          -> motion
     motimg2video       motion + text + image -> video
     video2motion       video                 -> motion     (no text)
+    video2camera_motion video                -> camera + motion (no text)
+    camimg2video_motion camera + image        -> video + motion  (no text)
 
 For each task this file exposes a clean ``sample_<task>(...)`` function returning the
 generated modality in its native space (motion unnormalized to 283-d via decode_uniego;
 video as Wan-VAE latents; camera as (T-1,9) raw action). ``sample_task(model, mode, ...)``
 dispatches by mode. PER-MODALITY objectives (matches train.py): MOTION targets dispatch on
-the ckpt's trained motion objective -- ``flow.sample_x0`` (DDIM-in-sigma, the default for
-new x0-motion runs) vs ``flow.sample_velocity`` (old velocity-motion ckpts) -- via
+the checkpointed objective, schedule, and solver (native x0 runs use official UniPC after
+x0-to-velocity conversion; historical Euler/DDIM and velocity paths remain replayable) via
 ``model.predict_closure``; VIDEO/CAMERA targets ALWAYS predict velocity and dispatch to
 legacy masked Euler or native Cosmos UniPC according to the checkpointed gen schedule, with a target closure
 that re-encodes the current noised iterate through the generator each step, matching the
@@ -354,6 +356,208 @@ def _make_policy_joint_closure(
     return fn
 
 
+# ---- Phase-3 joint generator + motion targets -------------------------------
+def _validate_joint_native_contract(model: JointMotionModel) -> None:
+    """Require the common inference ladder used to co-integrate frozen specialists."""
+    if model.objective != "x0":
+        raise ValueError("joint generator-motion sampling requires motion objective='x0'")
+    if model.motion_schedule != "native" or model.gen_schedule != "native":
+        raise ValueError(
+            "joint generator-motion sampling requires native motion and generator schedules"
+        )
+    if model.motion_native_solver != "unipc" or model.gen_native_solver != "unipc":
+        raise ValueError("joint generator-motion sampling requires UniPC for both specialists")
+    if model.motion_num_train_timesteps != model.gen_num_train_timesteps:
+        raise ValueError(
+            "joint scheduler timestep mismatch: "
+            f"motion={model.motion_num_train_timesteps} gen={model.gen_num_train_timesteps}"
+        )
+    if abs(model.motion_shift - model.gen_shift) > 1e-8:
+        raise ValueError(
+            f"joint scheduler shift mismatch: motion={model.motion_shift} gen={model.gen_shift}"
+        )
+
+
+def _make_joint_gen_motion_closure(
+    model: JointMotionModel,
+    *,
+    mode: str,
+    input_ids: torch.Tensor,
+    gen_target: str,
+    base_video: torch.Tensor,
+    base_camera: torch.Tensor,
+    gen_noised_frames: torch.Tensor,
+    neutral_joints: torch.Tensor,
+    motion_T: int,
+    device,
+):
+    """Return a common-sigma velocity field for one generator target plus motion x0."""
+    C, T_lat, h, w = base_video.shape
+    camera_T = int(base_camera.shape[0])
+    motion_pad = torch.zeros(1, motion_T, dtype=torch.bool, device=device)
+    motion_noisy = torch.ones(1, motion_T, dtype=torch.bool, device=device)
+
+    if gen_target == "video":
+        n_gen = int(gen_noised_frames.numel())
+        gen_scalar_count = n_gen * C * h * w
+    elif gen_target == "camera":
+        n_gen = int(gen_noised_frames.numel())
+        gen_scalar_count = n_gen * TP.CAMERA_RAW_DIM
+    else:
+        raise ValueError(f"bad joint generator target {gen_target!r}")
+    motion_scalar_count = motion_T * model.motion_dim
+
+    def predict(
+        state: torch.Tensor,
+        model_sigma_b: torch.Tensor,
+        scheduler_sigma_b: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        flat = state.reshape(1, -1)
+        gen_flat = flat[:, :gen_scalar_count]
+        motion_state = flat[:, gen_scalar_count:].reshape(1, motion_T, model.motion_dim)
+
+        current_video = base_video.clone()
+        current_camera = base_camera.clone()
+        if gen_target == "video":
+            current_video[:, gen_noised_frames] = (
+                gen_flat.reshape(n_gen, C, h, w).permute(1, 0, 2, 3).to(base_video.dtype)
+            )
+        else:
+            current_camera[gen_noised_frames] = gen_flat.reshape(
+                n_gen, TP.CAMERA_RAW_DIM
+            ).to(base_camera.dtype)
+
+        out = model.forward(
+            input_ids_list=[input_ids],
+            x_t=motion_state,
+            neutral_joints=neutral_joints,
+            motion_pad_mask=motion_pad,
+            noisy_frame_mask=motion_noisy,
+            modes=[mode],
+            video_latents=[current_video],
+            camera_action=[current_camera],
+            motion_t_or_sigma=model_sigma_b,
+            gen_t_or_sigma=model_sigma_b,
+            return_dict=True,
+        )
+
+        motion_x0 = out["motion_pred"].float()
+        # Match flow.sample_x0_native_unipc exactly: timestep/1000 conditions the model,
+        # while the scheduler's unquantized sigma converts x0 to its integration velocity.
+        velocity_sigma = (
+            model_sigma_b if scheduler_sigma_b is None else scheduler_sigma_b
+        )
+        sigma = velocity_sigma.float().view(-1, 1, 1).clamp(min=1e-6)
+        motion_velocity = (motion_state.float() - motion_x0) / sigma
+        if gen_target == "video":
+            pred = out["video_pred"][0][0][:, gen_noised_frames]
+            gen_velocity = pred.permute(1, 0, 2, 3).reshape(1, -1).float()
+        else:
+            gen_velocity = out["camera_pred"][0].reshape(1, -1).float()
+        return torch.cat([gen_velocity, motion_velocity.reshape(1, -1)], dim=1).unsqueeze(-1)
+
+    return predict, {
+        "gen_scalar_count": gen_scalar_count,
+        "motion_scalar_count": motion_scalar_count,
+        "C": C,
+        "T_lat": T_lat,
+        "h": h,
+        "w": w,
+        "n_gen": n_gen,
+        "camera_T": camera_T,
+    }
+
+
+@torch.no_grad()
+def _sample_joint_gen_motion(
+    model: JointMotionModel,
+    *,
+    mode: str,
+    gen_target: str,
+    clean_video_latents: torch.Tensor,
+    clean_camera_action: torch.Tensor,
+    neutral_joints: torch.Tensor,
+    motion_T: int,
+    steps: int = 35,
+    guidance: float = 1.0,
+    device=None,
+    seed: int = 0,
+):
+    """Co-integrate a generator velocity target and motion x0 target with one UniPC state."""
+    _validate_joint_native_contract(model)
+    device = device or model.cosmos.device
+    base_video = clean_video_latents.to(device)
+    base_camera = clean_camera_action.to(device)
+    neutral_joints = neutral_joints.to(device)
+    plan = TP.build_task_plan(mode)
+    if not plan.caption_always_empty:
+        raise ValueError(f"joint physical task {mode!r} must use empty text")
+    input_ids = model.cosmos.tokenize_generation("")
+
+    resolved = TP.resolve_sample(
+        mode,
+        t_lat=int(base_video.shape[1]),
+        n_camera=int(base_camera.shape[0]),
+        motion_valid_mask=[True] * motion_T,
+        has_shape_token=True,
+    )
+    target_resolved = resolved.modalities[gen_target]
+    target_mask = torch.tensor(
+        target_resolved.condition_mask, dtype=torch.bool, device=device
+    )
+    gen_noised_frames = torch.nonzero(~target_mask, as_tuple=False).view(-1)
+
+    predict, meta = _make_joint_gen_motion_closure(
+        model,
+        mode=mode,
+        input_ids=input_ids,
+        gen_target=gen_target,
+        base_video=base_video,
+        base_camera=base_camera,
+        gen_noised_frames=gen_noised_frames,
+        neutral_joints=neutral_joints,
+        motion_T=motion_T,
+        device=device,
+    )
+    total_scalars = meta["gen_scalar_count"] + meta["motion_scalar_count"]
+    state_shape = (1, total_scalars, 1)
+    generator = torch.Generator(device=device).manual_seed(seed)
+    # Text is empty in both new tasks, so CFG is mathematically a no-op. Keep the argument in
+    # the public API for manifest parity but avoid a redundant second model forward.
+    state = flow.sample_velocity_native_masked(
+        predict,
+        x0_clean=torch.zeros(state_shape, device=device, dtype=torch.float32),
+        condition_mask=torch.zeros(state_shape[:2], device=device, dtype=torch.bool),
+        steps=steps,
+        guidance=guidance,
+        predict_null=None,
+        device=device,
+        dtype=torch.float32,
+        generator=generator,
+        native_shift=model.gen_shift,
+        native_num_train_timesteps=model.gen_num_train_timesteps,
+        pass_scheduler_sigma=True,
+    ).reshape(1, -1)
+
+    split = meta["gen_scalar_count"]
+    gen_state = state[:, :split]
+    motion = state[:, split:].reshape(motion_T, model.motion_dim)
+    result = {"motion": motion.cpu().numpy().astype(np.float32)}
+    if gen_target == "video":
+        video = base_video.clone()
+        video[:, gen_noised_frames] = gen_state.reshape(
+            meta["n_gen"], meta["C"], meta["h"], meta["w"]
+        ).permute(1, 0, 2, 3).to(video.dtype)
+        result["video"] = video.cpu().numpy().astype(np.float32)
+    else:
+        camera = base_camera.clone()
+        camera[gen_noised_frames] = gen_state.reshape(
+            meta["n_gen"], TP.CAMERA_RAW_DIM
+        ).to(camera.dtype)
+        result["camera"] = camera.cpu().numpy().astype(np.float32)
+    return result
+
+
 @torch.no_grad()
 def _sample_gen_target(
     model: JointMotionModel,
@@ -654,6 +858,51 @@ def sample_motimg2video(model, *, caption, image_latent, motion, neutral_joints,
                               neutral_joints=neutral_joints, **kw)
 
 
+def sample_video2camera_motion(
+    model, *, video_latents, neutral_joints, T, camera_T=None, **kw
+):
+    """Clean video -> jointly generated camera action and normalized motion."""
+    if camera_T is None:
+        camera_T = 4 * (int(video_latents.shape[1]) - 1)
+    # Keep the evolving raw metric action state in fp32. The action encoder performs its own
+    # final cast to the frozen generator dtype; inheriting bf16 from video latents would quantize
+    # every UniPC iterate once before that intended cast.
+    camera = torch.zeros(
+        camera_T, TP.CAMERA_RAW_DIM, device=video_latents.device, dtype=torch.float32
+    )
+    return _sample_joint_gen_motion(
+        model,
+        mode="video2camera_motion",
+        gen_target="camera",
+        clean_video_latents=video_latents,
+        clean_camera_action=camera,
+        neutral_joints=neutral_joints,
+        motion_T=T,
+        **kw,
+    )
+
+
+def sample_camimg2video_motion(
+    model, *, image_latent, camera_action, neutral_joints, T, T_lat, **kw
+):
+    """Clean camera + first image -> jointly generated video and normalized motion."""
+    if image_latent.dim() == 4:
+        image_latent = image_latent[:, 0]
+    C, h, w = image_latent.shape
+    video = image_latent.new_zeros(C, T_lat, h, w)
+    video[:, 0] = image_latent
+    return _sample_joint_gen_motion(
+        model,
+        mode="camimg2video_motion",
+        gen_target="video",
+        clean_video_latents=video,
+        clean_camera_action=camera_action,
+        neutral_joints=neutral_joints,
+        motion_T=T,
+        **kw,
+    )
+
+
 # ---- dispatch ---------------------------------------------------------------
 def sample_task(model, mode: str, **kw):
     """Dispatch to the per-task sampler by ``mode`` (one of task_plan.TASKS).
@@ -666,6 +915,8 @@ def sample_task(model, mode: str, **kw):
       inverse_dynamics  (video_latents)
       policy            (caption, image_latent, T_lat)
       motimg2video      (caption, image_latent, motion, neutral_joints, T_lat)
+      video2camera_motion (video_latents, neutral_joints, T)
+      camimg2video_motion (image_latent, camera_action, neutral_joints, T, T_lat)
     plus shared sampling kwargs (steps, guidance, seed, device, objective for motion tasks).
     Returns the generated modality (np.ndarray) or, for policy, a {'video','camera'} dict.
     """
@@ -677,6 +928,8 @@ def sample_task(model, mode: str, **kw):
         "inverse_dynamics": sample_inverse_dynamics,
         "policy": sample_policy,
         "motimg2video": sample_motimg2video,
+        "video2camera_motion": sample_video2camera_motion,
+        "camimg2video_motion": sample_camimg2video_motion,
     }
     if mode not in fns:
         raise KeyError(f"sample_task: unknown mode {mode!r}; expected one of {TP.TASKS}")
@@ -699,7 +952,15 @@ def load_joint_model(ckpt_path: str, *, device="cuda", objective_cli=None,
     always predict velocity; their checkpointed gen schedule selects legacy Euler or native
     Cosmos UniPC. The coupled policy helper remains a separate joint-state path."""
     cosmos = FrozenCosmos(dtype=torch.bfloat16, device=device)
-    ck = torch.load(ckpt_path, map_location="cpu")
+    try:
+        ck = torch.load(
+            ckpt_path,
+            map_location="cpu",
+            weights_only=False,
+            mmap=True,
+        )
+    except (RuntimeError, TypeError):
+        ck = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     a = ck.get("args", {}) or {}
     # MOTION objective: the ckpt's recorded value wins (train.py saves vars(args)). Old
     # checkpoints that never recorded it were velocity-motion runs -> default "velocity" so
@@ -747,6 +1008,8 @@ def load_joint_model(ckpt_path: str, *, device="cuda", objective_cli=None,
     motion_mrope = str(a.get("motion_mrope", "legacy"))
     coupling = str(a.get("coupling", "joint"))
     textimg_condition = str(a.get("textimg_condition", "generator"))
+    head_camera_alignment = bool(a.get("head_camera_alignment", False))
+    head_camera_calibration = a.get("head_camera_calibration")
     # Before this option existed, reasoner-side TI2M consumed the raw 640x640 Nymeria frame.
     # Preserve that behavior for old checkpoints; all newly trained checkpoints record 256.
     reasoner_image_size = int(
@@ -775,6 +1038,11 @@ def load_joint_model(ckpt_path: str, *, device="cuda", objective_cli=None,
         coupling=coupling,
         textimg_condition=textimg_condition,
         reasoner_image_size=reasoner_image_size,
+        head_camera_alignment=head_camera_alignment,
+        **(
+            {"head_camera_calibration": head_camera_calibration}
+            if head_camera_calibration else {}
+        ),
         gen_lora=a.get("gen_lora", gen_lora),
         gen_lora_rank=int(a.get("gen_lora_rank", 16)),
         gen_lora_alpha=int(a.get("gen_lora_alpha", 16)),
@@ -832,9 +1100,10 @@ def load_joint_model(ckpt_path: str, *, device="cuda", objective_cli=None,
           f"shift={gen_shift:g} native_solver={gen_native_solver} "
           f"packing={gen_packing} fps={gen_fps:g} margin={gen_temporal_margin:g} | "
           f"motion_mrope={motion_mrope} | "
-          f"coupling={coupling} textimg_condition={textimg_condition} "
-          f"reasoner_image_size={reasoner_image_size} | "
-          f"overlaid {loaded} trainable tensors (skipped {skipped})")
+           f"coupling={coupling} textimg_condition={textimg_condition} "
+           f"reasoner_image_size={reasoner_image_size} "
+           f"head_camera_alignment={head_camera_alignment} | "
+           f"overlaid {loaded} trainable tensors (skipped {skipped})")
     return model, cosmos, ck
 
 

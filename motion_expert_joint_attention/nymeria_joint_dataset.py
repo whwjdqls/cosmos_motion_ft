@@ -183,7 +183,7 @@ class NymeriaJointDataset(Dataset):
         bones_text2motion_frac: fraction of ``text2motion`` mass routed to the BONES stream (the
             rest of ``text2motion`` + ALL other tasks draw NymeriaPlus windows). 0 disables BONES.
         cfg_dropout: per-sample prob of blanking an instruction caption to "" (train only). Tasks
-            whose ``text_policy == "empty"`` (inverse_dynamics / video2motion) ALWAYS use "".
+            whose ``text_policy == "empty"`` always use "".
         prefer_latents: load precomputed Wan-VAE latents instead of raw frames when present AND
             they match the current window length T (T_lat == (T-1)//4+1). A cache built at a
             different T is ignored -> raw frames are emitted for a live VAE encode in the trainer.
@@ -192,6 +192,9 @@ class NymeriaJointDataset(Dataset):
         reasoner_image_for_textimg: use corrected reasoner-side image conditioning for TI2M.
         reasoner_image_size: square size returned for that frame-0 image. The released Cosmos Nano
             processor supports 256x256 and emits 64 merged visual tokens at this size.
+        camera_head_alignment: also return synchronized upright-RGB camera actions as an auxiliary
+            target for V2M/M2V. This does not make camera a task input; M2V's optional camera
+            condition is derived from motion by the model, and V2M never receives this target.
         train: random window start within a 100-frame slice + caption CFG-drop when True; center /
             no drop otherwise.
         require_rgb_cam / require_usable: window filters (same as the camera dataset).
@@ -219,6 +222,7 @@ class NymeriaJointDataset(Dataset):
         force_on_the_fly: bool = False,
         reasoner_image_for_textimg: bool = False,
         reasoner_image_size: Optional[int] = 256,
+        camera_head_alignment: bool = False,
         latent_root: str = config.VIDEO_LATENT_ROOT,
         train: bool = True,
         require_rgb_cam: bool = True,
@@ -272,6 +276,7 @@ class NymeriaJointDataset(Dataset):
         self._reasoner_image_size = (
             None if reasoner_image_size is None else int(reasoner_image_size)
         )
+        self._camera_head_alignment = bool(camera_head_alignment)
         if self._reasoner_image_size is not None and self._reasoner_image_size <= 0:
             raise ValueError(
                 f"reasoner_image_size must be positive or None, got {reasoner_image_size}"
@@ -500,7 +505,7 @@ class NymeriaJointDataset(Dataset):
     # -- caption policy (task text_policy + 10% CFG) ------------------------------------------
     def _apply_caption_policy(self, mode: str, caption: str) -> str:
         plan = task_plan.build_task_plan(mode)
-        if plan.caption_always_empty:                     # inverse_dynamics / video2motion
+        if plan.caption_always_empty:
             return ""
         if self._train and self._active_rng().random() < self._cfg_dropout:  # 10% CFG drop
             return ""
@@ -624,6 +629,7 @@ class NymeriaJointDataset(Dataset):
                 "video_latents": None,
                 "reasoner_image": None,
                 "camera_action": None,
+                "camera_alignment_action": None,
                 "domain_id": torch.tensor(DOMAIN_ID, dtype=torch.long),
             }
 
@@ -632,6 +638,9 @@ class NymeriaJointDataset(Dataset):
         needs_video = (plan.video.present or plan.image.present) and not reasoner_textimg
         needs_reasoner_image = reasoner_textimg
         needs_camera = plan.camera.present
+        needs_camera_alignment = (
+            self._camera_head_alignment and mode in ("video2motion", "motimg2video")
+        )
         needs_motion = plan.motion.present
         T = self._num_frames
 
@@ -672,13 +681,17 @@ class NymeriaJointDataset(Dataset):
                 elif needs_reasoner_image:
                     reasoner_image = self._load_reasoner_image(it["vis"], s)
 
-                camera_action = None
-                if needs_camera:
+                camera_action = camera_alignment_action = None
+                if needs_camera or needs_camera_alignment:
                     pos, rot = _load_rgb_cam(it["rgb"])
                     act = rel_action_from_window(pos[s:s + T], rot[s:s + T])  # (T-1,9)
                     if act.shape[0] != T - 1 or not np.isfinite(act).all():
                         raise ValueError(f"bad camera action {act.shape}")
-                    camera_action = torch.from_numpy(np.ascontiguousarray(act)).float()
+                    action_tensor = torch.from_numpy(np.ascontiguousarray(act)).float()
+                    if needs_camera:
+                        camera_action = action_tensor
+                    if needs_camera_alignment:
+                        camera_alignment_action = action_tensor
 
                 motion = neutral = pad = None
                 if needs_motion:
@@ -712,6 +725,7 @@ class NymeriaJointDataset(Dataset):
                 "video_latents": video_latents,
                 "reasoner_image": reasoner_image,
                 "camera_action": camera_action,
+                "camera_alignment_action": camera_alignment_action,
                 "domain_id": torch.tensor(DOMAIN_ID, dtype=torch.long),
             }
         raise RuntimeError(
@@ -737,6 +751,8 @@ def collate_joint(batch: List[dict]) -> dict:
         motion_pad_mask        : bool   [B, Tmax]        (True = pad) OR None
         camera_action          : float32 [B, Tc, 9]      (zeros in pad) OR None
         camera_pad_mask        : bool   [B, Tc]          OR None
+        camera_alignment_action: float32 [B, T-1, 9]     auxiliary target OR None
+        camera_alignment_pad_mask: bool [B, T-1]         OR None
         video_latents          : List[Optional[Tensor]]  (ragged latent grids kept per-sample)
         video_frames           : List[Optional[Tensor]]  (ragged pixel windows kept per-sample)
 
@@ -797,6 +813,28 @@ def collate_joint(batch: List[dict]) -> dict:
         out["camera_pad_mask"] = cam_pad
     else:
         out["camera_action"] = out["camera_pad_mask"] = None
+
+    # ---- training-only synchronized camera target for relative head-camera alignment ----
+    if any(b.get("camera_alignment_action") is not None for b in batch):
+        alens = [
+            b["camera_alignment_action"].shape[0]
+            if b.get("camera_alignment_action") is not None else 0
+            for b in batch
+        ]
+        Ta = max(alens)
+        alignment = torch.zeros((B, Ta, config.CAMERA_RAW_ACTION_DIM), dtype=torch.float32)
+        alignment_pad = torch.ones((B, Ta), dtype=torch.bool)
+        for i, b in enumerate(batch):
+            if b.get("camera_alignment_action") is None:
+                continue
+            n = alens[i]
+            alignment[i, :n] = b["camera_alignment_action"]
+            alignment_pad[i, :n] = False
+        out["camera_alignment_action"] = alignment
+        out["camera_alignment_pad_mask"] = alignment_pad
+    else:
+        out["camera_alignment_action"] = None
+        out["camera_alignment_pad_mask"] = None
 
     return out
 
