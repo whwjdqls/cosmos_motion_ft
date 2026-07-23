@@ -33,6 +33,7 @@ commit and load-bearing patch are vendored under
 Upload one section or all sections:
 
 ```bash
+bash migration/upload_required_artifacts.sh source
 bash migration/upload_required_artifacts.sh core
 bash migration/upload_required_artifacts.sh phase1
 bash migration/upload_required_artifacts.sh phase3
@@ -63,3 +64,9 @@ python migration/verify_migration.py local
 
 All upload commands use `gcloud storage rsync` or `cp` without deletion flags.
 They never remove local data or cloud objects.
+
+The `source` section creates verified Git bundles under
+`/weka/jungbin/cosmos_motion_migration_staging/source` and uploads them to
+`gs://mm-jinhyung_kim/jungbin_cho/source`. It captures committed refs; the
+Cosmos Framework working-tree modifications are separately preserved in this
+repo under `external/cosmos_framework_patches/`.

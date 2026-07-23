@@ -27,6 +27,10 @@ HASHED_FILES = {
 }
 
 GCS_REQUIRED = (
+    "source/cosmos_motion_ft.bundle",
+    "source/cosmos-framework.bundle",
+    "source/kimodo_open.bundle",
+    "source/nymeria_kimodo_pipeline.bundle",
     "runtime/cosmos3_nano_dcp/model/.metadata",
     "runtime/wan22_vae/Wan2.2_VAE.pth",
     f"runtime/hf/Cosmos3-Nano-{NANO_REV}/model.safetensors.index.json",

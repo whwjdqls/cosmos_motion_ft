@@ -9,16 +9,16 @@ HF_HOME=${HF_HOME:-${HOME}/.cache/huggingface}
 NANO_REV=fea6e03ac3d7884b4105ed8ee79fc480fca70965
 
 case "${SECTION}" in
-    data|core|runs) ;;
+    source|data|core|runs) ;;
     all)
-        for section in data core runs; do
+        for section in source data core runs; do
             bash "$0" "${section}"
         done
         echo "[migration-restore] complete section=all"
         exit 0
         ;;
     *)
-        echo "usage: $0 {data|core|runs|all}" >&2
+        echo "usage: $0 {source|data|core|runs|all}" >&2
         exit 2
         ;;
 esac
@@ -38,6 +38,10 @@ if run_section data; then
     restore_tree "${GCS_ROOT}/nymeriaplus_proportional" \
         "${WEKA_ROOT}/nymeriaplus_kimodo_proportional"
     restore_tree "${GCS_ROOT}/seed" "${WEKA_ROOT}/seed"
+fi
+
+if run_section source; then
+    restore_tree "${GCS_ROOT}/source" "${WEKA_ROOT}/cosmos_motion_source_bundles"
 fi
 
 if run_section core; then

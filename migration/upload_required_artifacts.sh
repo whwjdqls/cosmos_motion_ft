@@ -7,18 +7,19 @@ WEKA_ROOT=${WEKA_ROOT:-/weka/jungbin}
 RUN_ROOT=${RUN_ROOT:-${WEKA_ROOT}/cosmos_motion_ft_runs}
 NANO_REV=fea6e03ac3d7884b4105ed8ee79fc480fca70965
 NANO_STAGE=${NANO_STAGE:-${WEKA_ROOT}/cosmos_motion_migration_staging/hf/Cosmos3-Nano-${NANO_REV}}
+SOURCE_STAGE=${SOURCE_STAGE:-${WEKA_ROOT}/cosmos_motion_migration_staging/source}
 
 case "${SECTION}" in
-    data|core|eval|phase1|phase2|phase3) ;;
+    source|data|core|eval|phase1|phase2|phase3) ;;
     all)
-        for section in data core eval phase1 phase2 phase3; do
+        for section in source data core eval phase1 phase2 phase3; do
             bash "$0" "${section}"
         done
         echo "[migration-upload] complete section=all root=${GCS_ROOT}"
         exit 0
         ;;
     *)
-        echo "usage: $0 {data|core|eval|phase1|phase2|phase3|all}" >&2
+        echo "usage: $0 {source|data|core|eval|phase1|phase2|phase3|all}" >&2
         exit 2
         ;;
 esac
@@ -39,6 +40,17 @@ copy_file() {
     local destination=$2
     test -f "${source}"
     gcloud storage cp "${source}" "${destination}"
+}
+
+bundle_repo() {
+    local repo=$1
+    local name=$2
+    local bundle="${SOURCE_STAGE}/${name}.bundle"
+    test -d "${repo}/.git"
+    mkdir -p "${SOURCE_STAGE}"
+    git -C "${repo}" bundle create "${bundle}" --all
+    git -C "${repo}" bundle verify "${bundle}"
+    copy_file "${bundle}" "${GCS_ROOT}/source/${name}.bundle"
 }
 
 sync_selected_joint_run() {
@@ -75,6 +87,13 @@ sync_native_run() {
         copy_file "${source}/checkpoints/latest_checkpoint.txt" "${destination}/checkpoints/latest_checkpoint.txt"
     fi
 }
+
+if run_section source; then
+    bundle_repo /home/jungbin_cho/cosmos_motion_ft cosmos_motion_ft
+    bundle_repo /home/jungbin_cho/cosmos-framework cosmos-framework
+    bundle_repo /home/jungbin_cho/kimodo_open kimodo_open
+    bundle_repo /home/jungbin_cho/nymeria_kimodo_pipeline nymeria_kimodo_pipeline
+fi
 
 if run_section data; then
     proportional="${WEKA_ROOT}/nymeriaplus_kimodo_proportional"

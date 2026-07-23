@@ -11,6 +11,9 @@ gs://mm-jinhyung_kim/jungbin_cho
 
 ## Runtime Source Contract
 
+- Offline Git bundles for all four repositories are under `source/` in GCS.
+  Restore them with `bash migration/restore_from_gcs.sh source`, then use
+  `git clone <name>.bundle <destination>`.
 - `cosmos_motion_ft`: GitHub `whwjdqls/cosmos_motion_ft`, use the commit named in
   the final migration verification record.
 - `cosmos-framework`: NVIDIA base commit
