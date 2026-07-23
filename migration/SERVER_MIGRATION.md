@@ -79,10 +79,9 @@ Shape/TMR evaluation requires the complete
 generator statistics, text embeddings, reference cases, and vendored runtime.
 Do not substitute trainer statistics for
 `artifacts/evaluator/stats/motion/{mean,std}.npy`.
-Rebuilding its BONES cohorts also requires
-`benchmarks/Kimodo-Motion-Gen-Benchmark-20fps/testsuite`. Only
-`meta.json` and `seed_motion.json` are archived: the evaluator maps them to the
-BONES UniEgo tree, and never reads the benchmark `gt_motion.npz`.
+The exact generated BONES cohort manifests used for reported evaluation are
+retained under the Phase-2 `eval_shape_tmr_c45_native_unipc35` directory. The
+raw 20-fps benchmark test-suite is not required to rerun those fixed manifests.
 
 ## Phase 3: Modality Bridge
 
@@ -178,9 +177,9 @@ intentionally not archived as active requirements:
   the materialized HF snapshot.
 
 The small Kimodo skeleton buffer used only to regenerate proportional motion is
-archived under `runtime/kimodo_caches`. The benchmark splits and JSON test-suite
-metadata are archived even though current pair/index and evaluator manifests
-already exist, so those manifests can be rebuilt.
+archived under `runtime/kimodo_caches`. Benchmark split files are archived to
+rebuild BONES train/validation pairs; fixed evaluator manifests are retained
+with the Phase-2 evaluation.
 
 ## Raw Data Boundary
 
@@ -207,3 +206,23 @@ would require the external pipeline and substantial GPU time.
 Use environment overrides when the new server does not use `/weka/jungbin`.
 The launchers still contain historical absolute defaults, so either restore
 that layout or export the documented path variables.
+
+## Final Verification
+
+Verified on 2026-07-23 with `python migration/verify_migration.py gcs`:
+
+```text
+camera: 729 objects
+camera_rgb: 735 objects
+uniego_rep: 733 objects
+video: 1480 objects
+joint_latents_T97: 127956 objects
+required objects, hashes, and counts passed
+```
+
+The retained native DCPs were additionally compared as local-vs-GCS
+file-count/byte totals: baseline `36/91,398,229,408`, A
+`36/91,398,229,476`, B `36/91,398,229,504`, and D
+`36/91,263,133,825`. Every retained Phase-2/3 `.pt` checkpoint matched its
+local byte size exactly. Source Git bundles passed `git bundle verify`; the
+Cosmos Motion bundle is refreshed after the final migration commit.

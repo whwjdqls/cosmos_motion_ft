@@ -8,7 +8,6 @@ RUN_ROOT=${RUN_ROOT:-${WEKA_ROOT}/cosmos_motion_ft_runs}
 NANO_REV=fea6e03ac3d7884b4105ed8ee79fc480fca70965
 NANO_STAGE=${NANO_STAGE:-${WEKA_ROOT}/cosmos_motion_migration_staging/hf/Cosmos3-Nano-${NANO_REV}}
 SOURCE_STAGE=${SOURCE_STAGE:-${WEKA_ROOT}/cosmos_motion_migration_staging/source}
-BENCHMARK_STAGE=${BENCHMARK_STAGE:-${WEKA_ROOT}/cosmos_motion_migration_staging/benchmarks}
 TORCH_HOME=${TORCH_HOME:-${HOME}/.cache/torch}
 
 case "${SECTION}" in
@@ -116,16 +115,6 @@ if run_section core; then
         "${GCS_ROOT}/evaluators/shape_aware_motion_eval_c45_20260715"
     sync_tree "${WEKA_ROOT}/Kimodo-Motion-Gen-Benchmark/splits" \
         "${GCS_ROOT}/benchmarks/Kimodo-Motion-Gen-Benchmark/splits"
-    mkdir -p "${BENCHMARK_STAGE}"
-    (
-        cd "${WEKA_ROOT}/Kimodo-Motion-Gen-Benchmark-20fps/testsuite"
-        find . -type f -name '*.json' -print0 |
-            tar --null -T - -czf \
-                "${BENCHMARK_STAGE}/Kimodo-Motion-Gen-Benchmark-20fps-testsuite-json.tar.gz"
-    )
-    copy_file \
-        "${BENCHMARK_STAGE}/Kimodo-Motion-Gen-Benchmark-20fps-testsuite-json.tar.gz" \
-        "${GCS_ROOT}/benchmarks/Kimodo-Motion-Gen-Benchmark-20fps-testsuite-json.tar.gz"
     copy_file "${WEKA_ROOT}/kimodo_caches/_somaskel77_buffers.npz" \
         "${GCS_ROOT}/runtime/kimodo_caches/_somaskel77_buffers.npz"
 fi

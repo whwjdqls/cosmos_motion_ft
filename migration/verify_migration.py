@@ -42,7 +42,6 @@ GCS_REQUIRED = (
     "evaluators/shape_aware_motion_eval_c45_20260715/SHA256SUMS",
     "benchmarks/Kimodo-Motion-Gen-Benchmark/splits/train_split_paths.txt",
     "benchmarks/Kimodo-Motion-Gen-Benchmark/splits/test_content_split_paths.txt",
-    "benchmarks/Kimodo-Motion-Gen-Benchmark-20fps-testsuite-json.tar.gz",
     "runtime/kimodo_caches/_somaskel77_buffers.npz",
     "cosmos_motion_ft_runs/joint_attention/full71_windows.json",
     "cosmos_motion_ft_runs/joint_attention/bones_index_train.json",
@@ -95,8 +94,6 @@ LOCAL_REQUIRED = (
     WEKA_ROOT / "shape_aware_motion_eval_c45_20260715/SHA256SUMS",
     WEKA_ROOT / "Kimodo-Motion-Gen-Benchmark/splits/train_split_paths.txt",
     WEKA_ROOT / "Kimodo-Motion-Gen-Benchmark/splits/test_content_split_paths.txt",
-    WEKA_ROOT / "Kimodo-Motion-Gen-Benchmark-20fps/testsuite/"
-    "content/text2motion/timeline_multi/0163/seed_motion.json",
     WEKA_ROOT / "kimodo_caches/_somaskel77_buffers.npz",
     RUN_ROOT / "joint_attention/full71_windows.json",
     RUN_ROOT / "joint_attention/bones_index_train.json",

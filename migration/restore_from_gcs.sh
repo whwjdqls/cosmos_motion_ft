@@ -57,14 +57,6 @@ if run_section core; then
         "${WEKA_ROOT}/shape_aware_motion_eval_c45_20260715"
     restore_tree "${GCS_ROOT}/benchmarks/Kimodo-Motion-Gen-Benchmark/splits" \
         "${WEKA_ROOT}/Kimodo-Motion-Gen-Benchmark/splits"
-    benchmark_archive="${WEKA_ROOT}/cosmos_motion_migration_staging/benchmarks/Kimodo-Motion-Gen-Benchmark-20fps-testsuite-json.tar.gz"
-    mkdir -p "$(dirname "${benchmark_archive}")"
-    gcloud storage cp \
-        "${GCS_ROOT}/benchmarks/Kimodo-Motion-Gen-Benchmark-20fps-testsuite-json.tar.gz" \
-        "${benchmark_archive}"
-    mkdir -p "${WEKA_ROOT}/Kimodo-Motion-Gen-Benchmark-20fps/testsuite"
-    tar -xzf "${benchmark_archive}" \
-        -C "${WEKA_ROOT}/Kimodo-Motion-Gen-Benchmark-20fps/testsuite"
     restore_tree "${GCS_ROOT}/runtime/kimodo_caches" \
         "${WEKA_ROOT}/kimodo_caches"
 fi
