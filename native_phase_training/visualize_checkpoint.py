@@ -25,9 +25,86 @@ INPUT_FILES = {
     "policy": "policy_input.jsonl",
     "image2video": "i2v_input.jsonl",
 }
+GT_BORDER_COLOR = "lime"
+GENERATED_BORDER_COLOR = "red"
+MODE_SHORT_LABELS = {
+    "forward_dynamics": "FD",
+    "policy": "POLICY",
+    "image2video": "I2V",
+}
 
 
-def _load_expected_names(eval_root: Path, mode: str) -> list[str]:
+def _escape_drawtext(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:").replace("%", "\\%")
+
+
+def _video_frame_provenance(prefix_length: int, num_frames: int) -> dict[str, Any]:
+    """Describe the 0-based GT-condition/generated boundary shown in video tiles."""
+    prefix_length = int(prefix_length)
+    num_frames = int(num_frames)
+    if not 1 <= prefix_length <= num_frames:
+        raise ValueError(f"prefix length must be in [1,{num_frames}], got {prefix_length}")
+    generated_range: list[int] = [] if prefix_length == num_frames else [prefix_length, num_frames - 1]
+    return {
+        "frame_indexing": "zero_based_inclusive",
+        "gt_reference_frames": [0, num_frames - 1],
+        "generated_panel": {
+            "gt_condition_frames": [0, prefix_length - 1],
+            "generated_frames": generated_range,
+        },
+        "visual_encoding": {
+            "gt_condition": {"border": GT_BORDER_COLOR, "label": "GT CONDITION"},
+            "generated": {"border": GENERATED_BORDER_COLOR, "label": "GENERATED"},
+        },
+    }
+
+
+def _annotated_video_filter(
+    *,
+    input_index: int,
+    output_label: str,
+    width: int,
+    height: int,
+    header_height: int,
+    font_size: int,
+    label: str,
+    prefix_length: int | None,
+) -> str:
+    """Build one ffmpeg tile with frame-accurate provenance labels and borders."""
+    escaped_label = _escape_drawtext(label)
+    border_width = max(4, width // 48)
+    filters = [f"[{input_index}:v]scale={width}:{height}"]
+    if prefix_length is None:
+        filters.extend(
+            (
+                f"drawbox=x=0:y=0:w=iw:h=ih:color={GT_BORDER_COLOR}:t={border_width}",
+                f"pad=iw:ih+{header_height}:0:{header_height}:black",
+                f"drawtext=text='{escaped_label}':x=7:y=5:fontcolor={GT_BORDER_COLOR}:fontsize={font_size}",
+            )
+        )
+    else:
+        prefix_length = int(prefix_length)
+        if prefix_length < 1:
+            raise ValueError(f"prefix length must be positive, got {prefix_length}")
+        gt_label = _escape_drawtext(f"{label} | GT CONDITION")
+        generated_label = _escape_drawtext(f"{label} | GENERATED")
+        filters.extend(
+            (
+                f"drawbox=x=0:y=0:w=iw:h=ih:color={GT_BORDER_COLOR}:t={border_width}:"
+                f"enable='lt(n,{prefix_length})'",
+                f"drawbox=x=0:y=0:w=iw:h=ih:color={GENERATED_BORDER_COLOR}:t={border_width}:"
+                f"enable='gte(n,{prefix_length})'",
+                f"pad=iw:ih+{header_height}:0:{header_height}:black",
+                f"drawtext=text='{gt_label}':x=7:y=5:fontcolor={GT_BORDER_COLOR}:fontsize={font_size}:"
+                f"enable='lt(n,{prefix_length})'",
+                f"drawtext=text='{generated_label}':x=7:y=5:fontcolor={GENERATED_BORDER_COLOR}:"
+                f"fontsize={font_size}:enable='gte(n,{prefix_length})'",
+            )
+        )
+    return ",".join(filters) + f"[{output_label}]"
+
+
+def _load_expected_records(eval_root: Path, mode: str) -> list[dict[str, Any]]:
     input_path = eval_root / INPUT_FILES[mode]
     records = [json.loads(line) for line in input_path.read_text().splitlines() if line.strip()]
     if not records:
@@ -43,7 +120,7 @@ def _load_expected_names(eval_root: Path, mode: str) -> list[str]:
         names.append(name)
     if len(names) != len(set(names)):
         raise ValueError(f"{input_path}: duplicate sample names are not allowed")
-    return names
+    return records
 
 
 def _rot6d_to_matrix(value: np.ndarray) -> np.ndarray:
@@ -158,14 +235,30 @@ def _plot_camera_comparison(
     return {"aligned_ate_m": ate, "pred_step_m": predicted_step, "gt_step_m": gt_step}
 
 
-def _make_video_comparison(*, gt_video: Path, generated_video: Path, output: Path, label: str) -> None:
-    filter_complex = (
-        "[0:v]scale=384:384,pad=iw:ih+28:0:28:black,"
-        "drawtext=text=GT:x=7:y=4:fontcolor=yellow:fontsize=18[gt];"
-        "[1:v]scale=384:384,pad=iw:ih+28:0:28:black,"
-        f"drawtext=text={label}:x=7:y=4:fontcolor=yellow:fontsize=16[pred];"
-        "[gt][pred]hstack"
+def _make_video_comparison(
+    *, gt_video: Path, generated_video: Path, output: Path, label: str, prefix_length: int
+) -> None:
+    gt_filter = _annotated_video_filter(
+        input_index=0,
+        output_label="gt",
+        width=384,
+        height=384,
+        header_height=32,
+        font_size=16,
+        label="GT REFERENCE",
+        prefix_length=None,
     )
+    generated_filter = _annotated_video_filter(
+        input_index=1,
+        output_label="pred",
+        width=384,
+        height=384,
+        header_height=32,
+        font_size=14,
+        label=label,
+        prefix_length=prefix_length,
+    )
+    filter_complex = f"{gt_filter};{generated_filter};[gt][pred]hstack"
     subprocess.run(
         [
             "ffmpeg",
@@ -184,6 +277,53 @@ def _make_video_comparison(*, gt_video: Path, generated_video: Path, output: Pat
         ],
         check=True,
     )
+
+
+def _make_prefix_grid(
+    *,
+    gt_video: Path,
+    generated_videos: list[tuple[int, Path, int]],
+    output: Path,
+    mode: str,
+) -> None:
+    """Create one GT-plus-five-prefix video for quick checkpoint comparison."""
+    inputs: list[tuple[str, Path, int | None]] = [("GT REFERENCE", gt_video, None)] + [
+        (f"{MODE_SHORT_LABELS[mode]} P{prefix}", path, prefix)
+        for prefix, path, _num_frames in sorted(generated_videos)
+    ]
+    if len(inputs) > 6:
+        raise ValueError(f"prefix grid supports at most six videos, got {len(inputs)}")
+    filters: list[str] = []
+    for index, (label, _path, prefix_length) in enumerate(inputs):
+        filters.append(
+            _annotated_video_filter(
+                input_index=index,
+                output_label=f"v{index}",
+                width=256,
+                height=256,
+                header_height=28,
+                font_size=13,
+                label=label,
+                prefix_length=prefix_length,
+            )
+        )
+    layout: list[str] = []
+    for index in range(len(inputs)):
+        row, column = divmod(index, 3)
+        x = ("0", "w0", "w0+w1")[column]
+        y = "0" if row == 0 else "h0"
+        layout.append(f"{x}_{y}")
+    stack_inputs = "".join(f"[v{index}]" for index in range(len(inputs)))
+    filters.append(
+        f"{stack_inputs}xstack=inputs={len(inputs)}:layout={'|'.join(layout)}:fill=black[out]"
+    )
+    command = ["ffmpeg", "-y", "-loglevel", "error"]
+    for _label, path, _prefix_length in inputs:
+        command.extend(("-i", str(path)))
+    command.extend(
+        ("-filter_complex", ";".join(filters), "-map", "[out]", "-pix_fmt", "yuv420p", str(output))
+    )
+    subprocess.run(command, check=True)
 
 
 def _load_successful_output(path: Path, expected_mode: str) -> dict[str, Any]:
@@ -208,48 +348,94 @@ def main() -> None:
 
     manifest: list[dict[str, Any]] = []
     covered_modes: set[str] = set()
+    prefix_video_groups: dict[tuple[str, str], list[tuple[int, Path, int]]] = {}
     for mode in ALL_MODES:
-        expected_names = _load_expected_names(args.eval_root, mode)
+        expected_records = _load_expected_records(args.eval_root, mode)
         if args.max_samples > 0:
-            expected_names = expected_names[: args.max_samples]
-        sample_dirs = [args.inference_root / name for name in expected_names]
+            expected_records = expected_records[: args.max_samples]
+        sample_dirs = [args.inference_root / record["name"] for record in expected_records]
         missing_dirs = [str(path) for path in sample_dirs if not path.is_dir()]
         if missing_dirs:
             raise RuntimeError(f"missing {mode} inference outputs: {missing_dirs}")
-        for sample_dir in sample_dirs:
+        for input_record, sample_dir in zip(expected_records, sample_dirs, strict=True):
             result = _load_successful_output(sample_dir / "sample_outputs.json", mode)
             suffix = f"_{mode}"
-            base_name = sample_dir.name[: -len(suffix)]
-            gt_dir = args.eval_root / "samples" / base_name
-            record: dict[str, Any] = {"mode": mode, "sample": base_name, "artifacts": []}
+            source_name = input_record.get("source_name") or sample_dir.name[: -len(suffix)]
+            prefix_length = input_record.get("rgb_prefix_length")
+            num_frames = int(input_record.get("num_frames", 97))
+            effective_prefix_length = int(prefix_length) if prefix_length is not None else 1
+            artifact_stem = source_name
+            if prefix_length is not None:
+                artifact_stem += f"_p{int(prefix_length):03d}"
+            gt_dir = args.eval_root / "samples" / source_name
+            record: dict[str, Any] = {
+                "mode": mode,
+                "sample": source_name,
+                "rgb_prefix_length": prefix_length,
+                "latent_prefix_length": input_record.get("latent_prefix_length"),
+                "artifacts": [],
+            }
 
             if mode in VIDEO_MODES:
-                comparison_path = output_root / f"{base_name}_{mode}.mp4"
+                comparison_path = output_root / f"{artifact_stem}_{mode}.mp4"
                 _make_video_comparison(
                     gt_video=gt_dir / "gt_clip.mp4",
                     generated_video=sample_dir / "vision.mp4",
                     output=comparison_path,
-                    label=mode,
+                    label=(
+                        mode.replace("_", " ")
+                        if prefix_length is None
+                        else f"{mode.replace('_', ' ')} prefix={prefix_length}"
+                    ),
+                    prefix_length=effective_prefix_length,
+                )
+                record["video_frame_provenance"] = _video_frame_provenance(
+                    effective_prefix_length, num_frames
                 )
                 record["artifacts"].append(str(comparison_path))
+                if prefix_length is not None:
+                    prefix_video_groups.setdefault((mode, source_name), []).append(
+                        (int(prefix_length), sample_dir / "vision.mp4", num_frames)
+                    )
 
             if mode in ACTION_PLOT_MODES:
                 action = np.asarray(result["outputs"][0]["content"].get("action"), dtype=np.float64)
                 if action.shape != (96, 9):
                     raise ValueError(f"{sample_dir}: expected action [96,9], got {action.shape}")
-                camera_path = output_root / f"{base_name}_{mode}_camera.png"
+                camera_path = output_root / f"{artifact_stem}_{mode}_camera.png"
                 record["camera_metrics"] = _plot_camera_comparison(
                     action=action,
                     gt_camera=gt_dir / "gt_camera_cosmos.npz",
                     output=camera_path,
-                    title=f"{base_name} {mode}",
+                    title=f"{source_name} {mode}" + ("" if prefix_length is None else f" prefix={prefix_length}"),
                     n_cameras=args.n_cameras,
                 )
                 record["artifacts"].append(str(camera_path))
 
             manifest.append(record)
             covered_modes.add(mode)
-            print(f"[native-viz] {mode}: {base_name}", flush=True)
+            print(f"[native-viz] {mode}: {artifact_stem}", flush=True)
+
+    for (mode, source_name), generated_videos in sorted(prefix_video_groups.items()):
+        grid_path = output_root / f"{source_name}_{mode}_prefix_grid.mp4"
+        _make_prefix_grid(
+            gt_video=args.eval_root / "samples" / source_name / "gt_clip.mp4",
+            generated_videos=generated_videos,
+            output=grid_path,
+            mode=mode,
+        )
+        manifest.append(
+            {
+                "mode": f"{mode}_prefix_grid",
+                "sample": source_name,
+                "prefixes": [prefix for prefix, _path, _num_frames in sorted(generated_videos)],
+                "video_frame_provenance_by_prefix": {
+                    str(prefix): _video_frame_provenance(prefix, num_frames)
+                    for prefix, _path, num_frames in sorted(generated_videos)
+                },
+                "artifacts": [str(grid_path)],
+            }
+        )
 
     missing_modes = set(ALL_MODES) - covered_modes
     if missing_modes:

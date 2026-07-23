@@ -69,12 +69,36 @@ while true; do
         output_dir=${EVAL_ROOT}/${iteration}
         inference_dir=${output_dir}/inference
         analysis_dir=${output_dir}/analysis
+        mkdir -p "${output_dir}"
+        /home/jungbin_cho/miniforge3/envs/cosmos/bin/python \
+          /home/jungbin_cho/cosmos_motion_ft/native_phase_training/run_contract.py \
+          --checkpoint-path "${checkpoint}" \
+          --output-dir "${output_dir}"
+        # Values are validated against the immutable checkpoint contract before
+        # experiment.py is imported by official inference.
+        source "${output_dir}/resolved_run_contract.env"
         if [[ "${FULL71_FORCE}" != 1 && -s "${analysis_dir}/COMPLETE.json" ]]; then
+            /home/jungbin_cho/miniforge3/envs/cosmos/bin/python - "${output_dir}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+(root / "COMPLETE.json").write_text(
+    json.dumps(
+        {
+            "run_contract": str(root / "resolved_run_contract.json"),
+            "metrics_manifest": str(root / "analysis" / "COMPLETE.json"),
+        },
+        indent=2,
+    )
+    + "\n"
+)
+PY
             continue
         fi
         processed=$((processed + 1))
 
-        mkdir -p "${output_dir}"
         echo "[full71] inference ${iteration}"
         cd /home/jungbin_cho/cosmos-framework
         /home/jungbin_cho/miniforge3/envs/cosmos/bin/torchrun --standalone --nproc_per_node="${NPROC_PER_NODE}" \
@@ -101,6 +125,25 @@ while true; do
           --visualize-limit "${FULL71_VISUALIZE_LIMIT}" \
           --lpips-device cuda:0 \
           --lpips-batch-size 16 2>&1 | tee "${output_dir}/analysis.log"
+
+        /home/jungbin_cho/miniforge3/envs/cosmos/bin/python - "${output_dir}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+required = (root / "resolved_run_contract.json", root / "analysis" / "COMPLETE.json")
+missing = [str(path) for path in required if not path.is_file()]
+if missing:
+    raise SystemExit(f"full-71 evaluation is incomplete: {missing}")
+(root / "COMPLETE.json").write_text(
+    json.dumps(
+        {"run_contract": str(required[0]), "metrics_manifest": str(required[1])},
+        indent=2,
+    )
+    + "\n"
+)
+PY
     done
 
     if [[ "${processed}" -eq 0 || "${FULL71_FORCE}" == 1 ]]; then

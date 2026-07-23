@@ -10,15 +10,18 @@ pixel video is replaced by:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import random
+import re
+from collections import Counter
 from functools import lru_cache
 from typing import Any
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, get_worker_info
 
 from cosmos_framework.data.vfm.action.json_formatter import ActionPromptJsonFormatter
 from cosmos_framework.data.vfm.action.transforms import (
@@ -35,6 +38,150 @@ from camera_to_action import DOMAIN_ID
 
 
 _ACTION_MODES = frozenset({"forward_dynamics", "inverse_dynamics", "policy"})
+_VISUAL_GENERATION_MODES = frozenset({"forward_dynamics", "policy", "image2video"})
+_QUALITY_FILTER_KIND = "nymeria_camera_motion_quality_filter"
+_QUALITY_FILTER_VERSION = 1
+_STANDALONE_C_PATTERN = re.compile(r"(?<!\w)C(?!\w)")
+
+
+def replace_standalone_c_with_person(caption: str) -> str:
+    """Replace the anonymized whole-token subject marker without touching words."""
+    return _STANDALONE_C_PATTERN.sub("A person", caption)
+
+
+def rgb_prefix_to_latent_frames(prefix_length: int, num_frames: int) -> int:
+    """Map an exact causal Wan-VAE RGB prefix to its clean latent count."""
+    if not isinstance(prefix_length, int) or isinstance(prefix_length, bool):
+        raise TypeError(f"prefix length must be an integer, got {prefix_length!r}")
+    if prefix_length < 1 or prefix_length >= num_frames:
+        raise ValueError(f"prefix length must be in [1,{num_frames - 1}], got {prefix_length}")
+    if (prefix_length - 1) % 4:
+        raise ValueError(
+            f"RGB prefix {prefix_length} is not an exact causal Wan-VAE boundary; "
+            "expected 1 + 4N frames"
+        )
+    return 1 + (prefix_length - 1) // 4
+
+
+def validate_prefix_sampling(
+    prefix_lengths: list[int] | tuple[int, ...],
+    prefix_sampling_weights: list[float] | tuple[float, ...] | None,
+    num_frames: int,
+) -> tuple[tuple[int, ...], tuple[float, ...] | None]:
+    """Validate and canonicalize the visual-prefix sampling contract."""
+    if any(not isinstance(value, int) or isinstance(value, bool) for value in prefix_lengths):
+        raise TypeError(f"prefix_lengths must contain only integers, got {prefix_lengths!r}")
+    lengths = tuple(prefix_lengths)
+    if not lengths:
+        raise ValueError("prefix_lengths must contain at least one RGB prefix")
+    if len(lengths) != len(set(lengths)):
+        raise ValueError(f"prefix_lengths contains duplicates: {lengths}")
+    for prefix_length in lengths:
+        rgb_prefix_to_latent_frames(prefix_length, num_frames)
+
+    if prefix_sampling_weights is None:
+        return lengths, None
+    weights = tuple(float(value) for value in prefix_sampling_weights)
+    if len(weights) != len(lengths):
+        raise ValueError(
+            f"prefix_sampling_weights length {len(weights)} does not match prefix_lengths {len(lengths)}"
+        )
+    if any(not np.isfinite(value) or value < 0.0 for value in weights):
+        raise ValueError(f"prefix_sampling_weights must be finite and non-negative, got {weights}")
+    if not any(value > 0.0 for value in weights):
+        raise ValueError("prefix_sampling_weights must contain at least one positive value")
+    return lengths, weights
+
+
+def _sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+@lru_cache(maxsize=8)
+def load_quality_filter_exclusions(
+    path: str,
+    num_frames: int,
+) -> dict[tuple[str, int, int], dict[str, Any]]:
+    """Load and strictly validate a versioned physical-window exclusion artifact."""
+    if not path:
+        return {}
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"quality filter does not exist: {path}")
+    if os.path.getsize(path) == 0:
+        raise ValueError(f"quality filter is empty: {path}")
+
+    with open(path) as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        raise ValueError(f"quality filter root must be an object: {path}")
+    if payload.get("kind") != _QUALITY_FILTER_KIND:
+        raise ValueError(
+            f"quality filter kind must be {_QUALITY_FILTER_KIND!r}, got {payload.get('kind')!r}"
+        )
+    if payload.get("version") != _QUALITY_FILTER_VERSION:
+        raise ValueError(
+            f"quality filter version must be {_QUALITY_FILTER_VERSION}, got {payload.get('version')!r}"
+        )
+    if payload.get("num_frames") != num_frames:
+        raise ValueError(
+            f"quality filter T mismatch: artifact={payload.get('num_frames')!r}, requested={num_frames}"
+        )
+
+    raw_exclusions = payload.get("excluded_windows")
+    if not isinstance(raw_exclusions, list):
+        raise ValueError("quality filter excluded_windows must be a list")
+    exclusions: dict[tuple[str, int, int], dict[str, Any]] = {}
+    split_counts: Counter[str] = Counter()
+    for index, entry in enumerate(raw_exclusions):
+        if not isinstance(entry, dict):
+            raise ValueError(f"excluded_windows[{index}] must be an object")
+        split = entry.get("split")
+        uuid = entry.get("uuid")
+        start = entry.get("start")
+        end = entry.get("end")
+        reasons = entry.get("reasons")
+        if split not in {"train", "test"}:
+            raise ValueError(f"excluded_windows[{index}] has invalid split {split!r}")
+        if not isinstance(uuid, str) or not uuid:
+            raise ValueError(f"excluded_windows[{index}] has invalid uuid {uuid!r}")
+        if not isinstance(start, int) or isinstance(start, bool):
+            raise ValueError(f"excluded_windows[{index}] has invalid start {start!r}")
+        if not isinstance(end, int) or isinstance(end, bool) or end - start != num_frames:
+            raise ValueError(
+                f"excluded_windows[{index}] must span exactly T={num_frames}, got [{start},{end})"
+            )
+        if not isinstance(reasons, list) or not reasons or not all(
+            isinstance(reason, str) and reason for reason in reasons
+        ):
+            raise ValueError(f"excluded_windows[{index}] has invalid reasons {reasons!r}")
+        key = (uuid, start, end)
+        if key in exclusions:
+            raise ValueError(f"quality filter contains duplicate physical window {key}")
+        exclusions[key] = {"split": split, "reasons": tuple(reasons)}
+        split_counts[split] += 1
+
+    summaries = payload.get("summary_by_split")
+    if not isinstance(summaries, dict):
+        raise ValueError("quality filter summary_by_split must be an object")
+    for split in ("train", "test"):
+        summary = summaries.get(split)
+        expected = summary.get("excluded_unique_physical_windows") if isinstance(summary, dict) else None
+        if expected != split_counts[split]:
+            raise ValueError(
+                f"quality filter {split} exclusion count mismatch: summary={expected!r}, "
+                f"entries={split_counts[split]}"
+            )
+
+    print(
+        f"[NymeriaCameraLatentDataset] quality_filter={path} sha256={_sha256(path)} "
+        f"train_unique={split_counts['train']} test_unique={split_counts['test']}",
+        flush=True,
+    )
+    return exclusions
 
 
 def latent_path(uuid: str, start: int, root: str) -> str:
@@ -50,17 +197,22 @@ def build_cached_index(
     split: str,
     num_frames: int,
     latent_root: str,
+    quality_filter_path: str = "",
     require_usable: bool = True,
 ) -> list[dict[str, Any]]:
     keep_uuids = None
     if split not in ("all", None):
-        sp = json.load(open(split_file))
+        with open(split_file) as handle:
+            sp = json.load(handle)
         assert split in sp, f"split {split!r} not in {split_file}"
         keep_uuids = set(sp[split])
 
+    exclusions = load_quality_filter_exclusions(quality_filter_path, num_frames)
     index: list[dict[str, Any]] = []
     missing_latents = 0
     candidate_windows = 0
+    quality_filtered_rows = 0
+    quality_reason_rows: Counter[str] = Counter()
     with open(manifest_path) as f:
         for line in f:
             rec = json.loads(line)
@@ -81,6 +233,17 @@ def build_cached_index(
                 s = ws
                 while s + num_frames <= hi:
                     candidate_windows += 1
+                    exclusion = exclusions.get((uuid, s, s + num_frames))
+                    if exclusion is not None:
+                        if split not in ("all", None) and exclusion["split"] != split:
+                            raise ValueError(
+                                f"quality filter split mismatch for {(uuid, s, s + num_frames)}: "
+                                f"artifact={exclusion['split']!r}, dataset={split!r}"
+                            )
+                        quality_filtered_rows += 1
+                        quality_reason_rows.update(exclusion["reasons"])
+                        s += num_frames
+                        continue
                     lp = latent_path(uuid, s, latent_root)
                     if os.path.isfile(lp):
                         index.append({"uuid": uuid, "s": s, "cap": caption, "latent_path": lp})
@@ -89,7 +252,9 @@ def build_cached_index(
                     s += num_frames
     print(
         f"[NymeriaCameraLatentDataset] split={split} T={num_frames} kept={len(index)} "
-        f"missing_latents={missing_latents} candidates={candidate_windows} root={latent_root}",
+        f"quality_filtered={quality_filtered_rows} missing_latents={missing_latents} "
+        f"candidates={candidate_windows} quality_reasons={dict(sorted(quality_reason_rows.items()))} "
+        f"root={latent_root}",
         flush=True,
     )
     return index
@@ -229,6 +394,11 @@ class NymeriaCameraLatentDataset(Dataset):
         split: str = "train",
         max_samples: int | None = None,
         seed: int = 0,
+        quality_filter_path: str = "",
+        replace_standalone_c: bool = False,
+        prefix_lengths: list[int] | tuple[int, ...] = (1,),
+        prefix_sampling_weights: list[float] | tuple[float, ...] | None = None,
+        prefix_seed: int = 42,
     ) -> None:
         super().__init__()
         if num_frames % 4 != 1:
@@ -242,11 +412,26 @@ class NymeriaCameraLatentDataset(Dataset):
         self.fps = float(fps)
         self.mode = mode
         self.max_action_dim = int(max_action_dim)
-        self._rng = random.Random(seed)
+        self.replace_standalone_c = bool(replace_standalone_c)
+        self.prefix_lengths, self.prefix_sampling_weights = validate_prefix_sampling(
+            prefix_lengths,
+            prefix_sampling_weights,
+            self.num_frames,
+        )
+        self._base_seed = int(seed)
+        self._prefix_seed = int(prefix_seed)
+        self._worker_rng: random.Random | None = None
         self._modes = list(MODE_WEIGHTS)
         self._mode_weights = [MODE_WEIGHTS[m] for m in self._modes]
 
-        index = build_cached_index(manifest_path, split_file, split, self.num_frames, latent_root)
+        index = build_cached_index(
+            manifest_path,
+            split_file,
+            split,
+            self.num_frames,
+            latent_root,
+            quality_filter_path,
+        )
         if max_samples is not None:
             index = index[:max_samples]
         if not index:
@@ -266,7 +451,27 @@ class NymeriaCameraLatentDataset(Dataset):
     def _choose_mode(self) -> str:
         if self.mode != "mixture":
             return self.mode
-        return self._rng.choices(self._modes, weights=self._mode_weights, k=1)[0]
+        return self._get_rng().choices(self._modes, weights=self._mode_weights, k=1)[0]
+
+    def _get_rng(self) -> random.Random:
+        if self._worker_rng is None:
+            worker = get_worker_info()
+            worker_seed = worker.seed if worker is not None else torch.initial_seed()
+            self._worker_rng = random.Random(self._base_seed + self._prefix_seed + int(worker_seed))
+        return self._worker_rng
+
+    def _choose_prefix(self, mode: str) -> tuple[int, int]:
+        if mode not in _VISUAL_GENERATION_MODES:
+            return self.num_frames, 1 + (self.num_frames - 1) // 4
+        if len(self.prefix_lengths) == 1:
+            rgb_frames = self.prefix_lengths[0]
+        else:
+            rgb_frames = self._get_rng().choices(
+                self.prefix_lengths,
+                weights=self.prefix_sampling_weights,
+                k=1,
+            )[0]
+        return rgb_frames, rgb_prefix_to_latent_frames(rgb_frames, self.num_frames)
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
         it = self._index[idx % len(self._index)]
@@ -279,7 +484,26 @@ class NymeriaCameraLatentDataset(Dataset):
         if action.shape[0] != self.num_frames - 1:
             raise ValueError(f"bad cached action shape {action.shape} in {it['latent_path']}")
 
+        expected_latent_frames = 1 + (self.num_frames - 1) // 4
+        if latents.ndim != 4 or latents.shape[1] != expected_latent_frames:
+            raise ValueError(
+                f"bad cached latent temporal shape {latents.shape} in {it['latent_path']}; "
+                f"expected [C,{expected_latent_frames},H,W]"
+            )
+
         caption = "" if mode == "inverse_dynamics" else it["cap"]
+        if caption and self.replace_standalone_c:
+            caption = replace_standalone_c_with_person(caption)
+        rgb_prefix_length, latent_prefix_length = self._choose_prefix(mode)
+        sequence_plan = build_sequence_plan_from_mode(
+            mode=mode,
+            video_length=self.num_frames,
+            action_length=self.num_frames - 1,
+            video_temporal_downsample=4,
+        )
+        if mode in _VISUAL_GENERATION_MODES:
+            sequence_plan.condition_frame_indexes_vision = list(range(latent_prefix_length))
+
         sample: dict[str, Any] = {
             "video": torch.empty((3, self.num_frames, 1, 1), dtype=torch.uint8),
             "video_latents": torch.from_numpy(latents),
@@ -288,12 +512,10 @@ class NymeriaCameraLatentDataset(Dataset):
             "conditioning_fps": torch.tensor(int(round(self.fps)), dtype=torch.long),
             "mode": mode,
             "viewpoint": "ego_view",
-            "sequence_plan": build_sequence_plan_from_mode(
-                mode=mode,
-                video_length=self.num_frames,
-                action_length=self.num_frames - 1,
-                video_temporal_downsample=4,
-            ),
+            "sequence_plan": sequence_plan,
+            "rgb_prefix_length": torch.tensor(rgb_prefix_length, dtype=torch.long),
+            "latent_prefix_length": torch.tensor(latent_prefix_length, dtype=torch.long),
+            "predicted_rgb_start": torch.tensor(rgb_prefix_length, dtype=torch.long),
         }
 
         if mode != "image2video":

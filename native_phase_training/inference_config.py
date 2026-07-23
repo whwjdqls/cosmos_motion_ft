@@ -4,9 +4,11 @@ from __future__ import annotations
 
 # Registers experiment/world_camera_nymeria_latent_nano before Hydra compose.
 import native_phase_training.experiment  # noqa: F401
+from native_phase_training.prefix_inference import install_action_prefix_support
 
 from cosmos_framework.configs.base.config import make_config as _make_base_config
 
 
 def make_config():
+    install_action_prefix_support()
     return _make_base_config()

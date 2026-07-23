@@ -46,6 +46,11 @@ The important compatibility point is that cached latents are a training input op
   - Provides `CyclingDataLoader`, an infinite wrapper over finite map-style `DataLoader` streams. This is required because native `IterativeJointDataLoader` assumes child streams do not exhaust during long training.
   - Provides `LatentAwareIterativeJointDataLoader`, which counts cached latent patches correctly when token-budget packing is selected. Production now uses a fixed four clips per GPU; `NATIVEP1_CLIPS_PER_GPU=0` restores the 45,056-token mode.
   - Formats forward/policy captions with the same `ActionPromptJsonFormatter` used by official inference, keeps inverse text exactly empty, and matches the official plain-text image-to-video duration/resolution template.
+  - Strictly validates and applies an optional versioned physical-window quality filter. One excluded `(uuid,start,end)` removes every duplicate caption row for that same T97 window.
+
+- `build_camera_motion_quality_filter.py`
+  - Reconstructs the exact cached-latent Phase-1 population and audits direct upright-RGB-camera versus decoded SOMA-Head continuity and rigid-pair consistency.
+  - Writes a versioned exclusion artifact with thresholds, metric distributions, threshold sensitivity, per-subject impact, duplicate-row multiplicity, and exact source hashes.
 
 - `AUDIT.md`
   - Records the 2026-07-10 native Phase 1 audit, the finite-dataloader livelock fix, parity fixes, and documented deviations from pixel-native training.
@@ -83,6 +88,7 @@ The important compatibility point is that cached latents are a training input op
 - `visualize_checkpoint.py`
   - Consumes official-inference outputs with mode-specific directory names.
   - Creates GT-versus-generated MP4s for forward dynamics, policy, and image-to-video.
+  - Marks provenance per RGB frame: the reference and clean conditioning prefix have a green border, while the generated suffix has a red border. Headers switch from `GT CONDITION` to `GENERATED` at the exact prefix boundary, and each manifest record stores the corresponding zero-based inclusive ranges.
   - Creates predicted-versus-GT camera trajectory/frustum plots for inverse dynamics and policy, plus a JSON manifest only after every requested sample in all four JSONL files has been visualized successfully.
 
 - `checkpoint_eval_callback.py` and `sbatch_checkpoint_eval.sh`
@@ -90,8 +96,16 @@ The important compatibility point is that cached latents are a training input op
   - The job loads EMA weights through official inference, samples all four modes with UniPC, then runs `visualize_checkpoint.py`.
   - Submission markers prevent duplicate jobs after trainer restart; a failed submission is logged without aborting training.
 
+- `run_contract.py`
+  - Persists architecture-critical settings in `<run>/native_phase1_contract.json` and resolves them before evaluation imports the experiment config.
+  - Rejects incompatible resume settings and conflicting manual evaluation overrides instead of rebuilding a different adapter graph.
+
 - `sbatch_phase1_native_camera.sh`
   - Production Slurm launcher for the official-compatible Phase 1 run.
+  - A filtered run must provide both `NYMERIA_QUALITY_FILTER` and its exact `NATIVEP1_QUALITY_FILTER_SHA256`; the launcher fails before torchrun on any mismatch.
+
+- `sbatch_phase1_native_camera_qfilter.sh` and `sbatch_phase1_native_camera_qfilter_no_i2v.sh`
+  - Pinned launchers for the filtered four-task control and the filtered three-task no-I2V ablation.
 
 ## Data Contract
 
@@ -127,7 +141,14 @@ The dataset scans:
 - split: `/weka/jungbin/nymeriaplus_kimodo_proportional/train_test_split.json`
 - latent root: `NYMERIA_LATENT_ROOT`
 
-It keeps train windows whose latent file exists and whose manifest window is usable. On the 2026-07-10 smoke, the T97 train index found 119,632 cached windows.
+The unfiltered T97 train index contains 119,632 cached dataset rows representing 115,583 unique physical windows. The active quality artifact is:
+
+```text
+/weka/jungbin/nymeriaplus_kimodo_proportional/metadata/camera_motion_quality_filter_v1_T97.json
+SHA-256: 1fd6465890cbf175068db839beb8bb220f6964090ff2c583cbf50d5001989848
+```
+
+It removes 1,583 train rows / 1,524 unique windows and retains 118,049 rows / 114,059 unique windows. On test it removes 113 of 12,613 rows and retains 12,500. Filtering is fail-closed: kind, schema version, T97 span, split, duplicate keys, summary counts, file presence, and launcher SHA are validated. The filter does not mutate cached latents or manifests. Full rationale and counts are in `AUDIT.md` and inside the artifact itself.
 
 ## Task Mix
 
@@ -167,7 +188,147 @@ Mode behavior:
 
 `image2video` is included here as video regularization. This is different from the older multi-GPU joint-attention warning where action-less steps could desync custom DDP all-reduce. Native Cosmos training handles mixed native task streams.
 
+The no-I2V ablation sets `NYMERIA_DROP_MODES=image2video`; it does not change inverse dynamics or any model/sampler/loss setting. Its raw stream ratios remain `40/25/20`, which the native joint loader normalizes to effective probabilities `47.06/29.41/23.53%`. It deliberately answers whether the I2V regularizer helps visual quality; it is not a matched task-exposure ablation because the remaining tasks receive more updates over the same 100k iterations.
+
 The 10% CFG text dropout runs after mode-specific formatting, so it drops the entire JSON/prose prompt to the tokenizer's empty-string conditioning. Inverse-dynamics text is already exactly empty.
+
+## Video-Quality Ablation Suite
+
+The 2026-07-21 A-D suite tests action-loss weighting, longer visual context, and
+how narrowly the generator is adapted. All runs use the pinned quality filter,
+standalone `C -> A person` caption replacement, fixed four clips per GPU (global
+batch 32), 100k scheduler/steps, save every 5k, LoRA/base LR `5e-5`, 4x action-head
+LR, gradient clipping 1.0, and PowerEMA. The suite-specific action loss weight is
+`2.0`, and vision loss is normalized by active suffix elements per sample.
+
+The requested RGB prefixes `[1,8,16,32,48]` cannot be represented exactly by the
+cached causal Wan-VAE latents. A 97-frame clip has causal groups `{0}`, `{1..4}`,
+`{5..8}`, and so on, so an exact clean/noisy boundary must contain `1 + 4N` RGB
+frames. The controlled suite therefore uses the nearest forward boundaries:
+
+```text
+RGB clean prefix:    1, 9, 17, 33, 49
+Wan latent prefix:   1, 3,  5,  9, 13
+RGB suffix starts:   1, 9, 17, 33, 49
+```
+
+Using 8/16/32/48 with cached full-clip latents would either condition on a latent
+that contains a target boundary frame (leakage) or discard some requested clean
+frames. `rgb_prefix_to_latent_frames` therefore rejects non-exact boundaries.
+For every visual generation task, the sequence plan marks only the latent prefix
+clean; RF noise and vision MSE indexes cover only the suffix. Camera indexing is
+unchanged: forward dynamics conditions all 96 actions and policy predicts all 96
+actions with `action_start_frame_offset=1`.
+
+The configurations are:
+
+| Run | Prefix | Generator adaptation | Training streams |
+| --- | --- | --- | --- |
+| A | 1 | generation Q/K/V/O LoRA | forward/inverse/policy/I2V (`40/25/20/15`) |
+| B | uniform `1,9,17,33,49` | generation Q/K/V/O LoRA | forward/inverse/policy/I2V (`40/25/20/15`) |
+| C | uniform `1,9,17,33,49` | no generator LoRA; action interface only | forward/inverse/policy (`40/25/20`) |
+| D | uniform `1,9,17,33,49` | camera-token-only generation K/V LoRA | forward/inverse/policy (`40/25/20`) |
+| E, optional | 1 | camera-token-only generation K/V LoRA | forward/inverse/policy (`40/25/20`) |
+
+C and D deliberately exclude I2V from training. An I2V pack has no camera tokens:
+C's video loss reaches no trainable parameter, and D's camera mask is all false.
+Native Cosmos's dummy action branch would keep backward/collectives valid, but the
+step would contain only zero-valued trainable dependencies and no useful update.
+The experiment now fails fast if `action_only` or `camera_kv_lora` is configured
+with an active I2V stream. The remaining raw `40/25/20` ratios normalize to
+`47.06/29.41/23.53%`. I2V is still evaluated for C/D as a frozen-prior regression
+test at every prefix.
+
+`camera_kv_lora` keeps the ordinary DCP keys (`weight`, `lora_A.weight`, and
+`lora_B.weight`) but evaluates the LoRA residual only on packed action-token rows
+of `k_proj_moe_gen` and `v_proj_moe_gen`. Video and text rows receive the frozen
+base projection. LoRA B is zero initialized, so the initial network output exactly
+matches the base checkpoint. Video loss can still update camera K/V through visual
+queries attending to camera keys/values. Generator Q/O and all base projections
+remain frozen.
+
+Launchers:
+
+```bash
+sbatch native_phase_training/sbatch_phase1_video_quality_A.sh
+sbatch native_phase_training/sbatch_phase1_video_quality_B.sh
+sbatch native_phase_training/sbatch_phase1_video_quality_C.sh
+sbatch native_phase_training/sbatch_phase1_video_quality_D.sh
+# Optional factorization only:
+sbatch native_phase_training/sbatch_phase1_video_quality_E.sh
+```
+
+B-D run a two-step, eight-GPU train/save/restart preflight on first allocation.
+The second invocation resumes the same DCP, including model, optimizer, scheduler,
+EMA, trainer/global step, RNG, and available dataloader state, before continuing
+to 100k. An existing checkpoint skips the preflight and resumes normally.
+
+Every 5k checkpoint is saved, but the A-E callbacks submit evaluation only at
+10k multiples. Two distinct jobs are submitted; their metrics must not be mixed.
+
+The compact diagnostic uses EMA and NVIDIA's official UniPC path (action modes:
+30 steps/guidance 1/shift 3; I2V: 35 steps/guidance 6/shift 3), with five held-out
+sources at all five fixed prefixes. It writes GT/generated pairs, per-source
+GT-plus-prefix grids, inverse/policy camera plots, suffix-only PSNR/SSIM/LPIPS
+split into relative early/middle/late thirds, and full plus suffix-reanchored
+policy camera metrics under:
+
+```text
+<run>/checkpoint_evals/iter_XXXXXXXXX/{viz,metrics,COMPLETE.json}
+```
+
+This directory has `n=5`; it is a qualitative/prefix diagnostic and is not the
+historical Phase-1 benchmark. The separate canonical job reproduces the original
+held-out protocol: one prefix-1 forward-dynamics sample and one inverse-dynamics
+sample for every one of the 71 test sequences. It uses the exact historical
+`native_phase1_eval_inputs_full71_256_T97_v2` inputs, EMA, UniPC, shift 3,
+30 steps, and guidance 1, and writes:
+
+```text
+<run>/eval_full71_inverse_forward/iter_XXXXXXXXX/
+  inference/                  # 71 forward + 71 inverse outputs
+  analysis/forward_metrics.json
+  analysis/invdyn_metrics.json
+  analysis/dreamsim_metrics.json          # optional advanced forward metric
+  analysis/cdfvd_videomae_metrics.json    # optional advanced set metric
+  analysis/COMPLETE.json
+  resolved_run_contract.json
+  COMPLETE.json
+```
+
+Only these `n=71` metrics are directly comparable with
+`native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/eval_full71_inverse_forward`.
+The optional advanced reports use official DreamSim and CVPR 2024
+content-debiased FVD with VideoMAE-v2-SSv2, not the deprecated TensorFlow/I3D
+implementation. Their exact setup, frame sampling, limitations, and manual
+commands are documented in `native_phase_training/FORWARD_VIDEO_METRICS.md`.
+The full-71 job requests one exclusive eight-GPU node; the compact diagnostic
+requests one GPU. Both resolve the immutable checkpoint architecture contract
+before importing the Cosmos inference configuration.
+
+Training rank 0 atomically writes `<run>/native_phase1_contract.json` before
+launch. It records the adaptation mode, active/dropped tasks, LoRA enablement and
+targets, and training prefix list. A resume with a different contract fails before
+training. `sbatch_checkpoint_eval.sh` resolves this file before importing
+`experiment.py`, exports the saved adaptation/drop settings, and records the result
+as `resolved_run_contract.json`. Explicit environment values are accepted only when
+they exactly match the checkpoint contract. Runs created before this file existed
+are recovered from their resolved `config.yaml`; an ambiguous legacy checkpoint
+fails instead of defaulting to global LoRA. `COMPLETE.json` includes the resolved
+contract path alongside visualization and metric manifests.
+
+In every pair and prefix-grid video, green denotes a frame sourced from GT
+(the full reference tile or the clean condition prefix) and red denotes a
+sampled suffix frame. The generated tile changes color and header on RGB frame
+`prefix_length`, so prefix 9 is green on frames 0-8 and red from frame 9 onward.
+`viz/manifest.json` records these ranges under `video_frame_provenance` using
+zero-based inclusive indexing.
+
+The shared compact input set is
+`/weka/jungbin/cosmos_motion_ft_runs/native_phase1_eval_inputs_vq_prefix5_256_T97_qfilter_person_v1`.
+Its expected cardinality is five inverse records and 25 records for each visual
+mode. `COMPLETE.json` is written only after official inference, visualization,
+and quantitative metrics all succeed.
 
 ## Packing Contract
 
@@ -378,7 +539,7 @@ python /home/jungbin_cho/cosmos_motion_ft/native_phase_training/visualize_checkp
 
 Checkpoint saving does **not** run qualitative inference inside the training process. The stock NVIDIA `EveryNDrawSample` callback remains disabled because it samples only the currently selected stream, treats the cached path's 1x1 dummy pixels as raw GT, does not visualize predicted actions, and uses generic shift/guidance defaults rather than this run's official action recipe.
 
-The production launcher instead sets `NATIVEP1_AUTO_EVAL=1`. Before training, it prepares five held-out inputs under `NATIVEP1_EVAL_INPUT_DIR`. After each completed DCP save, `NativeCheckpointEvalSubmitter` queues `sbatch_checkpoint_eval.sh`; outputs land under:
+The generic production launcher defaults to `NATIVEP1_AUTO_EVAL=1`. Before training, it prepares five held-out inputs under `NATIVEP1_EVAL_INPUT_DIR`. After each completed DCP save, `NativeCheckpointEvalSubmitter` queues `sbatch_checkpoint_eval.sh`; outputs land under:
 
 ```text
 ${RUN_DIR}/checkpoint_evals/iter_XXXXXXXXX/{<mode-specific sample dirs>,viz/}
@@ -386,13 +547,145 @@ ${RUN_DIR}/checkpoint_evals/iter_XXXXXXXXX/{<mode-specific sample dirs>,viz/}
 
 Set `NATIVEP1_AUTO_EVAL=0` for smoke tests or when checkpoint visualization jobs should not be submitted. The official inference/visualization commands above remain the manual recovery path if a submitted evaluation job fails.
 
+The two quality-filter launchers pin `NATIVEP1_AUTO_EVAL=0` because automatic 5k checkpoint callbacks would create 40 unsupervised one-GPU Slurm jobs while other users have multi-node jobs pending. This changes only evaluation scheduling, not training. Evaluate selected checkpoints manually with the same four-mode official path.
+
 The inference command explicitly uses NVIDIA's `cosmos_framework.scripts.inference`, `--sampler unipc`, and EMA weights (also the official default). Action modes use 30 steps, guidance 1, and 256-tier shift 3. Image-to-video uses 35 steps, guidance 6, and shift 3. These values reach `OmniMoTModel.generate_samples_from_batch`, whose log must report `Using sampler: UniPC (shift=3.0, num_steps=...)`.
+
+The fixed-prefix JSONLs also contain local bookkeeping fields
+`source_name`, `rgb_prefix_length`, and `latent_prefix_length`. NVIDIA's
+Pydantic inference schema rejects these extra fields, so
+`sbatch_checkpoint_eval.sh` first writes schema-clean copies under
+`${EVAL_OUTPUT_DIR}/inference_inputs/`. The sanitizer removes only those three
+fields, validates their agreement with the sample name and explicit
+`condition_frame_indexes_vision`, and preserves the latter for the prefix shim.
+Official inference consumes the clean copies; visualization and metric grouping
+consume the original enriched JSONLs. Do not point the official inference CLI
+directly at the enriched files.
 
 The framework's bundled modality JSON files contain a literal shift of 10 because the release defaults target the high-resolution tier. This run intentionally overrides that one value to 3, matching both Nano's `{256:3, 480:5, 720:10}` map and this run's 256-resolution training distribution. The solver, sigma construction, EMA loading, CFG implementation, and task step/guidance defaults remain NVIDIA's official path; using the unmodified shift 10 would be a train/evaluation mismatch here.
 
 ## Smoke Tests Completed
 
 All smoke artifacts are generated outputs under `/weka`; do not edit them as source files.
+
+### 2026-07-21 Video-Quality Suite Launch
+
+A-D were submitted as jobs `3025`-`3028`; E was not submitted. A passed a
+separate two-step real GPU smoke before submission and then advanced normally at
+about 1.0-1.1 seconds per iteration. B's in-job distributed preflight completed
+two finite eight-GPU updates, saved full DCP `iter_000000002`, correctly skipped
+automatic evaluation at step 2, restored `dataloader/model/optim/scheduler/trainer`
+with global iteration 2, and completed finite step 3. C passed the same sequence;
+its runtime audit reported exactly five trainable tensors, 16,914,432 trainable
+parameters, zero LoRA tensors, and only the three expected streams. D remains
+guarded by the identical first-allocation preflight; its 100k command cannot run
+unless camera-token K/V forward/backward, EMA/DCP save, and exact resume succeed.
+
+Focused CPU contracts pass 35/35. They cover causal prefix conversion, clean/noisy
+and loss masks, camera alignment, active normalization, token-aware projection
+equality/masking/gradients/state keys, fixed-prefix inference records, evaluation
+schema sanitization/cadence, immutable run contracts, legacy architecture recovery,
+conflicting evaluation overrides, frame-provenance visualization, quality-filter
+behavior, and fixed-four loader cycling.
+
+### 2026-07-22 Architecture-Contract Evaluation Smoke
+
+The post-fix evaluator was run directly on node 2 with both
+`NATIVEP1_ADAPTATION_MODE` and `NYMERIA_DROP_MODES` deliberately unset. Starting
+from C/65k, it recovered `action_only` plus dropped I2V from the legacy run-level
+`config.yaml`, instantiated zero LoRA tensors and exactly the five action-interface
+parameters, loaded EMA DCP successfully, and completed one official UniPC sample
+for forward, inverse, policy, and I2V. It wrote four `sample_outputs.json` files,
+seven visualization records, all metric manifests, `resolved_run_contract.json`,
+and a top-level completion marker under:
+
+```text
+/weka/jungbin/cosmos_motion_ft_runs/smoke_native_phase1_contract_eval_C65_n1_p1_20260722
+```
+
+### 2026-07-22 Direct 10k/20k Evaluation Recovery
+
+The automatic A/B/C evaluations for steps 10k and 20k were pending as Slurm
+jobs `3029`-`3034`, so the same wrapper was run directly on spare GPUs 1-6 of
+node 3. All six evaluations completed. Each output contains 80 successful
+official-inference samples (25 forward, 5 inverse, 25 policy, 25 I2V), 95
+visualization manifest records (the 80 individual views plus 15 five-prefix
+grids), all three metric JSONs, and a top-level `COMPLETE.json`. Results are
+under each A/B/C run's `checkpoint_evals/iter_000010000` and
+`iter_000020000` directories. After validating every marker and status, the
+redundant pending jobs `3029`-`3034` were canceled; training jobs `3025`-`3027`
+and pending D job `3028` were not changed.
+
+### 2026-07-22 A/C 30k Evaluation
+
+A/30k and C/30k were evaluated directly on node 3 GPUs 1 and 2 because automatic
+jobs `3035` and `3036` remained pending. Both have 80/80 successful official
+EMA-UniPC outputs, 95 visualization records, complete five-prefix metrics, and
+`COMPLETE.json`. All 75 pair-video records and 15 grid records carry explicit
+green-GT/red-generated provenance. After validation, jobs `3035` and `3036` were
+canceled without changing training jobs `3025`-`3028`.
+
+On the five-source diagnostic set, A/30k inverse means are rotation `0.4047 deg`,
+translation-direction cosine `0.8935`, translation error `6.764 mm`, and ATE
+`4.102 cm`. Its forward suffix PSNR/SSIM/LPIPS is `15.709/0.4590/0.4439` at
+prefix 1 and `16.985/0.4952/0.3570` at prefix 49, improving all six values over
+A/20k. C/30k inverse means are `0.6466 deg`, `0.7533`, `14.628 mm`, and
+`11.543 cm`, continuing its 10k-to-20k-to-30k improvement. C/30k forward metrics
+are `14.587/0.4148/0.5001` at prefix 1 and `15.390/0.4369/0.4182` at prefix 49.
+These are five-source checkpoint diagnostics, not full held-out-set estimates.
+
+### 2026-07-21 Filtered Four-Task and No-I2V Acceptance Smoke
+
+Artifacts are under:
+
+```text
+/weka/jungbin/cosmos_motion_ft_runs/smoke_native_phase1_qfilter_20260721
+```
+
+The four-task smoke deterministically selected forward dynamics, policy, and image-to-video in four finite-loss updates; inverse dynamics was prewarmed there and selected during the nine-step no-I2V smoke. The no-I2V smoke exercised all three active streams. Across the paired smokes every active training path ran, TensorBoard and PowerEMA updated, and DCP iterations 4 and 9 saved and reloaded. Both resolved the exact 118,049-row filtered train index and the expected task ratios.
+
+Each exact smoke checkpoint was then loaded with `cosmos_framework.scripts.inference --sampler unipc --use-ema-weights`. Both generated one held-out sample for all four inference modes, including I2V for the no-I2V model to prove that removing the training stream does not break that inference surface. Every output reports success; action outputs are `96x9`; all eight raw MP4s are 256x256, 97 frames, and 20 FPS; logs report shift-3 UniPC with 30 action steps and 35 I2V steps; and both visualization manifests contain all four modes.
+
+### 2026-07-21 Filtered Production Launch
+
+The controlled four-task run is Slurm job `3017` (`np1qf4`) on node 1. Its output and log are:
+
+```text
+/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k_qfilterv1
+/home/jungbin_cho/cosmos_motion_ft/slurm-np1qf4-3017.out
+```
+
+The no-I2V ablation is Slurm job `3018` (`np1qf3`) on node 0:
+
+```text
+/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k_qfilterv1_noi2v
+/home/jungbin_cho/cosmos_motion_ft/slurm-np1qf3-3018.out
+```
+
+Launch validation confirmed all eight ranks in each job, the pinned filter SHA, `118,049` retained and `1,583` filtered train rows, PowerEMA, rank-16 generator LoRA, the action heads, and finite updates. The four-task job kept `40/25/20/15`; the no-I2V job instantiated exactly three streams at `47.1/29.4/23.5%`. After prewarm, observed updates were approximately 1.0-1.2 seconds. Automatic evaluation is disabled as documented above.
+
+The queue was handed over one node at a time so another user's pending two-node job was never bypassed by freeing two nodes simultaneously. Old jobs `3011` and `3010` were canceled separately, with pending one-node job `3016` allowed to start between them. After `3017` was running with all eight ranks initialized, the model/filter loaded, and stable GPU allocations, old head-camera job `3003` was canceled at its saved step-115k checkpoint and `3018` was submitted on the released node. Finite updates for `3017` were confirmed after that handoff. The other user's two-node job `3014` remained pending for two simultaneous resources throughout this sequence.
+
+### 2026-07-21 Filtered LR Ablation
+
+`sbatch_phase1_native_camera_qfilter_lr1e5.sh` is an exact four-task filtered-control LR ablation. It changes optimizer base/LoRA LR from `5e-5` to `1e-5`; the existing 4x action-head multiplier remains, so action-head effective LR is `4e-5`. The filter and SHA, `40/25/20/15` task mix, fixed-four global batch 32, rank-16 LoRA targets, PowerEMA, native RF distributions, LambdaLinear schedule shape, 100k duration, and 5k save cadence are unchanged. The run path is:
+
+```text
+/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora1e5_action4x_ema_100k_qfilterv1
+```
+
+`sbatch_phase1_native_camera_qfilter_lr1e5_person.sh` is paired with that `1e-5`
+run and changes only caption wording. Before mode-specific JSON/prose formatting, every
+whole-token uppercase `C` is replaced with `A person` using `(?<!\w)C(?!\w)`; lowercase
+`c` and `C` embedded in words or identifiers are untouched. Inverse-dynamics text remains
+exactly empty, and the existing 10% whole-prompt CFG dropout remains unchanged. The setting
+is recorded as `replace_standalone_c=true` in the resolved dataset config. Its run path is:
+
+```text
+/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora1e5_action4x_ema_100k_qfilterv1_person
+```
+
+It was submitted as Slurm job `3021` (`np1qf4l1`) with log `/home/jungbin_cho/cosmos_motion_ft/slurm-np1qf4l1-3021.out`. At submission, node 3 was Slurm-idle but every GPU was occupied by 21 SSH-launched processes owned by another user, while nodes 0-2 were allocated. Job `3021` therefore uses `afterany:3016` rather than starting into a guaranteed OOM; no existing filtered control was canceled. A dry-run resolved optimizer LR `1e-5`, all three action multipliers `4.0`, four streams, the exact quality-filter path, PowerEMA, and the original 100k scheduler contract before submission.
 
 ### 2026-07-11 Prompt/Packing/Four-Mode Smoke
 
@@ -702,7 +995,7 @@ Before changing this path, read:
 
 After changes, run the smallest relevant checks:
 
-- `python -m unittest native_phase_training.test_contracts`
+- `PYTHONPATH=/home/jungbin_cho/cosmos_motion_ft:/home/jungbin_cho/cosmos_motion_ft/nymeria_world:/home/jungbin_cho/cosmos-framework /home/jungbin_cho/miniforge3/envs/cosmos/bin/python -m unittest native_phase_training.test_contracts`
 - `python -m py_compile native_phase_training/*.py`
 - `bash -n native_phase_training/sbatch_phase1_native_camera.sh`
 - `bash -n native_phase_training/sbatch_checkpoint_eval.sh`

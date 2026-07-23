@@ -20,6 +20,12 @@ import numpy as np
 
 from nymeria_camera_dataset import decode_window_pyav
 from nymeria_camera_rgb_dataset import _rgb_path, rel_action_from_window
+from native_phase_training.latent_nymeria_dataset import (
+    load_quality_filter_exclusions,
+    replace_standalone_c_with_person,
+    rgb_prefix_to_latent_frames,
+    validate_prefix_sampling,
+)
 
 
 MANIFEST = Path("/weka/jungbin/nymeriaplus_kimodo_proportional/video/manifest_video.jsonl")
@@ -33,7 +39,11 @@ IMAGE_SIZE = 256
 SHIFT = 3.0
 
 
-def pick_test_windows(n: int = 0, seed: int = 0) -> list[dict[str, Any]]:
+def pick_test_windows(
+    n: int = 0,
+    seed: int = 0,
+    quality_filter_path: str = "",
+) -> list[dict[str, Any]]:
     """Choose at most one T97 window per held-out sequence.
 
     Walking/turning captions are preferred for camera-control visibility. If a
@@ -51,6 +61,7 @@ def pick_test_windows(n: int = 0, seed: int = 0) -> list[dict[str, Any]]:
             if uuid in split_data["test"]:
                 records[uuid] = record
 
+    exclusions = load_quality_filter_exclusions(quality_filter_path, NUM_FRAMES)
     selected: list[dict[str, Any]] = []
     skipped: list[str] = []
     for uuid in test_uuids:
@@ -71,6 +82,13 @@ def pick_test_windows(n: int = 0, seed: int = 0) -> list[dict[str, Any]]:
             start = int(window.get("start_frame", 0))
             end = min(int(window.get("end_frame", nb_frames)), nb_frames)
             if not window.get("usable", False) or not caption or start + NUM_FRAMES > end:
+                continue
+            exclusion = exclusions.get((uuid, start, start + NUM_FRAMES))
+            if exclusion is not None:
+                if exclusion["split"] != "test":
+                    raise ValueError(
+                        f"quality filter split mismatch for {(uuid, start, start + NUM_FRAMES)}"
+                    )
                 continue
             candidates.append(
                 {
@@ -165,6 +183,57 @@ def build_inference_records(
     return records
 
 
+def build_prefix_inference_records(
+    *,
+    name: str,
+    gt_clip: Path,
+    prefix_paths: dict[int, Path],
+    action_path: Path,
+    caption: str,
+    seed: int,
+) -> dict[str, list[dict[str, Any]]]:
+    """Build one inverse record and fixed-prefix records for all visual tasks."""
+    if not prefix_paths:
+        raise ValueError("prefix_paths must not be empty")
+    records: dict[str, list[dict[str, Any]]] = {
+        "inverse_dynamics": [],
+        "forward_dynamics": [],
+        "policy": [],
+        "image2video": [],
+    }
+    first_prefix = min(prefix_paths)
+    base = build_inference_records(
+        name=name,
+        first_frame=prefix_paths[first_prefix],
+        gt_clip=gt_clip,
+        action_path=action_path,
+        caption=caption,
+        seed=seed,
+    )
+    inverse = base["inverse_dynamics"]
+    inverse["source_name"] = name
+    records["inverse_dynamics"].append(inverse)
+
+    for prefix_length, prefix_path in sorted(prefix_paths.items()):
+        latent_prefix_length = rgb_prefix_to_latent_frames(prefix_length, NUM_FRAMES)
+        condition_indexes = list(range(latent_prefix_length))
+        for mode in ("forward_dynamics", "policy", "image2video"):
+            record = dict(base[mode])
+            record.update(
+                {
+                    "name": f"{name}_p{prefix_length:03d}_{mode}",
+                    "vision_path": str(prefix_path),
+                    "condition_frame_indexes_vision": condition_indexes,
+                    "rgb_prefix_length": prefix_length,
+                    "latent_prefix_length": latent_prefix_length,
+                    "source_name": name,
+                }
+            )
+            validate_inference_record(record, mode)
+            records[mode].append(record)
+    return records
+
+
 def validate_inference_record(record: dict[str, Any], expected_mode: str) -> None:
     """Fail before GPU inference if a record drifts from the Phase 1 contract."""
     expected: dict[str, Any] = {
@@ -199,6 +268,17 @@ def validate_inference_record(record: dict[str, Any], expected_mode: str) -> Non
         key in record for key in ("domain_name", "view_point", "action_chunk_size", "image_size")
     ):
         raise ValueError("image2video must not contain action-only fields")
+    if "rgb_prefix_length" in record:
+        prefix_length = int(record["rgb_prefix_length"])
+        latent_prefix_length = rgb_prefix_to_latent_frames(prefix_length, NUM_FRAMES)
+        expected_indexes = list(range(latent_prefix_length))
+        if record.get("latent_prefix_length") != latent_prefix_length:
+            raise ValueError(f"{expected_mode}: latent prefix mismatch for RGB prefix {prefix_length}")
+        if record.get("condition_frame_indexes_vision") != expected_indexes:
+            raise ValueError(
+                f"{expected_mode}: expected condition indexes {expected_indexes}, "
+                f"got {record.get('condition_frame_indexes_vision')}"
+            )
 
 
 def _write_json(path: Path, value: Any, *, indent: int | None = None) -> None:
@@ -216,11 +296,28 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path("/weka/jungbin/cosmos_motion_ft_runs/native_phase1_eval_inputs"))
     parser.add_argument("--n", type=int, default=0, help="Number of held-out sequences; 0 uses all available")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--prefix-lengths",
+        default="1",
+        help="Comma-separated exact causal RGB prefix lengths (each must be 1+4N)",
+    )
+    parser.add_argument("--quality-filter", default="")
+    parser.add_argument("--replace-standalone-c", action="store_true")
     args = parser.parse_args()
     if args.n < 0:
         parser.error("--n must be non-negative")
 
-    picks = pick_test_windows(n=args.n, seed=args.seed)
+    try:
+        requested_prefixes = [int(value.strip()) for value in args.prefix_lengths.split(",") if value.strip()]
+    except ValueError as error:
+        parser.error(f"invalid --prefix-lengths: {error}")
+    prefix_lengths, _ = validate_prefix_sampling(requested_prefixes, None, NUM_FRAMES)
+
+    picks = pick_test_windows(
+        n=args.n,
+        seed=args.seed,
+        quality_filter_path=args.quality_filter,
+    )
     if not picks:
         raise RuntimeError("no held-out T97 windows are available")
 
@@ -245,6 +342,14 @@ def main() -> None:
         gt_clip = sample_dir / "gt_clip.mp4"
         iio.imwrite(first_frame, frames[0])
         iio.imwrite(gt_clip, frames, fps=FPS, codec="libx264")
+        prefix_paths: dict[int, Path] = {}
+        for prefix_length in prefix_lengths:
+            if prefix_length == 1:
+                prefix_paths[prefix_length] = first_frame.resolve()
+            else:
+                prefix_path = sample_dir / f"prefix_{prefix_length:03d}.mp4"
+                iio.imwrite(prefix_path, frames[:prefix_length], fps=FPS, codec="libx264")
+                prefix_paths[prefix_length] = prefix_path.resolve()
 
         with np.load(pick["rgb_path"]) as camera:
             start = pick["start"]
@@ -273,23 +378,33 @@ def main() -> None:
             indent=2,
         )
 
-        records = build_inference_records(
+        eval_caption = (
+            replace_standalone_c_with_person(pick["caption"])
+            if args.replace_standalone_c
+            else pick["caption"]
+        )
+        records = build_prefix_inference_records(
             name=name,
-            first_frame=first_frame.resolve(),
             gt_clip=gt_clip.resolve(),
+            prefix_paths=prefix_paths,
             action_path=action_path.resolve(),
-            caption=pick["caption"],
+            caption=eval_caption,
             seed=args.seed,
         )
-        for mode, record in records.items():
-            by_mode[mode].append(record)
+        for mode, mode_records in records.items():
+            by_mode[mode].extend(mode_records)
         print(f"[native-eval] [{index + 1}/{len(picks)}] {name}: {pick['caption'][:72]}", flush=True)
 
     _write_jsonl(args.out / "invdyn_input.jsonl", by_mode["inverse_dynamics"])
     _write_jsonl(args.out / "fd_input.jsonl", by_mode["forward_dynamics"])
     _write_jsonl(args.out / "policy_input.jsonl", by_mode["policy"])
     _write_jsonl(args.out / "i2v_input.jsonl", by_mode["image2video"])
-    print(f"[native-eval] wrote {len(picks)} records for each of four modes under {args.out}", flush=True)
+    print(
+        f"[native-eval] wrote inverse={len(by_mode['inverse_dynamics'])} and "
+        f"visual={len(by_mode['forward_dynamics'])} records/mode for prefixes={list(prefix_lengths)} "
+        f"under {args.out}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

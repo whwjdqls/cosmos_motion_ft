@@ -3,8 +3,10 @@
 
 This intentionally uses only train sequences. Absolute rotations estimate the fixed frame
 rotation; synchronized relative actions estimate the camera-origin lever arm. Absolute
-translations are never used because some proportional-UniEgo sequences do not preserve a
-trustworthy common world origin with the Aria trajectory.
+translations are not used by this historical production fit. A later source audit established
+that clean intervals normally do share a metric world frame and a stable translation lever, but
+also found sparse upstream discontinuities and >0.5 m registration failures; keeping this fitter
+relative preserves its checkpoint contract and avoids those unfiltered intervals.
 """
 from __future__ import annotations
 
@@ -108,33 +110,41 @@ def calibration_sample_from_arrays(
     orientation_stride: int,
 ) -> dict[str, torch.Tensor]:
     """Build one calibration sample from already-loaded sequence arrays."""
-    features = features[start:start + window_frames]
-    camera_rotation_world = camera_rotation_world[start:start + window_frames]
-    camera_action = camera_action[start:start + window_frames - 1]
-    n_frames = min(len(features), len(camera_rotation_world), len(camera_action) + 1)
+    if start < 0:
+        raise ValueError(f"negative calibration-window start {start}")
+    feature_window = features[start:start + window_frames]
+    camera_rotation_window = camera_rotation_world[start:start + window_frames]
+    camera_action_window = camera_action[start:start + window_frames - 1]
+    n_frames = min(
+        len(feature_window), len(camera_rotation_window), len(camera_action_window) + 1
+    )
     if n_frames < 2:
         raise ValueError(f"short aligned window ({n_frames} frames)")
-    features = features[:n_frames]
-    camera_rotation_world = camera_rotation_world[:n_frames]
-    camera_action = camera_action[:n_frames - 1]
+    feature_window = feature_window[:n_frames]
+    camera_rotation_window = camera_rotation_window[:n_frames]
+    camera_action_window = camera_action_window[:n_frames - 1]
+    # UniEgo canon_delta[0] is absolute only at sequence frame 0; all later rows are relative.
+    # Decode the prefix before slicing absolute head orientations. Decoding a nonzero-start slice
+    # directly incorrectly treats delta[start] as an absolute world transform.
+    feature_prefix = features[:start + n_frames]
     if not (
-        np.isfinite(features).all()
-        and np.isfinite(camera_rotation_world).all()
-        and np.isfinite(camera_action).all()
+        np.isfinite(feature_prefix).all()
+        and np.isfinite(camera_rotation_window).all()
+        and np.isfinite(camera_action_window).all()
     ):
         raise ValueError("non-finite aligned data")
 
-    raw = torch.from_numpy(features).double().unsqueeze(0)
-    raw_head = decode_transforms(raw)[0, :, HEAD_JOINT_IDX]
+    raw = torch.from_numpy(feature_prefix).double().unsqueeze(0)
+    raw_head = decode_transforms(raw)[0, start:start + n_frames, HEAD_JOINT_IDX]
     world_camera_rotation = (
         ARIA_Z_UP_TO_KIMODO_Y_UP
-        @ torch.from_numpy(camera_rotation_world).double()
+        @ torch.from_numpy(camera_rotation_window).double()
     )
     frame_rotations = (
         raw_head[:, :3, :3].transpose(-1, -2) @ world_camera_rotation
     )[::orientation_stride]
 
-    canonical = torch.from_numpy(canonicalize_frame0(features)).double().unsqueeze(0)
+    canonical = torch.from_numpy(canonicalize_frame0(feature_window)).double().unsqueeze(0)
     head = decode_transforms(canonical)[0, :, HEAD_JOINT_IDX]
     head_rotation = head[:, :3, :3]
     head_position = head[:, :3, 3]
@@ -143,7 +153,7 @@ def calibration_sample_from_arrays(
         head_rotation[:-1].transpose(-1, -2)
         @ (head_position[1:] - head_position[:-1]).unsqueeze(-1)
     ).squeeze(-1)
-    camera_action_t = torch.from_numpy(camera_action).double()
+    camera_action_t = torch.from_numpy(camera_action_window).double()
     return {
         "frame_rotations": frame_rotations,
         "head_relative_rotations": head_relative_rotation,

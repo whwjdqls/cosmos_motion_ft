@@ -274,6 +274,7 @@ def main() -> None:
                 generated_video=generated_video,
                 output=forward_viz / f"{base_name}.mp4",
                 label="forward_dynamics",
+                prefix_length=1,
             )
         print(f"[full71-eval] forward {index + 1}/{len(forward_records)}: {base_name}", flush=True)
 

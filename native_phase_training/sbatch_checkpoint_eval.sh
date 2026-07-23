@@ -4,7 +4,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --time=02:00:00
+#SBATCH --time=06:00:00
 #SBATCH --job-name=nativeviz
 #SBATCH --output=/home/jungbin_cho/cosmos_motion_ft/slurm-nativeviz-%j.out
 
@@ -25,10 +25,20 @@ export NYMERIA_RESOLUTION=256
 export HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1}
 export TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-1}
 
+mkdir -p "${EVAL_OUTPUT_DIR}"
+/home/jungbin_cho/miniforge3/envs/cosmos/bin/python \
+  /home/jungbin_cho/cosmos_motion_ft/native_phase_training/run_contract.py \
+  --checkpoint-path "${CHECKPOINT_PATH}" \
+  --output-dir "${EVAL_OUTPUT_DIR}"
+# The resolver writes only validated enum/list values and rejects any inherited
+# environment override that disagrees with the checkpoint's saved contract.
+source "${EVAL_OUTPUT_DIR}/resolved_run_contract.env"
+
 echo "[nativeviz] node=$(hostname) date=$(date)"
 echo "[nativeviz] checkpoint=${CHECKPOINT_PATH}"
 echo "[nativeviz] inputs=${EVAL_INPUT_DIR}"
 echo "[nativeviz] output=${EVAL_OUTPUT_DIR}"
+echo "[nativeviz] adaptation_mode=${NATIVEP1_ADAPTATION_MODE} drop_modes=${NYMERIA_DROP_MODES:-none}"
 echo "[nativeviz] visible_gpus=${CUDA_VISIBLE_DEVICES:-all}"
 
 /home/jungbin_cho/miniforge3/envs/cosmos/bin/python - <<'PY'
@@ -51,6 +61,12 @@ PY
 
 cd /home/jungbin_cho/cosmos-framework
 
+SANITIZED_INPUT_DIR="${EVAL_OUTPUT_DIR}/inference_inputs"
+/home/jungbin_cho/miniforge3/envs/cosmos/bin/python \
+  /home/jungbin_cho/cosmos_motion_ft/native_phase_training/sanitize_prefix_inference_inputs.py \
+  --input-dir "${EVAL_INPUT_DIR}" \
+  --output-dir "${SANITIZED_INPUT_DIR}"
+
 /home/jungbin_cho/miniforge3/envs/cosmos/bin/torchrun --standalone --nproc_per_node=1 \
   -m cosmos_framework.scripts.inference \
   --checkpoint-path "${CHECKPOINT_PATH}" \
@@ -62,10 +78,10 @@ cd /home/jungbin_cho/cosmos-framework
   --dp-shard-size 1 --dp-replicate-size 1 --cp-size 1 --cfgp-size 1 \
   --no-use-torch-compile --no-use-cuda-graphs --no-guardrails \
   -o "${EVAL_OUTPUT_DIR}" \
-  -i "${EVAL_INPUT_DIR}/fd_input.jsonl" \
-     "${EVAL_INPUT_DIR}/invdyn_input.jsonl" \
-     "${EVAL_INPUT_DIR}/policy_input.jsonl" \
-     "${EVAL_INPUT_DIR}/i2v_input.jsonl"
+  -i "${SANITIZED_INPUT_DIR}/fd_input.jsonl" \
+     "${SANITIZED_INPUT_DIR}/invdyn_input.jsonl" \
+     "${SANITIZED_INPUT_DIR}/policy_input.jsonl" \
+     "${SANITIZED_INPUT_DIR}/i2v_input.jsonl"
 
 cd /home/jungbin_cho/cosmos_motion_ft
 
@@ -73,5 +89,40 @@ cd /home/jungbin_cho/cosmos_motion_ft
   native_phase_training/visualize_checkpoint.py \
   --inference-root "${EVAL_OUTPUT_DIR}" \
   --eval-root "${EVAL_INPUT_DIR}"
+
+/home/jungbin_cho/miniforge3/envs/cosmos/bin/python \
+  native_phase_training/evaluate_prefix_suite.py \
+  --inference-root "${EVAL_OUTPUT_DIR}" \
+  --eval-root "${EVAL_INPUT_DIR}" \
+  --out "${EVAL_OUTPUT_DIR}/metrics" \
+  --prefix-lengths "${NATIVEP1_EVAL_PREFIX_LENGTHS:-1,9,17,33,49}" \
+  --expected-sources "${NATIVEP1_VIZ_N:-5}"
+
+/home/jungbin_cho/miniforge3/envs/cosmos/bin/python - "${EVAL_OUTPUT_DIR}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+required = (
+    root / "resolved_run_contract.json",
+    root / "viz" / "manifest.json",
+    root / "metrics" / "METRICS_COMPLETE.json",
+)
+missing = [str(path) for path in required if not path.is_file()]
+if missing:
+    raise SystemExit(f"native checkpoint evaluation is incomplete: {missing}")
+(root / "COMPLETE.json").write_text(
+    json.dumps(
+        {
+            "run_contract": str(required[0]),
+            "visualization_manifest": str(required[1]),
+            "metrics_manifest": str(required[2]),
+        },
+        indent=2,
+    )
+    + "\n"
+)
+PY
 
 echo "[nativeviz] done date=$(date)"

@@ -11,6 +11,8 @@ import torch
 
 import task_plan as TP
 from estimate_head_camera_calibration import (
+    ARIA_Z_UP_TO_KIMODO_Y_UP,
+    calibration_sample_from_arrays,
     fit_head_camera_calibration,
     optimize_head_camera_transform_from_relative_actions,
 )
@@ -234,6 +236,44 @@ def verify_calibration_fit() -> None:
     print("[contract] robust calibration fitter recovers exact synthetic rigid transform")
 
 
+def verify_nonzero_calibration_window() -> None:
+    head = torch.stack([
+        _se3(
+            _rotation_y(0.04 * frame) @ _rotation_x(-0.015 * frame),
+            torch.tensor([0.025 * frame, 0.003 * frame, -0.012 * frame]),
+        )
+        for frame in range(9)
+    ])
+    x_rotation = (_rotation_y(-0.31) @ _rotation_x(0.09)).double()
+    lever = torch.tensor([0.02, 0.10, 0.08], dtype=torch.float64)
+    x_transform = _se3(x_rotation, lever)
+    camera_kimodo = head.double() @ x_transform
+    basis = ARIA_Z_UP_TO_KIMODO_Y_UP
+    camera_aria = camera_kimodo.clone()
+    camera_aria[:, :3, :3] = basis.T @ camera_kimodo[:, :3, :3]
+    camera_aria[:, :3, 3] = (basis.T @ camera_kimodo[:, :3, 3, None]).squeeze(-1)
+    camera_actions = []
+    for frame in range(len(camera_aria) - 1):
+        relative = _inverse(camera_aria[frame]) @ camera_aria[frame + 1]
+        camera_actions.append(
+            torch.cat([relative[:3, 3], matrix_to_cont6d(relative[:3, :3])])
+        )
+    motion = _motion_from_head_transforms(head)[0].double().numpy()
+    sample = calibration_sample_from_arrays(
+        motion,
+        camera_aria[:, :3, :3].numpy(),
+        torch.stack(camera_actions).numpy(),
+        start=3,
+        window_frames=5,
+        orientation_stride=1,
+    )
+    expected = x_rotation.repeat(5, 1, 1)
+    assert torch.allclose(sample["frame_rotations"], expected, atol=3e-5), (
+        sample["frame_rotations"] - expected
+    ).abs().max()
+    print("[contract] nonzero calibration windows preserve sequence-absolute head orientation")
+
+
 if __name__ == "__main__":
     assert torch.equal(torch.from_numpy(IDENTITY_DELTA9), torch.tensor(
         [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]
@@ -243,4 +283,5 @@ if __name__ == "__main__":
     verify_collate()
     verify_oracle_actor_loader()
     verify_calibration_fit()
+    verify_nonzero_calibration_window()
     print("PASS: head-camera alignment contracts")

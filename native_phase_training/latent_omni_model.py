@@ -15,10 +15,92 @@ import torch
 
 from cosmos_framework.model.vfm.omni_mot_model import OmniMoTModel
 from cosmos_framework.model.vfm.utils.data_and_condition import GenerationDataClean
+from cosmos_framework.utils import log
 
 
 class LatentOmniMoTModel(OmniMoTModel):
     """Native Cosmos model with an optional precomputed-video-latent input."""
+
+    _ACTION_MODULES = ("action2llm", "llm2action", "action_modality_embed")
+
+    def __init__(self, config, adaptation_mode: str = "global_lora") -> None:
+        self.adaptation_mode = str(adaptation_mode)
+        if self.adaptation_mode not in {"global_lora", "action_only", "camera_kv_lora"}:
+            raise ValueError(f"unsupported Phase-1 adaptation mode: {self.adaptation_mode!r}")
+        super().__init__(config)
+
+    def add_lora(
+        self,
+        network: torch.nn.Module,
+        lora_rank: int,
+        lora_alpha: int,
+        lora_target_modules: str,
+    ) -> torch.nn.Module:
+        network = super().add_lora(
+            network,
+            lora_rank=lora_rank,
+            lora_alpha=lora_alpha,
+            lora_target_modules=lora_target_modules,
+        )
+        if self.adaptation_mode == "camera_kv_lora":
+            from native_phase_training.camera_token_lora import install_camera_token_lora
+
+            network = install_camera_token_lora(network)
+        return network
+
+    def install_attention_dispatch(self, net: torch.nn.Module) -> None:
+        super().install_attention_dispatch(net)
+        if self.adaptation_mode == "action_only":
+            for name, parameter in net.named_parameters():
+                parameter.requires_grad_(any(module_name in name for module_name in self._ACTION_MODULES))
+
+    def set_up_model(self) -> None:
+        super().set_up_model()
+        self._validate_and_log_trainable_parameters()
+
+    def _validate_and_log_trainable_parameters(self) -> None:
+        named = list(self.net.named_parameters())
+        trainable = [(name, parameter) for name, parameter in named if parameter.requires_grad]
+        trainable_names = [name for name, _ in trainable]
+        lora_names = [name for name, _ in named if "lora_" in name]
+
+        if self.adaptation_mode == "action_only":
+            if lora_names:
+                raise RuntimeError(f"action_only unexpectedly instantiated LoRA parameters: {lora_names[:8]}")
+            unexpected = [
+                name for name in trainable_names if not any(key in name for key in self._ACTION_MODULES)
+            ]
+        else:
+            if not lora_names:
+                raise RuntimeError(f"{self.adaptation_mode} instantiated no LoRA parameters")
+            unexpected = [
+                name
+                for name in trainable_names
+                if "lora_" not in name and not any(key in name for key in self._ACTION_MODULES)
+            ]
+        if unexpected:
+            raise RuntimeError(f"unexpected trainable Phase-1 parameters: {unexpected}")
+
+        if self.adaptation_mode == "global_lora":
+            expected_targets = ("q_proj_moe_gen", "k_proj_moe_gen", "v_proj_moe_gen", "o_proj_moe_gen")
+            missing = [target for target in expected_targets if not any(target in name for name in lora_names)]
+            if missing:
+                raise RuntimeError(f"global_lora is missing adapters for {missing}")
+        elif self.adaptation_mode == "camera_kv_lora":
+            invalid = [
+                name for name in lora_names if "k_proj_moe_gen" not in name and "v_proj_moe_gen" not in name
+            ]
+            if invalid:
+                raise RuntimeError(f"camera_kv_lora has non-K/V adapters: {invalid[:8]}")
+
+        total_count = sum(parameter.numel() for _, parameter in named)
+        trainable_count = sum(parameter.numel() for _, parameter in trainable)
+        log.info(
+            f"Phase-1 adaptation summary: mode={self.adaptation_mode}, total={total_count:,}, "
+            f"trainable={trainable_count:,} ({100.0 * trainable_count / max(total_count, 1):.4f}%), "
+            f"lora_tensors={len(lora_names)}"
+        )
+        log.info("Phase-1 trainable parameter names:\n" + "\n".join(trainable_names))
 
     def _prepare_raw_video_metadata(self, raw: Any) -> tuple[list[torch.Tensor], list[int] | None]:
         """Flatten native joint-loader video metadata without normalizing pixels."""

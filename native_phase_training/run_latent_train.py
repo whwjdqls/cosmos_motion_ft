@@ -22,6 +22,7 @@ from cosmos_framework.scripts.train import (
 from cosmos_framework.utils.config import Config
 from cosmos_framework.utils.lazy_config import LazyConfig
 from cosmos_framework.utils.serialization import to_yaml
+from native_phase_training.run_contract import persist_run_contract
 
 
 def _configure_tensorboard_log_dir(config: Config) -> None:
@@ -67,6 +68,11 @@ def main() -> None:
     if args.deterministic:
         _apply_deterministic_config_overrides(config)
     args.config = args.sft_toml
+
+    rank = int(os.environ.get("RANK", "0"))
+    if rank == 0:
+        contract_path = persist_run_contract(config)
+        logging.info(f"Native Phase-1 run contract: {contract_path}")
 
     if args.dryrun:
         logging.info("Config:\n" + config.pretty_print(use_color=True))

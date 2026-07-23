@@ -1,0 +1,305 @@
+"""Persist and resolve architecture-critical native Phase-1 run settings."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shlex
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+CONTRACT_FILENAME = "native_phase1_contract.json"
+RESOLVED_CONTRACT_FILENAME = "resolved_run_contract.json"
+RESOLVED_ENV_FILENAME = "resolved_run_contract.env"
+SCHEMA_VERSION = 1
+
+ALL_TASKS = frozenset({"forward_dynamics", "inverse_dynamics", "policy", "image2video"})
+ADAPTATION_MODES = frozenset({"global_lora", "action_only", "camera_kv_lora"})
+
+
+def _value(container: Any, key: str) -> Any:
+    if isinstance(container, Mapping):
+        if key not in container:
+            raise KeyError(key)
+        return container[key]
+    return getattr(container, key)
+
+
+def _parse_targets(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        targets = tuple(part.strip() for part in value.split(",") if part.strip())
+    elif isinstance(value, (list, tuple)):
+        targets = tuple(str(part).strip() for part in value if str(part).strip())
+    else:
+        raise TypeError(f"lora_target_modules must be a string or list, got {type(value).__name__}")
+    if not targets:
+        raise ValueError("lora_target_modules must not be empty")
+    return targets
+
+
+def _parse_drop_modes(value: str) -> tuple[str, ...]:
+    modes = tuple(sorted({part.strip() for part in value.split(",") if part.strip()}))
+    unknown = set(modes) - ALL_TASKS
+    if unknown:
+        raise ValueError(f"unknown dropped modes: {sorted(unknown)}")
+    return modes
+
+
+@dataclass(frozen=True)
+class NativePhase1RunContract:
+    schema_version: int
+    adaptation_mode: str
+    active_modes: tuple[str, ...]
+    dropped_modes: tuple[str, ...]
+    lora_enabled: bool
+    lora_target_modules: tuple[str, ...]
+    training_prefix_lengths: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError(
+                f"unsupported native Phase-1 contract schema {self.schema_version}; expected {SCHEMA_VERSION}"
+            )
+        if self.adaptation_mode not in ADAPTATION_MODES:
+            raise ValueError(f"unsupported adaptation mode: {self.adaptation_mode!r}")
+        active = set(self.active_modes)
+        dropped = set(self.dropped_modes)
+        if not active or active | dropped != ALL_TASKS or active & dropped:
+            raise ValueError(
+                f"active/dropped modes do not partition {sorted(ALL_TASKS)}: "
+                f"active={sorted(active)} dropped={sorted(dropped)}"
+            )
+        if self.adaptation_mode == "action_only" and self.lora_enabled:
+            raise ValueError("action_only contract cannot enable LoRA")
+        if self.adaptation_mode != "action_only" and not self.lora_enabled:
+            raise ValueError(f"{self.adaptation_mode} contract must enable LoRA")
+        expected_targets = {
+            "global_lora": {
+                "q_proj_moe_gen",
+                "k_proj_moe_gen",
+                "v_proj_moe_gen",
+                "o_proj_moe_gen",
+            },
+            "camera_kv_lora": {"k_proj_moe_gen", "v_proj_moe_gen"},
+        }
+        if self.adaptation_mode in expected_targets and set(self.lora_target_modules) != expected_targets[
+            self.adaptation_mode
+        ]:
+            raise ValueError(
+                f"{self.adaptation_mode} has unexpected LoRA targets: {self.lora_target_modules}"
+            )
+        if self.adaptation_mode in {"action_only", "camera_kv_lora"} and "image2video" in active:
+            raise ValueError(f"{self.adaptation_mode} contract must exclude image2video from training")
+        if not self.training_prefix_lengths or any(value <= 0 for value in self.training_prefix_lengths):
+            raise ValueError(f"invalid training prefix lengths: {self.training_prefix_lengths}")
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "NativePhase1RunContract":
+        expected = {
+            "schema_version",
+            "adaptation_mode",
+            "active_modes",
+            "dropped_modes",
+            "lora_enabled",
+            "lora_target_modules",
+            "training_prefix_lengths",
+        }
+        missing = expected - set(value)
+        extra = set(value) - expected
+        if missing or extra:
+            raise ValueError(f"invalid run contract fields: missing={sorted(missing)} extra={sorted(extra)}")
+        return cls(
+            schema_version=int(value["schema_version"]),
+            adaptation_mode=str(value["adaptation_mode"]),
+            active_modes=tuple(str(mode) for mode in value["active_modes"]),
+            dropped_modes=tuple(str(mode) for mode in value["dropped_modes"]),
+            lora_enabled=bool(value["lora_enabled"]),
+            lora_target_modules=tuple(str(module) for module in value["lora_target_modules"]),
+            training_prefix_lengths=tuple(int(length) for length in value["training_prefix_lengths"]),
+        )
+
+
+def contract_from_config(config: Any) -> NativePhase1RunContract:
+    model = _value(config, "model")
+    model_config = _value(model, "config")
+    dataloader_train = _value(config, "dataloader_train")
+    dataloaders = _value(dataloader_train, "dataloaders")
+    if not isinstance(dataloaders, Mapping):
+        raise TypeError("dataloader_train.dataloaders must be a mapping")
+
+    active_modes = tuple(sorted(str(mode) for mode in dataloaders))
+    unknown = set(active_modes) - ALL_TASKS
+    if unknown:
+        raise ValueError(f"unknown active training modes: {sorted(unknown)}")
+    dropped_modes = tuple(sorted(ALL_TASKS - set(active_modes)))
+
+    prefix_sets: set[tuple[int, ...]] = set()
+    for mode, stream in dataloaders.items():
+        try:
+            loader = _value(stream, "dataloader")
+            dataset = _value(loader, "dataset")
+            prefixes = tuple(int(length) for length in _value(dataset, "prefix_lengths"))
+        except (AttributeError, KeyError, TypeError) as error:
+            raise ValueError(f"cannot resolve prefix lengths for training mode {mode!r}") from error
+        prefix_sets.add(prefixes)
+    if len(prefix_sets) != 1:
+        raise ValueError(f"training streams disagree on prefix lengths: {sorted(prefix_sets)}")
+
+    return NativePhase1RunContract(
+        schema_version=SCHEMA_VERSION,
+        adaptation_mode=str(_value(model, "adaptation_mode")).strip().lower(),
+        active_modes=active_modes,
+        dropped_modes=dropped_modes,
+        lora_enabled=bool(_value(model_config, "lora_enabled")),
+        lora_target_modules=_parse_targets(_value(model_config, "lora_target_modules")),
+        training_prefix_lengths=next(iter(prefix_sets)),
+    )
+
+
+def _atomic_write(path: Path, contents: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp.{os.getpid()}")
+    temporary.write_text(contents)
+    os.replace(temporary, path)
+
+
+def load_run_contract(path: Path) -> NativePhase1RunContract:
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"cannot read native Phase-1 run contract {path}: {error}") from error
+    if not isinstance(raw, Mapping):
+        raise ValueError(f"native Phase-1 run contract must contain a JSON object: {path}")
+    return NativePhase1RunContract.from_dict(raw)
+
+
+def persist_run_contract(config: Any) -> Path:
+    """Atomically create the run contract, rejecting incompatible resume settings."""
+
+    run_dir = Path(str(_value(_value(config, "job"), "path_local")))
+    path = run_dir / CONTRACT_FILENAME
+    contract = contract_from_config(config)
+    if path.exists():
+        existing = load_run_contract(path)
+        if existing != contract:
+            raise RuntimeError(
+                f"native Phase-1 run contract mismatch on resume: {path}\n"
+                f"saved={existing.to_dict()}\ncurrent={contract.to_dict()}"
+            )
+        return path
+    _atomic_write(path, json.dumps(contract.to_dict(), indent=2, sort_keys=True) + "\n")
+    return path
+
+
+def _checkpoint_and_run_dir(checkpoint_path: Path) -> tuple[Path, Path]:
+    checkpoint = checkpoint_path.expanduser().resolve()
+    if checkpoint.name == "model":
+        checkpoint = checkpoint.parent
+    if not checkpoint.is_dir():
+        raise ValueError(f"checkpoint directory does not exist: {checkpoint}")
+    if checkpoint.parent.name != "checkpoints" or not checkpoint.name.startswith("iter_"):
+        raise ValueError(
+            "checkpoint path must be <run>/checkpoints/iter_XXXXXXXXX or its model subdirectory: "
+            f"{checkpoint}"
+        )
+    return checkpoint, checkpoint.parent.parent
+
+
+def load_contract_for_checkpoint(checkpoint_path: Path) -> tuple[NativePhase1RunContract, str, Path, Path]:
+    checkpoint, run_dir = _checkpoint_and_run_dir(checkpoint_path)
+    contract_path = run_dir / CONTRACT_FILENAME
+    if contract_path.is_file():
+        return load_run_contract(contract_path), CONTRACT_FILENAME, checkpoint, run_dir
+
+    config_path = run_dir / "config.yaml"
+    if not config_path.is_file():
+        raise ValueError(
+            f"checkpoint has neither {CONTRACT_FILENAME} nor a legacy config.yaml: {checkpoint}"
+        )
+    try:
+        config = yaml.safe_load(config_path.read_text())
+    except (OSError, yaml.YAMLError) as error:
+        raise ValueError(f"cannot read legacy run config {config_path}: {error}") from error
+    if not isinstance(config, Mapping):
+        raise ValueError(f"legacy run config must contain a mapping: {config_path}")
+    return contract_from_config(config), "config.yaml (legacy recovery)", checkpoint, run_dir
+
+
+def resolve_eval_contract(
+    checkpoint_path: Path, environ: Mapping[str, str] | None = None
+) -> tuple[NativePhase1RunContract, str, Path, Path]:
+    contract, source, checkpoint, run_dir = load_contract_for_checkpoint(checkpoint_path)
+    environment = os.environ if environ is None else environ
+
+    if "NATIVEP1_ADAPTATION_MODE" in environment:
+        requested_mode = environment["NATIVEP1_ADAPTATION_MODE"].strip().lower()
+        if requested_mode != contract.adaptation_mode:
+            raise ValueError(
+                "NATIVEP1_ADAPTATION_MODE conflicts with the checkpoint contract: "
+                f"environment={requested_mode!r} checkpoint={contract.adaptation_mode!r}"
+            )
+    if "NYMERIA_DROP_MODES" in environment:
+        requested_drops = _parse_drop_modes(environment["NYMERIA_DROP_MODES"])
+        if requested_drops != contract.dropped_modes:
+            raise ValueError(
+                "NYMERIA_DROP_MODES conflicts with the checkpoint contract: "
+                f"environment={requested_drops} checkpoint={contract.dropped_modes}"
+            )
+    return contract, source, checkpoint, run_dir
+
+
+def write_eval_resolution(
+    *, checkpoint_path: Path, output_dir: Path, environ: Mapping[str, str] | None = None
+) -> tuple[Path, Path]:
+    contract, source, checkpoint, run_dir = resolve_eval_contract(checkpoint_path, environ=environ)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    record_path = output_dir / RESOLVED_CONTRACT_FILENAME
+    env_path = output_dir / RESOLVED_ENV_FILENAME
+    record = {
+        **contract.to_dict(),
+        "checkpoint_path": str(checkpoint),
+        "run_dir": str(run_dir),
+        "resolved_from": source,
+    }
+    _atomic_write(record_path, json.dumps(record, indent=2, sort_keys=True) + "\n")
+    drop_modes = ",".join(contract.dropped_modes)
+    env_contents = "\n".join(
+        (
+            f"export NATIVEP1_ADAPTATION_MODE={shlex.quote(contract.adaptation_mode)}",
+            f"export NYMERIA_DROP_MODES={shlex.quote(drop_modes)}",
+            "",
+        )
+    )
+    _atomic_write(env_path, env_contents)
+    return record_path, env_path
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--checkpoint-path", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    args = parser.parse_args()
+    record_path, env_path = write_eval_resolution(
+        checkpoint_path=args.checkpoint_path,
+        output_dir=args.output_dir,
+    )
+    resolved = json.loads(record_path.read_text())
+    print(
+        "[native-contract] "
+        f"mode={resolved['adaptation_mode']} dropped={resolved['dropped_modes']} "
+        f"source={resolved['resolved_from']} record={record_path} env={env_path}",
+        flush=True,
+    )
+
+
+if __name__ == "__main__":
+    main()
