@@ -1060,3 +1060,14 @@ When changing `native_phase_training/`, preserve these invariants:
 - production checkpoint visualization must stay out of the training process and use the post-save official-inference Slurm job; smoke runs must disable auto-eval;
 - do not reintroduce Torch compile into the production Slurm launcher unless a clean-node multi-GPU smoke proves it fits;
 - do not start production training on a node with leftover GPU memory consumers; use the launcher preflight or inspect `nvidia-smi`.
+
+## Server Migration
+
+The authoritative GCS artifact and restore contract is
+`migration/SERVER_MIGRATION.md`; machine-readable paths are in
+`migration/GCS_ARTIFACT_MANIFEST.tsv`. The root is
+`gs://mm-jinhyung_kim/jungbin_cho`. Run
+`python migration/verify_migration.py gcs` before relying on the archive.
+Standalone training visualization directories and intermediate checkpoints are
+not required; retained checkpoints and all required split/mean/std/calibration
+artifacts are enumerated explicitly in the migration docs.

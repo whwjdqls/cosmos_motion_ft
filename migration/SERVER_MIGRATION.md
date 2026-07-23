@@ -68,7 +68,8 @@ Training requires:
 5. `seed/soma_proportional_uniegomotion_20fps`.
 6. Exact BONES train/val pair and index files under
    `cosmos_motion_ft_runs/joint_attention`.
-7. Generator normalization in Git:
+7. `benchmarks/Kimodo-Motion-Gen-Benchmark/splits` to rebuild BONES pairs.
+8. Generator normalization in Git:
    `motion_expert_joint_attention/uniego283_{mean,std}.npy`, SHA-256
    `bd1d6bdc...` and `ee069e3a...`.
 
@@ -78,6 +79,10 @@ Shape/TMR evaluation requires the complete
 generator statistics, text embeddings, reference cases, and vendored runtime.
 Do not substitute trainer statistics for
 `artifacts/evaluator/stats/motion/{mean,std}.npy`.
+Rebuilding its BONES cohorts also requires
+`benchmarks/Kimodo-Motion-Gen-Benchmark-20fps/testsuite`. Only
+`meta.json` and `seed_motion.json` are archived: the evaluator maps them to the
+BONES UniEgo tree, and never reads the benchmark `gt_motion.npz`.
 
 ## Phase 3: Modality Bridge
 
@@ -96,6 +101,37 @@ Training requires both selected specialist checkpoints plus all Phase-2 data:
 Evaluation uses `cosmos_motion_ft_runs/joint_attention/full71_windows.json`,
 the Nymeria train/test split, motion normalization arrays in Git, and the Wan
 VAE for video decoding.
+
+## Retained Checkpoints
+
+Only the following checkpoints are required by the migration contract:
+
+| phase | run | retained checkpoint |
+|---|---|---|
+| historical | `world_camera_nymeria_97f_cont` | `iter_000007000` |
+| historical | `world_camera_nymeria_97f_hung_iter6000` | `iter_000007000` |
+| Phase 1 | `native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k` | `iter_000100000` |
+| Phase 1 | `native_phase1_vq_A_p1_global_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person` | `iter_000100000` |
+| Phase 1 | `native_phase1_vq_B_varprefix_global_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person` | `iter_000100000` |
+| Phase 1 | `native_phase1_vq_D_varprefix_camera_kv_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person` | `iter_000055000` |
+| Phase 2 | `ja_t2m_ti2m_reasonerimg_x0_T200_mrope3d` | `ckpt_step130000.pt` |
+| Phase 2 | `ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d` | `ckpt_step200000.pt` |
+| Phase 2 | `ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d_w1_1_5_contact_c0p05_v1_h10_s2_unipc35` | `ckpt_step200000.pt` |
+| Phase 3 | `ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k` | `ckpt_step200000.pt` |
+| Phase 3 | `ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam` | `ckpt_step115000.pt` |
+| Phase 3 | `ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_multitask` | `ckpt_step065000.pt` |
+| Phase 3 | `ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2contact200k` | `ckpt_step035000.pt` |
+
+Native checkpoints retain all DCP `model`, `optim`, `scheduler`, and `trainer`
+components. Joint-attention `.pt` files retain the trainer state written by
+`train.py`. Run configs/logs and `eval*` directories are retained. Standalone
+`viz_step*` directories and intermediate checkpoints are not part of the
+required archive.
+
+Some extra objects were uploaded before this scope was narrowed, including the
+filtered Phase-1 `qfilterv1/iter_000035000` checkpoint and selected
+visualizations. They are optional and are not checked by the verifier. The
+non-deleting migration policy leaves them in GCS.
 
 ## Small Critical State
 
@@ -116,6 +152,35 @@ These files are not optional metadata:
 The three Nymeria split/filter/calibration hashes are enforced by
 `verify_migration.py`. The repo-tracked motion statistics and head-camera
 calibration are protected by Git.
+
+Repo-state SHA-256 values at migration:
+
+```text
+bd1d6bdc9a3b026fe1e5b28899441655ee36672c69c3e6e6389e9baff4b400d3  uniego283_mean.npy
+ee069e3aa9f3cd1a1e70135cc00bc751030f8045fae6bbfb7b4f5b32fa65f28c  uniego283_std.npy
+17bd180d105f447b6aa05eaba5c12339a78605a8f2d53e01380000c1f2c01404  head_camera_calibration_train.json
+52c02eb2b83e830bbf0bb6a20504ce82a8aca920d7b9b09b2b25a172c68fe636  cosmos-framework local_changes.patch
+```
+
+## Final Dependency Sweep
+
+A code-path sweep covered Python, shell, TOML, YAML, dataset loaders, native
+launchers, samplers, and evaluators. The active external dependencies found
+there are covered by this contract. The following referenced paths are
+intentionally not archived as active requirements:
+
+- raw/access-gated `/weka/jungbin/nymeriaplus`;
+- obsolete T33 `joint_latents`, because production uses `joint_latents_T97`;
+- `nymeriaplus_audio`, VGGT checkpoints, and `nymeria_world` baselines;
+- old proof-of-concept motion checkpoints and A100-only BONES caches;
+- temporary merge/smoke directories and intermediate checkpoints;
+- Qwen tokenizer fallback, because the exact Cosmos Nano text tokenizer is in
+  the materialized HF snapshot.
+
+The small Kimodo skeleton buffer used only to regenerate proportional motion is
+archived under `runtime/kimodo_caches`. The benchmark splits and JSON test-suite
+metadata are archived even though current pair/index and evaluator manifests
+already exist, so those manifests can be rebuilt.
 
 ## Raw Data Boundary
 

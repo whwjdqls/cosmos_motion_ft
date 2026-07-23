@@ -8,6 +8,7 @@ RUN_ROOT=${RUN_ROOT:-${WEKA_ROOT}/cosmos_motion_ft_runs}
 NANO_REV=fea6e03ac3d7884b4105ed8ee79fc480fca70965
 NANO_STAGE=${NANO_STAGE:-${WEKA_ROOT}/cosmos_motion_migration_staging/hf/Cosmos3-Nano-${NANO_REV}}
 SOURCE_STAGE=${SOURCE_STAGE:-${WEKA_ROOT}/cosmos_motion_migration_staging/source}
+BENCHMARK_STAGE=${BENCHMARK_STAGE:-${WEKA_ROOT}/cosmos_motion_migration_staging/benchmarks}
 TORCH_HOME=${TORCH_HOME:-${HOME}/.cache/torch}
 
 case "${SECTION}" in
@@ -69,11 +70,6 @@ sync_selected_joint_run() {
     while IFS= read -r eval_dir; do
         sync_tree "${eval_dir}" "${destination}/$(basename "${eval_dir}")"
     done < <(find "${source}" -mindepth 1 -maxdepth 1 -type d -name 'eval*' | sort)
-    local latest_viz
-    latest_viz=$(find "${source}" -mindepth 1 -maxdepth 1 -type d -name 'viz_step*' | sort -V | tail -n 1)
-    if [[ -n "${latest_viz}" ]]; then
-        sync_tree "${latest_viz}" "${destination}/$(basename "${latest_viz}")"
-    fi
 }
 
 sync_native_run() {
@@ -118,6 +114,20 @@ if run_section core; then
     sync_tree "${NANO_STAGE}" "${GCS_ROOT}/runtime/hf/Cosmos3-Nano-${NANO_REV}"
     sync_tree "${WEKA_ROOT}/shape_aware_motion_eval_c45_20260715" \
         "${GCS_ROOT}/evaluators/shape_aware_motion_eval_c45_20260715"
+    sync_tree "${WEKA_ROOT}/Kimodo-Motion-Gen-Benchmark/splits" \
+        "${GCS_ROOT}/benchmarks/Kimodo-Motion-Gen-Benchmark/splits"
+    mkdir -p "${BENCHMARK_STAGE}"
+    (
+        cd "${WEKA_ROOT}/Kimodo-Motion-Gen-Benchmark-20fps/testsuite"
+        find . -type f -name '*.json' -print0 |
+            tar --null -T - -czf \
+                "${BENCHMARK_STAGE}/Kimodo-Motion-Gen-Benchmark-20fps-testsuite-json.tar.gz"
+    )
+    copy_file \
+        "${BENCHMARK_STAGE}/Kimodo-Motion-Gen-Benchmark-20fps-testsuite-json.tar.gz" \
+        "${GCS_ROOT}/benchmarks/Kimodo-Motion-Gen-Benchmark-20fps-testsuite-json.tar.gz"
+    copy_file "${WEKA_ROOT}/kimodo_caches/_somaskel77_buffers.npz" \
+        "${GCS_ROOT}/runtime/kimodo_caches/_somaskel77_buffers.npz"
 fi
 
 if run_section eval; then
@@ -135,13 +145,9 @@ fi
 
 if run_section phase1; then
     sync_native_run native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k iter_000100000
-    sync_native_run native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k_qfilterv1 iter_000035000
-    sync_native_run native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k_qfilterv1_noi2v iter_000035000
     sync_native_run native_phase1_vq_A_p1_global_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person iter_000100000
     sync_native_run native_phase1_vq_B_varprefix_global_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person iter_000100000
-    sync_native_run native_phase1_vq_C_varprefix_action_only_aw2_bs4_lr5e5_ema100k_qfilterv1_person iter_000065000
     sync_native_run native_phase1_vq_D_varprefix_camera_kv_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person iter_000055000
-    sync_native_run native_phase1_vq_E_p1_camera_kv_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person iter_000005000
 fi
 
 if run_section phase2; then

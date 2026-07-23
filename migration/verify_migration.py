@@ -40,6 +40,10 @@ GCS_REQUIRED = (
     "runtime/model_cache/cdfvd/vit_g_hybrid_pt_1200e_ssv2_ft.pth",
     "runtime/torch_hub/checkpoints/alexnet-owt-7be5be79.pth",
     "evaluators/shape_aware_motion_eval_c45_20260715/SHA256SUMS",
+    "benchmarks/Kimodo-Motion-Gen-Benchmark/splits/train_split_paths.txt",
+    "benchmarks/Kimodo-Motion-Gen-Benchmark/splits/test_content_split_paths.txt",
+    "benchmarks/Kimodo-Motion-Gen-Benchmark-20fps-testsuite-json.tar.gz",
+    "runtime/kimodo_caches/_somaskel77_buffers.npz",
     "cosmos_motion_ft_runs/joint_attention/full71_windows.json",
     "cosmos_motion_ft_runs/joint_attention/bones_index_train.json",
     "cosmos_motion_ft_runs/native_phase1_eval_inputs_full71_256_T97_v2/fd_input.jsonl",
@@ -47,26 +51,19 @@ GCS_REQUIRED = (
     "native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/"
     "checkpoints/iter_000100000/model/.metadata",
     "cosmos_motion_ft_runs/cosmos3_camera/camera_world/"
-    "native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k_qfilterv1/"
-    "checkpoints/iter_000035000/model/.metadata",
-    "cosmos_motion_ft_runs/cosmos3_camera/camera_world/"
-    "native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k_qfilterv1_noi2v/"
-    "checkpoints/iter_000035000/model/.metadata",
-    "cosmos_motion_ft_runs/cosmos3_camera/camera_world/"
     "native_phase1_vq_A_p1_global_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person/"
     "checkpoints/iter_000100000/model/.metadata",
     "cosmos_motion_ft_runs/cosmos3_camera/camera_world/"
     "native_phase1_vq_B_varprefix_global_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person/"
     "checkpoints/iter_000100000/model/.metadata",
     "cosmos_motion_ft_runs/cosmos3_camera/camera_world/"
-    "native_phase1_vq_C_varprefix_action_only_aw2_bs4_lr5e5_ema100k_qfilterv1_person/"
-    "checkpoints/iter_000065000/model/.metadata",
-    "cosmos_motion_ft_runs/cosmos3_camera/camera_world/"
     "native_phase1_vq_D_varprefix_camera_kv_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person/"
     "checkpoints/iter_000055000/model/.metadata",
     "cosmos_motion_ft_runs/cosmos3_camera/camera_world/"
-    "native_phase1_vq_E_p1_camera_kv_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person/"
-    "checkpoints/iter_000005000/model/.metadata",
+    "world_camera_nymeria_97f_cont/checkpoints/iter_000007000/model/.metadata",
+    "cosmos_motion_ft_runs/cosmos3_camera/camera_world/"
+    "world_camera_nymeria_97f_hung_iter6000/"
+    "checkpoints/iter_000007000/model/.metadata",
     "cosmos_motion_ft_runs/ja_t2m_ti2m_reasonerimg_x0_T200_mrope3d/"
     "ckpt_step130000.pt",
     "cosmos_motion_ft_runs/"
@@ -96,6 +93,11 @@ LOCAL_REQUIRED = (
     WEKA_ROOT / "model_cache/cdfvd/vit_g_hybrid_pt_1200e_ssv2_ft.pth",
     TORCH_HOME / "hub/checkpoints/alexnet-owt-7be5be79.pth",
     WEKA_ROOT / "shape_aware_motion_eval_c45_20260715/SHA256SUMS",
+    WEKA_ROOT / "Kimodo-Motion-Gen-Benchmark/splits/train_split_paths.txt",
+    WEKA_ROOT / "Kimodo-Motion-Gen-Benchmark/splits/test_content_split_paths.txt",
+    WEKA_ROOT / "Kimodo-Motion-Gen-Benchmark-20fps/testsuite/"
+    "content/text2motion/timeline_multi/0163/seed_motion.json",
+    WEKA_ROOT / "kimodo_caches/_somaskel77_buffers.npz",
     RUN_ROOT / "joint_attention/full71_windows.json",
     RUN_ROOT / "joint_attention/bones_index_train.json",
 )

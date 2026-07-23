@@ -12,8 +12,8 @@ gs://mm-jinhyung_kim/jungbin_cho
 The archive is intentionally scoped to reproducible training and evaluation. It
 contains the active derived datasets, exact splits/statistics/calibrations,
 pretrained runtime weights, evaluation fixtures, selected resumable checkpoints,
-all selected-run evaluations, and the latest visualization for each compact
-joint-attention run. It does not claim to be a byte-for-byte backup of every
+and all selected-run evaluation directories. Standalone training visualization
+directories are excluded. It does not claim to be a byte-for-byte backup of every
 obsolete run or all access-gated raw Nymeria VRS captures.
 
 Files:

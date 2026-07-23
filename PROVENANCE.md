@@ -19,10 +19,10 @@ copy), `native_phase_training/README.md` / `AUDIT.md`.
 
 | repo | origin | commit @ hand-off | role |
 |---|---|---|---|
-| `cosmos_motion_ft` (this repo) | `github.com/whwjdqls/cosmos_motion_ft` | `d14d587` | all experiments |
+| `cosmos_motion_ft` (this repo) | `github.com/whwjdqls/cosmos_motion_ft` | use the final migration commit on `master`; also archived as `source/cosmos_motion_ft.bundle` in GCS | all experiments |
 | `cosmos-framework` | `github.com/NVIDIA/cosmos-framework` | `82f8229` (2026-06-12 "Refactor datapackerdataloader…") **+ local patches** | native Cosmos-3 Nano training/inference. Checked out at `/home/jungbin_cho/cosmos-framework`; every launcher puts it on `PYTHONPATH` and native training `cd`s into it. The checkout carried **uncommitted, load-bearing patches** (`lora_keep_trainable_modules`, `SAVE_TRAINABLE_ONLY` LoRA-only DCP save, TensorBoardLog callback, pixel-path experiment) — captured with reapply instructions in `external/cosmos_framework_patches/`. |
 | `kimodo` (a.k.a. `kimodo_open`) | `github.com/whwjdqls/kimodo` | `5e3daac` (= `483b3ca` + the previously-UNTRACKED uniego converters `nymeria_to_uniego.py` / `soma_proportional_to_uniego.py`, committed at hand-off) | SOMA-77 skeleton FK, uniego motion rep, TMR eval, BONES-SEED datasets. Lived at `/home/jungbin_cho/kimodo_open`. The converter scripts this repo's data depends on are also vendored in `external/kimodo_uniego_scripts/` (incl. `soma_proportional_to_uniego.py` + `UNIEGO_REPRESENTATION.md`). |
-| `nymeria_kimodo_pipeline` | `github.com/whwjdqls/nymeria_kimodo_pipelin` (sic — repo name typo) | `a4094aa` (pushed 2026-07-23 at hand-off) | raw NymeriaPlus → motion/video/camera/text preprocessing (see its README for the full 5-stage pipeline). Also vendored (minus weights/media) at `external/nymeria_kimodo_pipeline/`. |
+| `nymeria_kimodo_pipeline` | `github.com/whwjdqls/nymeria_kimodo_pipelin` (sic — repo name typo) | `cd1b3bc4048957b2ddd3a20fc1baacd29c5d6643` | raw NymeriaPlus → motion/video/camera/text preprocessing (see its README for the full 5-stage pipeline). Also vendored (minus weights/media) at `external/nymeria_kimodo_pipeline/`. |
 
 Conda envs (miniforge, `~/miniforge3`): `cosmos` (torch 2.10.0+cu128 — all Cosmos
 training/inference; exact spec captured at `external/cosmos_env.yml` +
@@ -99,11 +99,9 @@ bones_pairs_{train,val}.jsonl` + `bones_index_{train,val}.json`) are built by
 | `/weka/jungbin/cosmos_motion_ft_runs/` (`IMAGINAIRE_OUTPUT_ROOT`) | ALL run outputs. Native runs under `cosmos3_camera/camera_world/<run>/checkpoints/iter_XXXXXXXXX` (DCP: `model/` `optim/` `scheduler/` `trainer/`; `model/` ≈ 85 GB holds net+EMA). Joint-attention runs save `ckpt_stepNNNNNN.pt`/`latest.pt` (trainable-delta only, small). | trainers in this repo |
 | Named checkpoints referenced by eval scripts | e.g. `ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d/ckpt_step200000.pt` (Phase-2 motion expert), `ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k*` (Phase-3), `native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/checkpoints/iter_000100000` (Phase-1 v1), `native_phase1_vq_{A..E}_*` (video-quality ablations) | their sbatch launchers in this repo record every hyperparameter |
 
-Checkpoint backup started 2026-07-23: run-A `iter_000100000` → Google Drive
-`data:cosmos_ckpts/native_phase1_vq_A/iter_000100000` via rclone (remote `data`;
-see `~/upload_ckpt_A.sh` pattern — copy per run dir, then `rclone check`).
-
-GCS hand-off roots created on 2026-07-23:
+The authoritative GCS hand-off contract, exact retained-checkpoint list, upload
+driver, restore driver, and verifier are under `migration/`. The bucket roots
+created on 2026-07-23 are:
 
 ```text
 gs://mm-jinhyung_kim/jungbin_cho/nymeriaplus/
@@ -112,16 +110,13 @@ gs://mm-jinhyung_kim/jungbin_cho/seed/
 gs://mm-jinhyung_kim/jungbin_cho/cosmos_motion_ft_runs/
 ```
 
-The proportional backup includes metadata and joint-latent material requested
-for restoration. The selected-run backup keeps each requested run's latest
-checkpoint, run-level YAML/JSON/pickle metadata, all evaluation directories,
-and only the latest applicable visualization directory. The seed backup was
-launched as a non-deleting
-`gsutil -m rsync -r /weka/jungbin/seed gs://mm-jinhyung_kim/jungbin_cho/seed`
-in persistent tmux session `gcs_seed_upload`; its local transfer log is
-`gcs-upload-seed.log`. Because cloud-transfer state is dynamic, verify
-completion with `gsutil -m rsync -n -r` or an object/byte inventory before
-deleting this server. No local source was deleted by these commands.
+The proportional backup contains all active derived motion, video, camera,
+camera-RGB, metadata, T97 latent, split, floor-calibration, and quality-filter
+artifacts. Selected runs retain their required resumable checkpoint, run
+configuration/log state, and `eval*` directories. Standalone visualization
+directories and intermediate checkpoints are outside the required contract.
+No local source was deleted by migration commands. Run
+`python migration/verify_migration.py gcs` before decommissioning the server.
 
 ---
 
