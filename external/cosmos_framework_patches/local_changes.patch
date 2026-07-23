@@ -1,0 +1,164 @@
+diff --git a/README.md b/README.md
+index eb53701..9cf9bc7 100644
+--- a/README.md
++++ b/README.md
+@@ -18,6 +18,50 @@
+ - **Training** — distributed FSDP / TP / CP / PP trainer, native DCP checkpoints with HuggingFace `safetensors` import/export, JSONL / WebDataset / LeRobot dataset adapters. Entry point: `cosmos_framework.scripts.train`. See [`docs/training.md`](./docs/training.md).
+ - **Inference** — Diffusers / Transformers / vLLM backends with offline batch generation and online serving (Ray + Gradio). Entry point: `cosmos_framework.scripts.inference`. Ecosystem-facing shim libraries (lightweight standalone wrappers for downstream projects) live under [`packages/`](./packages).
+ 
++---
++
++# This fork — Cosmos-3 Nano → Omnimodal Human-Motion World Model
++
++> We adapt **Cosmos-3 Nano** into an omnimodal **human-motion** world model by introducing
++> **3D human motion as a body-native continuous action modality**. The model generates human
++> motion from language, images, videos, and audio, and uses human motion as a **control signal**
++> for context-conditioned video/audio generation.
++>
++> Cosmos-3 Nano를 사람 모션 중심의 omnimodal world model로 확장한다. Text/image/video/audio를
++> condition으로 받아 3D human motion을 생성하고, 반대로 human motion을 control signal로 사용해
++> image context 기반 video/audio를 생성한다.
++
++**Principles (load-bearing):**
++1. **Text/image/video/audio are *conditions*, not targets** — we reuse Cosmos-3's frozen
++   understanding prior; we do **not** train a captioner / VLM reasoner.
++2. **Motion is both input and output** — the new continuous modality.
++3. **Video/audio are outputs only with sufficient visual/context condition** (an initial image/scene);
++   context-free `motion → video` is ill-posed and avoided.
++
++**Task space.** Direction is *observation/instruction → motion* and *motion + context → world*:
++
++| Motion as output (primary) | Motion as control → world (later) | Excluded ❌ |
++| --- | --- | --- |
++| Text → Motion (BONES-SEED) | Motion + Initial Image → Future Video | Video → Text |
++| Image / Video → Motion (NymeriaPlus) | Motion + Text + Image → Future Video | Motion → Text |
++| Text + Image/Video → Motion | Motion + Image → Audio + Video | Video + Motion → Text |
++| Video + Audio (+Text) → Motion | Motion + Text + Image → Audio + Video | context-free Motion → Video |
++
++**Methods** (shared: motion modality + freeze-reasoner / adapt-generator): (1) projection-only
++(sanity); (2) motion heads + LoRA on `*_moe_gen` (current run); (3) **main** = frozen Cosmos +
++a **Motion-Transformer bridge** cross-attending the frozen reasoner/generator (bidirectional,
++no text output).
++
++**Phased plan:** (1) motion-modality attachment → (2) text→motion prior → (3) visual/audio→motion
++grounding → (4) motion-controlled world generation → (5) joint omnimodal mixture.
++
++➡️ **Full project doc, task table, training mixture, and status:**
++[`/home/jungbin_cho/cosmos_motion_ft/README.md`](/home/jungbin_cho/cosmos_motion_ft/README.md)
++(code, exporters, `motion_decode.py`, `train_motion_ft.py`, `sample_motion.py` live there).
++See also [`CLAUDE.md`](./CLAUDE.md) "Local project" for the implementation notes.
++
++---
++
+ ## Cosmos 3
+ 
+ **Cosmos 3** is our newest model family [[Report]](https://research.nvidia.com/labs/cosmos-lab/cosmos3/technical-report.pdf) [[Website]](https://research.nvidia.com/labs/cosmos-lab/cosmos3/). It is a suite of omnimodal world models designed to jointly process and generate language, images, video, audio, and action sequences within a unified Mixture-of-Transformers architecture. By supporting highly flexible input-output configurations, it seamlessly unifies critical modalities for Physical AI — effectively subsuming vision-language models, video generators, world simulators, and world-action models into a single framework. For a guided experience to test out Cosmos3, please visit [[Cosmos]](https://github.com/nvidia/cosmos).
+diff --git a/cosmos_framework/checkpoint/dcp.py b/cosmos_framework/checkpoint/dcp.py
+index 4e036c9..8584118 100644
+--- a/cosmos_framework/checkpoint/dcp.py
++++ b/cosmos_framework/checkpoint/dcp.py
+@@ -85,6 +85,24 @@ class ModelWrapper(Stateful):
+     def state_dict(self) -> dict[str, Any]:
+         return get_model_state_dict(self.model)
+ 
++    def trainable_state_dict(self) -> dict[str, Any]:
++        """Full state filtered to ONLY trainable params (LoRA adapters + unfrozen heads).
++        Used for SAVING a LoRA run (apply on top of the base at eval); NOT for the
++        warm-start load template, which must stay full.
++
++        NOTE: filter by SUBSTRING on the state-dict keys (which are the canonical DCP keys),
++        NOT by matching named_parameters() FQNs — under FSDP the deep LoRA params get mangled
++        names that don't match get_model_state_dict keys, silently dropping all adapters.
++        """
++        sd = get_model_state_dict(self.model)
++        # LoRA adapters + any modules named in SAVE_TRAINABLE_KEYS (the keep-trainable heads).
++        keep = ["lora_A", "lora_B"] + [
++            m for m in os.environ.get(
++                "SAVE_TRAINABLE_KEYS", "action2llm,llm2action,action_modality_embed"
++            ).split(",") if m
++        ]
++        return {k: v for k, v in sd.items() if any(s in k for s in keep)}
++
+     def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+         set_model_state_dict(
+             self.model,
+@@ -799,8 +817,10 @@ class DistributedCheckpointer(AbstractCheckpointer):
+         # Use rank-specific key for RNG state to ensure each rank saves its own state
+         rng_key = f"rng_state_{dist.get_rank()}"
+ 
++        _save_trainable_only = os.environ.get("SAVE_TRAINABLE_ONLY", "") in ("1", "true", "True")
++        _mw = ModelWrapper(model)
+         to_save_dict = {
+-            "model": ModelWrapper(model).state_dict(),
++            "model": _mw.trainable_state_dict() if _save_trainable_only else _mw.state_dict(),
+             "optim": optimizer.state_dict(),
+             "scheduler": scheduler.state_dict(),
+             "trainer": {
+diff --git a/cosmos_framework/configs/base/config.py b/cosmos_framework/configs/base/config.py
+index d1f975d..8614938 100644
+--- a/cosmos_framework/configs/base/config.py
++++ b/cosmos_framework/configs/base/config.py
+@@ -100,4 +100,5 @@ def make_config() -> Config:
+     import cosmos_framework.configs.base.experiment.sft.vision_sft_nano  # noqa: F401
+     import cosmos_framework.configs.base.experiment.sft.vision_sft_super  # noqa: F401
+     import cosmos_framework.configs.base.experiment.action.posttrain_config.action_policy_droid_nano  # noqa: F401
++    import cosmos_framework.configs.base.experiment.action.posttrain_config.world_camera_nymeria_nano  # noqa: F401
+     return c
+diff --git a/cosmos_framework/configs/base/defaults/callbacks.py b/cosmos_framework/configs/base/defaults/callbacks.py
+index 46c85ed..21b3ef8 100644
+--- a/cosmos_framework/configs/base/defaults/callbacks.py
++++ b/cosmos_framework/configs/base/defaults/callbacks.py
+@@ -17,6 +17,7 @@ from cosmos_framework.callbacks.expert_heatmap import ExpertHeatmap
+ from cosmos_framework.callbacks.grad_clip import GradClip
+ from cosmos_framework.callbacks.heart_beat import HeartBeat
+ from cosmos_framework.callbacks.iter_speed import IterSpeed
++from cosmos_framework.callbacks.tensorboard_log import TensorBoardLog
+ from cosmos_framework.callbacks.load_pretrained import LoadPretrained
+ from cosmos_framework.callbacks.mfu import MFUCallback
+ from cosmos_framework.callbacks.moe_specialization_callback import MoESpecializationCallback
+@@ -39,6 +40,7 @@ BASIC_CALLBACKS = dict(
+         save_s3_every_log_n=500,
+         hit_thres=50,
+     ),
++    tensorboard=L(TensorBoardLog)(every_n="${trainer.logging_iter}"),  # rank-0 loss curve -> $TB_LOG_DIR
+     manual_gc=L(ManualGarbageCollection)(every_n=5),  # does not use model or optimizer
+     wandb=L(WandBCallback)(),
+     wandb_2x=L(WandBCallbackMultiplier)(
+diff --git a/cosmos_framework/configs/base/defaults/model_config.py b/cosmos_framework/configs/base/defaults/model_config.py
+index c7b9a5c..601ab97 100644
+--- a/cosmos_framework/configs/base/defaults/model_config.py
++++ b/cosmos_framework/configs/base/defaults/model_config.py
+@@ -171,6 +171,10 @@ class OmniMoTModelConfig:
+     lora_rank: int = 16
+     lora_alpha: int = 32
+     lora_target_modules: str = "q_proj_moe_gen,k_proj_moe_gen,v_proj_moe_gen,o_proj_moe_gen"
++    # Modules (comma-separated name substrings) to keep FULL-trained alongside LoRA.
++    # LoRA freezes all non-LoRA params; these are re-enabled after injection (e.g. re-used
++    # modality heads that must adapt). Empty = LoRA-only.
++    lora_keep_trainable_modules: str = ""
+ 
+     # Rectified flow configs
+     rectified_flow_training_config: RectifiedFlowTrainingConfig = RectifiedFlowTrainingConfig()
+diff --git a/cosmos_framework/model/vfm/omni_mot_model.py b/cosmos_framework/model/vfm/omni_mot_model.py
+index 9f71a00..398fe98 100644
+--- a/cosmos_framework/model/vfm/omni_mot_model.py
++++ b/cosmos_framework/model/vfm/omni_mot_model.py
+@@ -229,6 +229,18 @@ class OmniMoTModel(ImaginaireModel):
+                     lora_alpha=self.config.lora_alpha,
+                     lora_target_modules=self.config.lora_target_modules,
+                 )
++                # LoRA freezes ALL non-LoRA params. Re-enable any full-trained modules
++                # (e.g. re-used/new modality heads) listed in lora_keep_trainable_modules
++                # so build_optimizer's "already requires_grad" filter keeps them.
++                keep = getattr(self.config, "lora_keep_trainable_modules", "") or ""
++                keep_list = [k for k in keep.split(",") if k]
++                if keep_list:
++                    n_kept = 0
++                    for pn, p in net.named_parameters():
++                        if any(k in pn for k in keep_list):
++                            p.requires_grad_(True)
++                            n_kept += 1
++                    log.info(f"LoRA: kept {n_kept} extra params trainable matching {keep_list}")
+ 
+         self.install_attention_dispatch(net)
+ 

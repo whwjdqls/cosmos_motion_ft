@@ -1,0 +1,42 @@
+# Cosmos3-Nano egocentric camera-action world-model SFT (NymeriaPlus, camera-only Phase 2).
+# Recipe knobs live in the registered experiment `world_camera_nymeria_nano`; this file sets
+# run-level scalars only.
+#
+# Env required:
+#   BASE_CHECKPOINT_PATH=/weka/jungbin/cosmos3_nano_dcp            # converted Nano DCP dir
+#   WAN_VAE_PATH=/weka/jungbin/wan22_vae/Wan2.2_VAE.pth
+#   IMAGINAIRE_OUTPUT_ROOT=/weka/jungbin/cosmos_motion_ft_runs     # checkpoint output root
+
+[job]
+task         = "vfm"
+experiment   = "world_camera_nymeria_nano"
+project      = "cosmos3_camera"
+group        = "camera_world"
+name         = "world_camera_nymeria"
+wandb_mode   = "disabled"
+
+[model]
+precision = "bfloat16"
+
+[model.parallelism]
+# DDP: replicate the (frozen-base + LoRA) model across 8 GPUs, no param sharding.
+data_parallel_shard_degree     = 1
+data_parallel_replicate_degree = 8
+
+[model.activation_checkpointing]
+mode           = "full"
+save_ops_regex = ["fmha"]
+
+[model.tokenizer]
+vae_path = "${oc.env:WAN_VAE_PATH}"
+
+[scheduler]
+cycle_lengths = [100000]
+
+[trainer]
+max_iter     = 100000
+logging_iter = 50
+
+[checkpoint]
+load_path = "${oc.env:BASE_CHECKPOINT_PATH}"
+save_iter = 5000

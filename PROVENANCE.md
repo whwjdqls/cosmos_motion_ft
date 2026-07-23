@@ -20,7 +20,7 @@ copy), `native_phase_training/README.md` / `AUDIT.md`.
 | repo | origin | commit @ hand-off | role |
 |---|---|---|---|
 | `cosmos_motion_ft` (this repo) | `github.com/whwjdqls/cosmos_motion_ft` | `d14d587` | all experiments |
-| `cosmos-framework` | `github.com/NVIDIA/cosmos-framework` | `82f8229` (2026-06-12 "Refactor datapackerdataloader…") | native Cosmos-3 Nano training/inference. Checked out at `/home/jungbin_cho/cosmos-framework`; every launcher puts it on `PYTHONPATH` and native training `cd`s into it. **Local patches may exist — diff against upstream before assuming vanilla.** |
+| `cosmos-framework` | `github.com/NVIDIA/cosmos-framework` | `82f8229` (2026-06-12 "Refactor datapackerdataloader…") **+ local patches** | native Cosmos-3 Nano training/inference. Checked out at `/home/jungbin_cho/cosmos-framework`; every launcher puts it on `PYTHONPATH` and native training `cd`s into it. The checkout carried **uncommitted, load-bearing patches** (`lora_keep_trainable_modules`, `SAVE_TRAINABLE_ONLY` LoRA-only DCP save, TensorBoardLog callback, pixel-path experiment) — captured with reapply instructions in `external/cosmos_framework_patches/`. |
 | `kimodo` (a.k.a. `kimodo_open`) | `github.com/whwjdqls/kimodo` | `483b3ca` (2026-06-19 "uniego") | SOMA-77 skeleton FK, uniego motion rep, TMR eval, BONES-SEED datasets. Lived at `/home/jungbin_cho/kimodo_open`. The four converter scripts this repo's data depends on are vendored in `external/kimodo_uniego_scripts/`. |
 | `nymeria_kimodo_pipeline` | **not a git repo** — vendored verbatim (minus weights/media) at `external/nymeria_kimodo_pipeline/` | n/a | raw NymeriaPlus → motion/video/camera/text preprocessing (see its README for the full 5-stage pipeline) |
 

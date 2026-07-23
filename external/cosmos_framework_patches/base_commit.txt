@@ -1,0 +1,3 @@
+base commit: 82f82293ffd8983651cd51d8191287da3973f534
+origin: https://github.com/NVIDIA/cosmos-framework
+generated: 2026-07-23T13:46:15+09:00
