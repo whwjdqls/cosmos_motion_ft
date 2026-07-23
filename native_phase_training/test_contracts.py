@@ -27,6 +27,7 @@ from native_phase_training.checkpoint_eval_callback import (
     NativeCheckpointEvalSubmitter,
     build_eval_submission_command,
 )
+from native_phase_training.evaluate_prefix_suite import _rgb_prefix_length, _source_name
 from native_phase_training.latent_nymeria_dataset import (
     LatentAwareIterativeJointDataLoader,
     _format_prompt_for_mode,
@@ -208,6 +209,35 @@ class NativeRunContractTest(unittest.TestCase):
             self.assertEqual(source, "config.yaml (legacy recovery)")
             self.assertEqual(contract.adaptation_mode, "action_only")
             self.assertFalse(contract.lora_enabled)
+            self.assertEqual(contract.dropped_modes, ("image2video",))
+
+    def test_legacy_fixed_prefix_global_lora_config_is_inferred(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            run_dir = Path(temporary_dir)
+            checkpoint = run_dir / "checkpoints" / "iter_000035000"
+            checkpoint.mkdir(parents=True)
+            streams = {
+                mode: {"dataloader": {"dataset": {}}}
+                for mode in ("forward_dynamics", "inverse_dynamics", "policy")
+            }
+            config_dict = {
+                "model": {
+                    "config": {
+                        "lora_enabled": True,
+                        "lora_target_modules": (
+                            "q_proj_moe_gen,k_proj_moe_gen,"
+                            "v_proj_moe_gen,o_proj_moe_gen"
+                        ),
+                    },
+                },
+                "dataloader_train": {"dataloaders": streams},
+            }
+            (run_dir / "config.yaml").write_text(json.dumps(config_dict))
+
+            contract, source, _, _ = load_contract_for_checkpoint(checkpoint)
+            self.assertEqual(source, "config.yaml (legacy recovery)")
+            self.assertEqual(contract.adaptation_mode, "global_lora")
+            self.assertEqual(contract.training_prefix_lengths, (1,))
             self.assertEqual(contract.dropped_modes, ("image2video",))
 
     def test_eval_resolution_writes_validated_shell_environment_and_record(self) -> None:
@@ -499,6 +529,16 @@ class PrefixContractTest(unittest.TestCase):
             sanitize_record({**record, "name": "different_p009_forward_dynamics"}, "forward_dynamics")
         with self.assertRaisesRegex(ValueError, "does not match latent prefix"):
             sanitize_record({**record, "rgb_prefix_length": 8}, "forward_dynamics")
+
+    def test_legacy_fixed_prefix_record_is_supported(self) -> None:
+        record = {
+            "model_mode": "forward_dynamics",
+            "name": "sample_forward_dynamics",
+            "prompt": "test",
+        }
+        self.assertEqual(sanitize_record(record, "forward_dynamics"), record)
+        self.assertEqual(_source_name(record), "sample")
+        self.assertEqual(_rgb_prefix_length(record), 1)
 
 
 class CameraTokenLoraContractTest(unittest.TestCase):

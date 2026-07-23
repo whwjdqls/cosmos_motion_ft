@@ -25,10 +25,24 @@ def sanitize_record(record: dict[str, Any], expected_mode: str) -> dict[str, Any
         raise ValueError(
             f"expected model_mode={expected_mode!r}, got {record.get('model_mode')!r}"
         )
+    sample_name = record.get("name")
+    legacy_suffix = f"_{expected_mode}"
     source_name = record.get("source_name")
     if not isinstance(source_name, str) or not source_name:
-        raise ValueError(f"{expected_mode}: missing non-empty source_name")
-    sample_name = record.get("name")
+        local_fields = LOCAL_METADATA_FIELDS & record.keys()
+        if local_fields:
+            raise ValueError(
+                f"{expected_mode}: incomplete local metadata; missing source_name "
+                f"with fields={sorted(local_fields)}"
+            )
+        if not isinstance(sample_name, str) or not sample_name.endswith(legacy_suffix):
+            raise ValueError(
+                f"{expected_mode}: legacy sample name {sample_name!r} must end with "
+                f"{legacy_suffix!r}"
+            )
+        # Fixed-prefix fixtures created before local metric metadata already
+        # match the official inference schema and condition on RGB frame 0.
+        return dict(record)
     if not isinstance(sample_name, str) or not sample_name.startswith(f"{source_name}_"):
         raise ValueError(
             f"{expected_mode}: sample name {sample_name!r} is inconsistent with "

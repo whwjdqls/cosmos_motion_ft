@@ -51,6 +51,27 @@ def _parse_drop_modes(value: str) -> tuple[str, ...]:
     return modes
 
 
+def _infer_adaptation_mode(*, lora_enabled: bool, lora_target_modules: tuple[str, ...]) -> str:
+    """Recover the adaptation mode for runs created before it was persisted."""
+
+    if not lora_enabled:
+        return "action_only"
+    targets = set(lora_target_modules)
+    if targets == {
+        "q_proj_moe_gen",
+        "k_proj_moe_gen",
+        "v_proj_moe_gen",
+        "o_proj_moe_gen",
+    }:
+        return "global_lora"
+    if targets == {"k_proj_moe_gen", "v_proj_moe_gen"}:
+        return "camera_kv_lora"
+    raise ValueError(
+        "cannot infer adaptation mode from legacy LoRA configuration: "
+        f"enabled={lora_enabled} targets={lora_target_modules}"
+    )
+
+
 @dataclass(frozen=True)
 class NativePhase1RunContract:
     schema_version: int
@@ -147,20 +168,36 @@ def contract_from_config(config: Any) -> NativePhase1RunContract:
         try:
             loader = _value(stream, "dataloader")
             dataset = _value(loader, "dataset")
-            prefixes = tuple(int(length) for length in _value(dataset, "prefix_lengths"))
+            try:
+                configured_prefixes = _value(dataset, "prefix_lengths")
+            except (AttributeError, KeyError):
+                # Fixed-prefix Phase-1 runs created before the variable-prefix
+                # ablations always conditioned visual tasks on one RGB frame.
+                configured_prefixes = (1,)
+            prefixes = tuple(int(length) for length in configured_prefixes)
         except (AttributeError, KeyError, TypeError) as error:
             raise ValueError(f"cannot resolve prefix lengths for training mode {mode!r}") from error
         prefix_sets.add(prefixes)
     if len(prefix_sets) != 1:
         raise ValueError(f"training streams disagree on prefix lengths: {sorted(prefix_sets)}")
 
+    lora_enabled = bool(_value(model_config, "lora_enabled"))
+    lora_target_modules = _parse_targets(_value(model_config, "lora_target_modules"))
+    try:
+        adaptation_mode = str(_value(model, "adaptation_mode")).strip().lower()
+    except (AttributeError, KeyError):
+        adaptation_mode = _infer_adaptation_mode(
+            lora_enabled=lora_enabled,
+            lora_target_modules=lora_target_modules,
+        )
+
     return NativePhase1RunContract(
         schema_version=SCHEMA_VERSION,
-        adaptation_mode=str(_value(model, "adaptation_mode")).strip().lower(),
+        adaptation_mode=adaptation_mode,
         active_modes=active_modes,
         dropped_modes=dropped_modes,
-        lora_enabled=bool(_value(model_config, "lora_enabled")),
-        lora_target_modules=_parse_targets(_value(model_config, "lora_target_modules")),
+        lora_enabled=lora_enabled,
+        lora_target_modules=lora_target_modules,
         training_prefix_lengths=next(iter(prefix_sets)),
     )
 

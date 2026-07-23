@@ -55,9 +55,29 @@ def _parse_prefixes(raw: str) -> tuple[int, ...]:
 
 def _source_name(record: dict[str, Any]) -> str:
     source = record.get("source_name")
-    if not isinstance(source, str) or not source:
-        raise ValueError(f"prefix evaluation record is missing source_name: {record.get('name')!r}")
-    return source
+    if isinstance(source, str) and source:
+        return source
+    name = record.get("name")
+    mode = record.get("model_mode")
+    suffix = f"_{mode}"
+    if (
+        any(key in record for key in ("rgb_prefix_length", "latent_prefix_length"))
+        or not isinstance(name, str)
+        or not isinstance(mode, str)
+        or not name.endswith(suffix)
+    ):
+        raise ValueError(f"prefix evaluation record is missing source_name: {name!r}")
+    # Legacy fixed-prefix fixtures predate explicit source/prefix metadata.
+    return name[: -len(suffix)]
+
+
+def _rgb_prefix_length(record: dict[str, Any]) -> int:
+    value = record.get("rgb_prefix_length")
+    if value is None and "source_name" not in record:
+        return 1
+    if not isinstance(value, int):
+        raise ValueError(f"invalid RGB prefix length in record {record.get('name')!r}: {value!r}")
+    return value
 
 
 def _action_from_output(payload: dict[str, Any], sample_dir: Path) -> np.ndarray:
@@ -127,7 +147,7 @@ def _validate_grid(
     pairs: set[tuple[str, int]] = set()
     for record in records:
         source = _source_name(record)
-        prefix = int(record.get("rgb_prefix_length", -1))
+        prefix = _rgb_prefix_length(record)
         pair = (source, prefix)
         if pair in pairs:
             raise ValueError(f"{mode}: duplicate source/prefix pair {pair}")
@@ -201,7 +221,7 @@ def main() -> None:
 
         for index, record in enumerate(records):
             source = _source_name(record)
-            prefix = int(record["rgb_prefix_length"])
+            prefix = _rgb_prefix_length(record)
             sample_dir, payload = _load_successful_output(args.inference_root, record)
             gt_video_path = args.eval_root / "samples" / source / "gt_clip.mp4"
             gt_frames = _read_video_rgb(gt_video_path)
