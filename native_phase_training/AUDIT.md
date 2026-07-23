@@ -4,6 +4,27 @@ Initial audit: 2026-07-10. Correctness update: 2026-07-11.
 
 This audit covers the isolated cached-latent Phase 1 path in `native_phase_training/` and was checked against the local `/home/jungbin_cho/cosmos-framework` source.
 
+## 2026-07-23 Visual-Quality Follow-up
+
+The historical-versus-current visual-quality investigation is recorded in
+`PHASE1_VISUAL_QUALITY_AUDIT.md`. Its main findings are:
+
+- the inspected old and new videos were not resolution- or provenance-matched
+  (640x640 manually merged-model output versus 256x256 current DCP output);
+- changing current A/100k EMA inference from native 256-tier shift 3 to shift 10
+  at 256x256 did not materially improve five-source prefix-1 video metrics;
+- fp16 storage is unlikely to be the cause because Wan encode runs under bf16
+  autocast and 9.83 million sampled cached values round-trip through bf16
+  exactly;
+- the leading remaining training hypothesis is the interaction of global LoRA
+  with homogeneous per-step task selection, global batch 32, pure I2V updates,
+  and action-loss weight 2, compared with the historical large mixed-task update
+  and action-loss weight 10.
+
+These are ranked findings, not a claim that one unrun ablation has established
+causality. Do not change the native 256-tier shift-3 default based on the old
+videos.
+
 ## Fixed Issues
 
 ### Finite child-loader livelock

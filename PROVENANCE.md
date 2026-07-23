@@ -103,6 +103,26 @@ Checkpoint backup started 2026-07-23: run-A `iter_000100000` → Google Drive
 `data:cosmos_ckpts/native_phase1_vq_A/iter_000100000` via rclone (remote `data`;
 see `~/upload_ckpt_A.sh` pattern — copy per run dir, then `rclone check`).
 
+GCS hand-off roots created on 2026-07-23:
+
+```text
+gs://mm-jinhyung_kim/jungbin_cho/nymeriaplus/
+gs://mm-jinhyung_kim/jungbin_cho/nymeriaplus_proportional/
+gs://mm-jinhyung_kim/jungbin_cho/seed/
+gs://mm-jinhyung_kim/jungbin_cho/cosmos_motion_ft_runs/
+```
+
+The proportional backup includes metadata and joint-latent material requested
+for restoration. The selected-run backup keeps each requested run's latest
+checkpoint, run-level YAML/JSON/pickle metadata, all evaluation directories,
+and only the latest applicable visualization directory. The seed backup was
+launched as a non-deleting
+`gsutil -m rsync -r /weka/jungbin/seed gs://mm-jinhyung_kim/jungbin_cho/seed`
+in persistent tmux session `gcs_seed_upload`; its local transfer log is
+`gcs-upload-seed.log`. Because cloud-transfer state is dynamic, verify
+completion with `gsutil -m rsync -n -r` or an object/byte inventory before
+deleting this server. No local source was deleted by these commands.
+
 ---
 
 ## 6. Eval fixtures under `/weka/jungbin/cosmos_motion_ft_runs/`

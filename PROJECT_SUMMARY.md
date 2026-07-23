@@ -54,12 +54,20 @@ responds correctly only when we scale translations ×8 into its native range. Ex
 - **Trainable**: LoRA (r=16, α=32) on `q/k/v/o_proj_moe_gen` **only** (generation pathway) + the
   **pretrained** camera action heads (`action2llm/llm2action/action_modality_embed` — kept, *not*
   re-initialized, since `camera_pose` is a pretrained domain) ≈ 32M params. Reasoner + embeddings frozen.
-- **Recipe**: FusedAdamW lr 2e-4, wd 0.05, LambdaLinear (flat 0.4 after 500 warmup → 0 at 100k), clip 1.0,
-  bf16, FSDP pure-replicate ×8, full activation checkpointing, action loss ×10, `raw_action_dim=9`
-  masking (pad to 64).
+- **Current native recipe**: FusedAdamW LoRA lr `5e-5`, camera-interface LR
+  `2e-4` through a 4x parameter-group multiplier, wd 0.05, LambdaLinear (factor
+  0.4 for the first 500 steps then linear decay to 0 at 100k), clip 1.0, bf16,
+  pure-replicate ×8, full activation checkpointing, and `raw_action_dim=9`
+  masking (pad to 64). The original native baseline uses action loss ×10. The
+  2026-07-21 video-quality A-E suite deliberately uses action loss ×2 and is an
+  ablation, not the universal Phase-1 default.
 - Engineering note: audit found a **finite-stream dataloader livelock** (native joint loader assumes
   infinite streams; training would silently freeze at ~1.1k/100k iters) — fixed with a cycling wrapper +
   `set_epoch`, verified by forced-exhaustion smoke + inference from the smoke checkpoint.
+- Visual-quality note: historical MP4s and recent outputs were not initially
+  resolution/provenance matched. The durable investigation, fp16 cache audit,
+  shift-10 result, ranked hypotheses, and required controlled comparisons are
+  in `native_phase_training/PHASE1_VISUAL_QUALITY_AUDIT.md`.
 
 ## Results
 Forward dynamics — `t4_S01_20230607_s1_barbara_fd.mp4`

@@ -293,6 +293,24 @@ Vision-head recommendation as of 2026-07-10: keep `vae2llm` and `llm2vae` frozen
 
 Schedule/LR recommendation as of 2026-07-12: do not use the old 200k-step Phase-1 schedule or uniform `2e-4` LoRA/action-head LR. The fixed-four baseline runs 100k max steps with `NATIVEP1_LORA_LR=5e-5`, `NATIVEP1_ACTION_LR_MULT=4.0`, and checkpoints every 5k. With `f_start=f_max=0.4`, the first 500 steps are a flat plateau at `2e-5` effective LR for generator LoRA and `8e-5` for the action modules, followed by linear decay. Keep these rates for the first fixed-four baseline: they are already 10x/2.5x below the old custom run's effective LoRA/action rates, and changing batch size plus LR simultaneously would obscure the comparison. Evaluate early checkpoints and lower the LoRA rate only if visual quality drifts.
 
+Phase-1 visual-quality audit as of 2026-07-23: read
+`native_phase_training/PHASE1_VISUAL_QUALITY_AUDIT.md` before attributing the
+historical run's prettier videos to the model. The inspected historical output
+is 640x640 and at least one old evaluation loaded
+`/weka/jungbin/tmp_merge/m97f_7000/model`; current A output is 256x256 and has an
+architecture recovered from its saved run config before direct DCP load. A
+direct A/100k EMA prefix-1 test at 256 with UniPC shift 10 was effectively tied
+with shift 3, so shift is not the visual-quality fix.
+FP16 cache precision is also a very low-probability cause: Wan encode uses bf16
+autocast, and 9.83M values from 32 cached T97 files were all exact after a bf16
+round trip. If a fully matched old/new sample still favors the old model, the
+leading hypothesis is global-LoRA optimization: old training mixed
+forward/inverse/policy across ranks on every up-to-128-clip update and used
+action weight 10; A uses one homogeneous task per 32-clip update, adds pure I2V,
+and uses action weight 2. This may let Nymeria video reconstruction dominate the
+shared LoRA while camera heads still achieve strong inverse metrics. It remains
+a hypothesis until the matrix in the audit is run.
+
 Official inference syntax gotcha: the config must be passed as the relative Python file path:
 
 ```bash

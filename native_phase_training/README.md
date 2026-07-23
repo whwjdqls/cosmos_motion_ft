@@ -55,6 +55,18 @@ The important compatibility point is that cached latents are a training input op
 - `AUDIT.md`
   - Records the 2026-07-10 native Phase 1 audit, the finite-dataloader livelock fix, parity fixes, and documented deviations from pixel-native training.
 
+- `PHASE1_VISUAL_QUALITY_AUDIT.md`
+  - Compares the historical pixel-online runs with the current cached-latent
+    video-quality suite.
+  - Records the resolution, sampler, model-provenance, task-mixing, batch,
+    loss-weight, and cache-precision evidence.
+  - Ranks the remaining root-cause hypotheses and defines the controlled
+    experiments required before changing the training contract.
+
+- `audit_cached_latent_precision.py`
+  - Provides a portable CPU audit of cached latent dtype, range, fp16 spacing,
+    and exact bf16 round-trip behavior.
+
 - `experiment.py`
   - Registers Hydra experiment `world_camera_nymeria_latent_nano`.
   - Starts from `NANO_MODEL_CONFIG`.
@@ -563,6 +575,35 @@ consume the original enriched JSONLs. Do not point the official inference CLI
 directly at the enriched files.
 
 The framework's bundled modality JSON files contain a literal shift of 10 because the release defaults target the high-resolution tier. This run intentionally overrides that one value to 3, matching both Nano's `{256:3, 480:5, 720:10}` map and this run's 256-resolution training distribution. The solver, sigma construction, EMA loading, CFG implementation, and task step/guidance defaults remain NVIDIA's official path; using the unmodified shift 10 would be a train/evaluation mismatch here.
+
+### 2026-07-23 Visual-Quality Root-Cause Audit
+
+Do not infer that historical training was better from the existing MP4s alone.
+The inspected old output is 640x640 and came from a manually merged-model
+evaluation path, while the recent A output is 256x256 and was loaded directly
+from its DCP after recovering the architecture from the saved run config. A
+direct A/100k EMA prefix-1 test at 256 changed only UniPC shift from 3 to 10 and
+produced essentially tied PSNR/SSIM/LPIPS, with no consistent shift-10 gain.
+
+The fp16 cache is also a low-probability cause. Wan encode runs under bf16
+autocast, and 9,830,400 values from 32 T97 cache files were all exact under a
+float32-to-bf16 round trip. The portable check is:
+
+```bash
+python native_phase_training/audit_cached_latent_precision.py \
+  --latent-root /weka/jungbin/nymeriaplus_kimodo_proportional/joint_latents_T97 \
+  --max-files 32
+```
+
+If a future matched-resolution comparison still favors the old model, the
+leading training hypothesis is the shared global LoRA update contract, not the
+cache: historical training averaged forward/inverse/policy across different
+ranks on every update with up to 128 clips, whereas current training uses one
+homogeneous task across all ranks with 32 clips. Recent A additionally includes
+pure I2V updates and reduces action loss from 10 to 2, so the shared LoRA gets
+substantially less camera-gradient regularization and more direct Nymeria visual
+reconstruction pressure. This is not proven. Exact evidence, metrics, and the
+required sampling/training matrix are in `PHASE1_VISUAL_QUALITY_AUDIT.md`.
 
 ## Smoke Tests Completed
 
