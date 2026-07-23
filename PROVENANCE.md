@@ -21,12 +21,15 @@ copy), `native_phase_training/README.md` / `AUDIT.md`.
 |---|---|---|---|
 | `cosmos_motion_ft` (this repo) | `github.com/whwjdqls/cosmos_motion_ft` | `d14d587` | all experiments |
 | `cosmos-framework` | `github.com/NVIDIA/cosmos-framework` | `82f8229` (2026-06-12 "Refactor datapackerdataloader…") **+ local patches** | native Cosmos-3 Nano training/inference. Checked out at `/home/jungbin_cho/cosmos-framework`; every launcher puts it on `PYTHONPATH` and native training `cd`s into it. The checkout carried **uncommitted, load-bearing patches** (`lora_keep_trainable_modules`, `SAVE_TRAINABLE_ONLY` LoRA-only DCP save, TensorBoardLog callback, pixel-path experiment) — captured with reapply instructions in `external/cosmos_framework_patches/`. |
-| `kimodo` (a.k.a. `kimodo_open`) | `github.com/whwjdqls/kimodo` | `483b3ca` (2026-06-19 "uniego") | SOMA-77 skeleton FK, uniego motion rep, TMR eval, BONES-SEED datasets. Lived at `/home/jungbin_cho/kimodo_open`. The four converter scripts this repo's data depends on are vendored in `external/kimodo_uniego_scripts/`. |
-| `nymeria_kimodo_pipeline` | **not a git repo** — vendored verbatim (minus weights/media) at `external/nymeria_kimodo_pipeline/` | n/a | raw NymeriaPlus → motion/video/camera/text preprocessing (see its README for the full 5-stage pipeline) |
+| `kimodo` (a.k.a. `kimodo_open`) | `github.com/whwjdqls/kimodo` | `5e3daac` (= `483b3ca` + the previously-UNTRACKED uniego converters `nymeria_to_uniego.py` / `soma_proportional_to_uniego.py`, committed at hand-off) | SOMA-77 skeleton FK, uniego motion rep, TMR eval, BONES-SEED datasets. Lived at `/home/jungbin_cho/kimodo_open`. The converter scripts this repo's data depends on are also vendored in `external/kimodo_uniego_scripts/` (incl. `soma_proportional_to_uniego.py` + `UNIEGO_REPRESENTATION.md`). |
+| `nymeria_kimodo_pipeline` | `github.com/whwjdqls/nymeria_kimodo_pipelin` (sic — repo name typo) | `a4094aa` (pushed 2026-07-23 at hand-off) | raw NymeriaPlus → motion/video/camera/text preprocessing (see its README for the full 5-stage pipeline). Also vendored (minus weights/media) at `external/nymeria_kimodo_pipeline/`. |
 
-Conda envs (miniforge, `~/miniforge3`): `cosmos` (torch cu128 — all Cosmos training/
-inference), `kimodo` (kimodo FK/rendering/metadata), `soma` (SMPL→SOMA fitting),
-`nymeria_plus` (Aria VRS decoding), `audio` (VAD/SAM-Audio, only for the audio branch).
+Conda envs (miniforge, `~/miniforge3`): `cosmos` (torch 2.10.0+cu128 — all Cosmos
+training/inference; exact spec captured at `external/cosmos_env.yml` +
+`external/cosmos_env_pip_freeze.txt`, which pins cosmos-framework as editable installs
+at `82f8229` — reapply `external/cosmos_framework_patches/` on top), `kimodo`, `soma`,
+`nymeria_plus`, `audio` (those four exported to the pipeline repo's `envs/` dir,
+github.com/whwjdqls/nymeria_kimodo_pipelin).
 
 ---
 
@@ -125,7 +128,7 @@ via `compute_uniego_stats.py`-style pass), `motion_expert/pairs_{train,val}.json
 
 - `external/nymeria_kimodo_pipeline/` — the full preprocessing pipeline (scripts +
   READMEs; excluded: `__pycache__`, `.checkpoints` incl. 4.5 GB ImageBind, media/logs).
-  It was NOT a git repo — this copy is the only surviving version.
+  Also pushed standalone to `github.com/whwjdqls/nymeria_kimodo_pipelin` (`a4094aa`).
 - `external/kimodo_uniego_scripts/` — `nymeria_to_uniego.py`, `soma_to_uniego.py`,
   `kimodo_to_uniego.py`, `compute_uniego_stats.py` copied from kimodo@`483b3ca`
   (also on GitHub, but these four define this repo's data).
