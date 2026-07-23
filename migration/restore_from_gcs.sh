@@ -6,6 +6,7 @@ GCS_ROOT=${GCS_ROOT:-gs://mm-jinhyung_kim/jungbin_cho}
 WEKA_ROOT=${WEKA_ROOT:-/weka/jungbin}
 RUN_ROOT=${RUN_ROOT:-${WEKA_ROOT}/cosmos_motion_ft_runs}
 HF_HOME=${HF_HOME:-${HOME}/.cache/huggingface}
+TORCH_HOME=${TORCH_HOME:-${HOME}/.cache/torch}
 NANO_REV=fea6e03ac3d7884b4105ed8ee79fc480fca70965
 
 case "${SECTION}" in
@@ -48,6 +49,8 @@ if run_section core; then
     restore_tree "${GCS_ROOT}/runtime/cosmos3_nano_dcp" "${WEKA_ROOT}/cosmos3_nano_dcp"
     restore_tree "${GCS_ROOT}/runtime/wan22_vae" "${WEKA_ROOT}/wan22_vae"
     restore_tree "${GCS_ROOT}/runtime/model_cache" "${WEKA_ROOT}/model_cache"
+    restore_tree "${GCS_ROOT}/runtime/torch_hub/checkpoints" \
+        "${TORCH_HOME}/hub/checkpoints"
     restore_tree "${GCS_ROOT}/runtime/hf/Cosmos3-Nano-${NANO_REV}" \
         "${HF_HOME}/hub/models--nvidia--Cosmos3-Nano/snapshots/${NANO_REV}"
     restore_tree "${GCS_ROOT}/evaluators/shape_aware_motion_eval_c45_20260715" \

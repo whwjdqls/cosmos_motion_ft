@@ -50,6 +50,8 @@ Evaluation requires:
 4. `native_phase1_eval_inputs_vq_prefix5_256_T97_qfilter_person_v1` for
    prefixes 1/9/17/33/49.
 5. `runtime/model_cache` for DreamSim and content-debiased FVD.
+6. `runtime/torch_hub/checkpoints/alexnet-owt-7be5be79.pth` for offline
+   LPIPS evaluation.
 
 Native checkpoints are full DCP directories. Keep `model`, `optim`, `scheduler`,
 and `trainer`; model-only copies can evaluate but cannot exactly resume.

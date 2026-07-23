@@ -15,6 +15,7 @@ GCS_ROOT = os.environ.get("GCS_ROOT", "gs://mm-jinhyung_kim/jungbin_cho")
 WEKA_ROOT = Path(os.environ.get("WEKA_ROOT", "/weka/jungbin"))
 RUN_ROOT = Path(os.environ.get("RUN_ROOT", str(WEKA_ROOT / "cosmos_motion_ft_runs")))
 HF_HOME = Path(os.environ.get("HF_HOME", str(Path.home() / ".cache/huggingface")))
+TORCH_HOME = Path(os.environ.get("TORCH_HOME", str(Path.home() / ".cache/torch")))
 NANO_REV = "fea6e03ac3d7884b4105ed8ee79fc480fca70965"
 
 HASHED_FILES = {
@@ -37,6 +38,7 @@ GCS_REQUIRED = (
     f"runtime/hf/Cosmos3-Nano-{NANO_REV}/vision_encoder/model.safetensors",
     f"runtime/hf/Cosmos3-Nano-{NANO_REV}/text_tokenizer/tokenizer.json",
     "runtime/model_cache/cdfvd/vit_g_hybrid_pt_1200e_ssv2_ft.pth",
+    "runtime/torch_hub/checkpoints/alexnet-owt-7be5be79.pth",
     "evaluators/shape_aware_motion_eval_c45_20260715/SHA256SUMS",
     "cosmos_motion_ft_runs/joint_attention/full71_windows.json",
     "cosmos_motion_ft_runs/joint_attention/bones_index_train.json",
@@ -92,6 +94,7 @@ LOCAL_REQUIRED = (
     WEKA_ROOT / "wan22_vae/Wan2.2_VAE.pth",
     HF_HOME / f"hub/models--nvidia--Cosmos3-Nano/snapshots/{NANO_REV}/vision_encoder/model.safetensors",
     WEKA_ROOT / "model_cache/cdfvd/vit_g_hybrid_pt_1200e_ssv2_ft.pth",
+    TORCH_HOME / "hub/checkpoints/alexnet-owt-7be5be79.pth",
     WEKA_ROOT / "shape_aware_motion_eval_c45_20260715/SHA256SUMS",
     RUN_ROOT / "joint_attention/full71_windows.json",
     RUN_ROOT / "joint_attention/bones_index_train.json",

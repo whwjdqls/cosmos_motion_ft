@@ -8,6 +8,7 @@ RUN_ROOT=${RUN_ROOT:-${WEKA_ROOT}/cosmos_motion_ft_runs}
 NANO_REV=fea6e03ac3d7884b4105ed8ee79fc480fca70965
 NANO_STAGE=${NANO_STAGE:-${WEKA_ROOT}/cosmos_motion_migration_staging/hf/Cosmos3-Nano-${NANO_REV}}
 SOURCE_STAGE=${SOURCE_STAGE:-${WEKA_ROOT}/cosmos_motion_migration_staging/source}
+TORCH_HOME=${TORCH_HOME:-${HOME}/.cache/torch}
 
 case "${SECTION}" in
     source|data|core|eval|phase1|phase2|phase3) ;;
@@ -112,6 +113,8 @@ if run_section core; then
     sync_tree "${WEKA_ROOT}/cosmos3_nano_dcp" "${GCS_ROOT}/runtime/cosmos3_nano_dcp"
     sync_tree "${WEKA_ROOT}/wan22_vae" "${GCS_ROOT}/runtime/wan22_vae"
     sync_tree "${WEKA_ROOT}/model_cache" "${GCS_ROOT}/runtime/model_cache"
+    sync_tree "${TORCH_HOME}/hub/checkpoints" \
+        "${GCS_ROOT}/runtime/torch_hub/checkpoints"
     sync_tree "${NANO_STAGE}" "${GCS_ROOT}/runtime/hf/Cosmos3-Nano-${NANO_REV}"
     sync_tree "${WEKA_ROOT}/shape_aware_motion_eval_c45_20260715" \
         "${GCS_ROOT}/evaluators/shape_aware_motion_eval_c45_20260715"
