@@ -106,6 +106,46 @@ for B (slightly) and D (substantially). The high tier is therefore a confirmed
 temporal-coherence/semantic-similarity benefit, not a universal reconstruction
 quality improvement.
 
+### Resolution-gallery identity and reproducibility caveat
+
+Do not compare a cross-phase tile labeled only `Phase-1` with
+`viz/by_model/A_*.mp4` as though they were two renders of the same model. The
+cross-phase clean71 gallery uses the historical **Original** 100k EMA
+checkpoint because that is the Phase-1 checkpoint from which the vanilla
+Phase-3 run was initialized. A `by_model/A_*.mp4` file instead uses ablation A:
+action loss weight 2, quality-filtered data, standalone `C` replacement,
+active-token loss normalization, and a separately trained global LoRA. The
+corresponding matrix file for the cross-phase Phase-1 columns is
+`viz/by_model/original_*.mp4`. Matrix by-model tile order is
+`GT | 256/S3 | 720/S3 | 720/S10`; the cross-phase gallery omits the 720/S3
+diagnostic.
+
+The denoising contract itself did not change between corresponding cells:
+EMA weights, official UniPC-30, CFG 1, seed 0, a clean frame-0 prefix, shift 3
+at 256, and shift 10 at the 720 tier. For the inspected S07 row, prompt and
+first-frame bytes match and the camera-action JSON arrays are numerically
+identical. Saved `sample_args.json` files match after removing path/name
+fields.
+
+Outputs are nevertheless not expected to be bit-identical across these saved
+runs. The canonical Original 256 evaluation used an 8-GPU FSDP inference
+process with model-level resolution 256. The five-record resolution matrix
+used one GPU and set model-level `NYMERIA_RESOLUTION=720` for the mixed process,
+including its explicit 256 records. The full-71 high-tier run used independent
+single-GPU shards. BF16/FSDP/VAE execution and the differing model-level
+resolution context can introduce smaller rerun drift without changing the
+sampler schedule. On inspected S07 decoded videos, cross-phase-reused Original
+versus matrix Original gives PSNR `43.36 dB` at 256 and `37.11 dB` at high
+tier, whereas cross-phase-reused Original versus matrix A is much farther apart
+at `30.77 dB` and `22.87 dB`. These are output-to-output diagnostics, not GT
+quality scores.
+
+Therefore the current galleries are valid records of the saved evaluations,
+but the reused Original 256/high-tier pair is not a bit-exact inference-topology
+ablation. A strict reproducibility experiment must resample both tiers from the
+same checkpoint with one process per tier, matching the model-level resolution
+to that tier and holding every other input and runtime setting fixed.
+
 If a matched-resolution, matched-sampler comparison still shows that the old
 model is more realistic, the most likely training cause is the optimization
 contract around the shared global generator LoRA:
