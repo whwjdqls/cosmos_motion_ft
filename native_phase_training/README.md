@@ -318,6 +318,32 @@ The full-71 job requests one exclusive eight-GPU node; the compact diagnostic
 requests one GPU. Both resolve the immutable checkpoint architecture contract
 before importing the Cosmos inference configuration.
 
+### 2026-07-24 Final A-D Comparison
+
+The complete canonical full-71 comparison is:
+
+| Model | Step | PSNR | SSIM | LPIPS | DreamSim | CD-FVD | Rot. deg | Dir. cos | Trans. mm | ATE cm |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Original, action weight 10 | 100k | 19.4988 | 0.612583 | 0.285336 | 0.170482 | **281.614** | **0.213036** | **0.838294** | **3.177** | **2.357** |
+| A, prefix-1 global LoRA | 100k | **19.5343** | **0.614062** | **0.284598** | **0.169134** | 295.561 | 0.271635 | 0.824262 | 3.832 | 2.413 |
+| B, variable-prefix global LoRA | 100k | 18.6945 | 0.586307 | 0.315056 | 0.177504 | 304.385 | 0.287409 | 0.811321 | 4.041 | 2.522 |
+| D, camera-token K/V LoRA | 100k | 18.3851 | 0.576988 | 0.328101 | 0.189021 | 319.056 | 0.314777 | 0.811414 | 4.387 | 3.030 |
+| Historical step 7k, current contract | 7k | 18.4828 | 0.574474 | 0.322919 | 0.175386 | 282.414 | 0.267831 | 0.770949 | 4.681 | 3.995 |
+
+All CD-FVD values use the canonical FP32 VideoMAE-v2-SSv2 feature path. C
+stopped at 65k and has no full-71 evaluation. Its latest compact five-source
+macro forward PSNR/SSIM/LPIPS is `15.203/0.430/0.447`, and its inverse camera
+means are `0.601 deg`, `12.99 mm`, and `9.63 cm` ATE.
+
+The compact five-source, five-prefix forward macro results are Original
+`16.955/0.497/0.368`, A `17.203/0.505/0.359`, B
+`17.507/0.519/0.356`, C `15.203/0.430/0.447`, and D
+`16.756/0.489/0.379`. B benefits from long prefixes, but Original remains the
+best balanced prefix-1 model because it retains the strongest camera metrics
+and best full-suffix CD-FVD. See `PHASE1_VISUAL_QUALITY_AUDIT.md` for policy,
+I2V, per-horizon interpretation, old-checkpoint reconstruction provenance, and
+the unresolved same-checkpoint 256/720 versus shift-3/10 matrix.
+
 Training rank 0 atomically writes `<run>/native_phase1_contract.json` before
 launch. It records the adaptation mode, active/dropped tasks, LoRA enablement and
 targets, and training prefix list. A resume with a different contract fails before

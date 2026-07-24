@@ -1,6 +1,6 @@
 # Phase-1 Visual-Quality Audit
 
-Last updated: 2026-07-23
+Last updated: 2026-07-24
 
 This document records the investigation into why historical Nymeria camera
 checkpoints can look visually better than the newer native-compatible Phase-1
@@ -28,11 +28,15 @@ Related historical outputs used during this audit:
   world_camera_nymeria_97f_hung_iter6000/checkpoints/iter_000007000
 ```
 
-Recent ablation A:
+Current native baseline and video-quality ablations:
 
 ```text
 /weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/
+  native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k
   native_phase1_vq_A_p1_global_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person
+  native_phase1_vq_B_varprefix_global_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person
+  native_phase1_vq_C_varprefix_action_only_aw2_bs4_lr5e5_ema100k_qfilterv1_person
+  native_phase1_vq_D_varprefix_camera_kv_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person
 ```
 
 The historical `cont` run does not contain its own stored inference videos.
@@ -56,8 +60,13 @@ apples-to-apples comparison:
    which its outputs were later stored.
 
 Changing A from shift 3 to shift 10 at 256x256 did not materially improve its
-metrics. Resolution and model provenance therefore remain unresolved
-presentation confounds.
+metrics. A same-checkpoint comparison on 2026-07-24 then established a more
+specific result: the old step-7000 weights flicker under the current 256/shift-3
+contract but are smooth under their historical 720-tier/shift-10 contract. The
+two runs use byte-identical first-frame PNGs and numerically identical camera
+actions. Resolution tier and shift are still coupled in the saved pair, so this
+does not yet identify which one matters, but it rules out a simple
+"old checkpoint weights are intrinsically smooth" explanation.
 
 If a matched-resolution, matched-sampler comparison still shows that the old
 model is more realistic, the most likely training cause is the optimization
@@ -75,8 +84,73 @@ contract around the shared global generator LoRA:
 
 This combination can let the LoRA fit low-resolution Nymeria reconstruction
 more directly while perturbing the pretrained visual prior. It is more
-plausible than fp16 quantization, but it is still a hypothesis until the
-controlled experiments at the end of this document are run.
+plausible than fp16 quantization as a training-side contributor. The
+same-checkpoint result also shows that inference resolution/schedule compatibility
+is a separate, high-priority contributor and must be isolated before assigning
+the observed flicker entirely to training.
+
+## Canonical Results Through 2026-07-24
+
+The canonical benchmark uses one prefix-1 forward-dynamics record and one
+inverse-dynamics record for each of the 71 held-out sequences. All rows below
+use 97 RGB frames, 256 resolution, seed 0, guidance 1, and NVIDIA UniPC with 30
+steps and shift 3. PSNR/SSIM and translation-direction cosine are higher-better;
+LPIPS, DreamSim, VideoMAE-v2 CD-FVD, rotation, translation error, and ATE are
+lower-better. Scale ratio is best at 1.
+
+| Model | Step | PSNR | SSIM | LPIPS | DreamSim | CD-FVD | Rot. deg | Dir. cos | Scale | Trans. mm | ATE cm |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Original, action weight 10 | 100k | 19.4988 | 0.612583 | 0.285336 | 0.170482 | **281.614** | **0.213036** | **0.838294** | 1.007017 | **3.177** | **2.357** |
+| A, prefix 1 global LoRA | 100k | **19.5343** | **0.614062** | **0.284598** | **0.169134** | 295.561 | 0.271635 | 0.824262 | 1.011397 | 3.832 | 2.413 |
+| B, variable-prefix global LoRA | 100k | 18.6945 | 0.586307 | 0.315056 | 0.177504 | 304.385 | 0.287409 | 0.811321 | 1.048164 | 4.041 | 2.522 |
+| D, camera-token K/V LoRA | 100k | 18.3851 | 0.576988 | 0.328101 | 0.189021 | 319.056 | 0.314777 | 0.811414 | 1.078215 | 4.387 | 3.030 |
+| Historical step 7k, current contract | 7k | 18.4828 | 0.574474 | 0.322919 | 0.175386 | 282.414 | 0.267831 | 0.770949 | 0.922935 | 4.681 | 3.995 |
+
+CD-FVD in this table is the canonical FP32 VideoMAE-v2-SSv2 feature path.
+The old 7k checkpoint is a historical trainable-delta DCP that cannot be loaded
+as a current full-model DCP. It was reconstructed with
+`nymeria_world/export_merge_lora.py`, exactly as in its historical inference
+path, and evaluated from the merged regular weights. The Original/A/B/D rows
+use EMA weights. Therefore the old row is useful but not a strict EMA-matched
+comparison. C stopped at step 65k and has no full-71 evaluation.
+
+The smaller `checkpoint_evals` suite uses five held-out sources at every exact
+causal prefix `[1,9,17,33,49]`. The video columns below are unweighted macro
+means over the five prefix-level means; inverse camera metrics use the five
+source windows once. These values are diagnostics, not substitutes for the
+full-71 table.
+
+| Model | Step | Forward P/S/L | Policy P/S/L | I2V P/S/L | Inverse rot / trans / ATE |
+| --- | ---: | --- | --- | --- | --- |
+| Original | 100k | 16.955 / 0.497 / 0.368 | 14.130 / 0.396 / 0.538 | 13.436 / 0.362 / 0.570 | 0.236 deg / 4.37 mm / 3.14 cm |
+| A | 100k | 17.203 / 0.505 / 0.359 | 14.252 / 0.399 / 0.538 | 13.442 / 0.364 / 0.568 | 0.314 deg / 5.05 mm / 3.60 cm |
+| B | 100k | **17.507 / 0.519 / 0.356** | 14.258 / 0.407 / 0.530 | 13.398 / 0.364 / 0.567 | 0.333 deg / 5.52 mm / 3.70 cm |
+| C | 65k | 15.203 / 0.430 / 0.447 | 13.530 / 0.368 / 0.535 | 12.952 / 0.355 / 0.577 | 0.601 deg / 12.99 mm / 9.63 cm |
+| D | 100k | 16.756 / 0.489 / 0.379 | 14.117 / 0.393 / 0.530 | 12.945 / 0.356 / 0.576 | 0.397 deg / 6.54 mm / 3.93 cm |
+
+Current interpretation:
+
+- Original remains the strongest balanced Phase-1 model. It has the best
+  full-71 camera metrics and best full-suffix CD-FVD.
+- A is effectively tied with Original on aligned frame metrics and DreamSim,
+  but its camera metrics and CD-FVD are worse.
+- B benefits from long clean prefixes in the compact suite, especially at
+  prefixes 33 and 49, but loses quality on the prefix-1 full-71 benchmark.
+- C confirms that the action interface alone is not an adequate video
+  adaptation path. D's camera-only K/V LoRA also underperforms global LoRA.
+- The historical 7k row has CD-FVD close to Original and better than A/B/D,
+  consistent with some stronger distributional/temporal appearance, but its
+  pixel metrics and camera translation/ATE are worse. Its current-contract
+  video still visibly flickers, so this score does not establish that the old
+  weights alone solve temporal consistency.
+
+Canonical old-7k outputs and reports:
+
+```text
+/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/
+world_camera_nymeria_97f_hung_iter6000/checkpoints/iter_000007000/
+eval_full71_current_shift3_single_gpu_shards/
+```
 
 ## Exact Configuration Differences
 
@@ -192,9 +266,10 @@ Video metrics over each complete generated suffix:
 These are effectively tied and show no consistent shift-10 gain. This test
 isolates shift at 256. It does not test the old 640 presentation.
 
-## Camera Accuracy Is Better in the Recent Run
+## Camera Accuracy Under Comparable Evaluation
 
-Historical step-7000 full-71 inverse metrics from the `hung_iter6000` tree:
+An older stored step-7000 inverse report used the historical 480/720-tier,
+shift-10 input contract and reported:
 
 ```text
 rotation error:              1.1688 deg
@@ -204,19 +279,22 @@ normalized translation err: 0.005913
 ATE:                         0.06428 m
 ```
 
-Recent A step-100k full-71 inverse metrics:
+Do not compare that report directly with current Phase-1 evaluations. The new
+current-contract reconstruction of the same historical delta reports:
 
 ```text
-rotation error:              0.2716 deg
-translation direction cos:  0.8243
-scale ratio:                 1.0114
-normalized translation err: 0.003832
-ATE:                         0.02413 m
+rotation error:              0.2678 deg
+translation direction cos:  0.7709
+scale ratio:                 0.9229
+normalized translation err: 0.004681
+ATE:                         0.03995 m
 ```
 
-The older model's apparent visual advantage therefore does not mean it learned
-better camera control. The recent model is substantially better in metric
-camera space.
+The old model is much better than its incompatible historical report suggested,
+but Original 100k remains clearly stronger on all five camera metrics. A 100k
+has similar rotation to the old model and materially better direction,
+translation, scale, and ATE. The old model's apparent visual advantage therefore
+still does not establish better metric camera control.
 
 ## Why fp16 Cache Is Unlikely to Be the Cause
 
@@ -350,20 +428,27 @@ and no-I2V ablation.
 
 Run these in order. Do not change multiple factors in one comparison.
 
-### 1. Finish the matched sampling matrix
+### 1. Finish the same-checkpoint sampling matrix
 
-Use identical held-out sources, seeds, prompts, prefix, EMA choice, and solver:
+The saved pair now establishes:
 
 ```text
-old checkpoint at 256x256, shift 3
-recent A at 256x256, shift 3
-old checkpoint at source 640x640, shift 10
-recent A at source 640x640, shift 10
+old step-7000 at 256 tier, shift 3: flickers
+old step-7000 at 720 tier, shift 10: visibly smoother
 ```
 
-The first pair tests model/training quality. The second pair tests whether the
-new model can recover the presentation quality seen in old videos. Record the
-actual model path loaded in every output directory.
+The prompt, seed, first-frame bytes, camera-action values, guidance, solver, and
+step count are identical. The remaining required 2x2 cells are:
+
+```text
+old step-7000 at 256 tier, shift 10
+old step-7000 at 720 tier, shift 3
+```
+
+Those cells separate spatial/token-count conditioning from the denoising
+schedule. Then repeat the decisive cells with Original/A if needed. Record the
+actual merged/direct model path and regular-versus-EMA choice in every output
+directory.
 
 ### 2. Test task/update composition
 
@@ -426,9 +511,10 @@ deprecated TensorFlow-Hub I3D FVD.
 
 Ranked by probability of explaining the observed visual difference:
 
-1. **High confidence confound:** old 640 presentation and ambiguous merged-model
-   provenance versus recent 256 official evaluation.
-2. **Most likely training cause if a matched comparison still differs:** global
+1. **Confirmed inference-contract effect:** the same old weights flicker at the
+   current 256/shift-3 contract but are smoother at the historical
+   720-tier/shift-10 contract. Resolution versus shift is not yet isolated.
+2. **Most likely training cause after inference matching:** global
    LoRA optimization changed from large mixed-objective updates to small
    homogeneous-task updates, with pure I2V steps and much weaker camera loss on
    the shared LoRA.
