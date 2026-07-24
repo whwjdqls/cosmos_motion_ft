@@ -602,6 +602,19 @@ directly at the enriched files.
 
 The framework's bundled modality JSON files contain a literal shift of 10 because the release defaults target the high-resolution tier. This run intentionally overrides that one value to 3, matching both Nano's `{256:3, 480:5, 720:10}` map and this run's 256-resolution training distribution. The solver, sigma construction, EMA loading, CFG implementation, and task step/guidance defaults remain NVIDIA's official path; using the unmodified shift 10 would be a train/evaluation mismatch here.
 
+A 2026-07-24 controlled audit of the historical step-7000 regular weights
+separated resolution tier from shift on five exact forward-dynamics inputs.
+At fixed shift 3, 720-tier generation reduced adjacent RGB change, temporal
+second difference, and flow-compensated residual by
+`17.7%/18.8%/14.0%` relative to 256-tier generation. At fixed 256, changing
+shift 3 to 10 changed the same diagnostics by only
+`-0.7%/-0.4%/-1.9%`. Thus shift 10 is not the flicker fix; the larger spatial
+inference tier is the dominant same-checkpoint factor. The old run's dataset
+config was also 256, so this is a pretrained spatial-resolution inference
+effect, not evidence of high-resolution Nymeria finetuning. See
+`PHASE1_VISUAL_QUALITY_AUDIT.md` before comparing recent 256-tier EMA videos
+with old 640x640 outputs.
+
 ### 2026-07-23 Visual-Quality Root-Cause Audit
 
 Do not infer that historical training was better from the existing MP4s alone.

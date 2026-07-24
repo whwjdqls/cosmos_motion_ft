@@ -62,11 +62,38 @@ apples-to-apples comparison:
 Changing A from shift 3 to shift 10 at 256x256 did not materially improve its
 metrics. A same-checkpoint comparison on 2026-07-24 then established a more
 specific result: the old step-7000 weights flicker under the current 256/shift-3
-contract but are smooth under their historical 720-tier/shift-10 contract. The
-two runs use byte-identical first-frame PNGs and numerically identical camera
-actions. Resolution tier and shift are still coupled in the saved pair, so this
-does not yet identify which one matters, but it rules out a simple
-"old checkpoint weights are intrinsically smooth" explanation.
+contract but are smooth under their historical 720-tier/shift-10 contract.
+
+The completed 2x2 matrix isolates the dominant factor. Five historical
+`fdpolicy5` records were regenerated with the exact same merged regular model,
+prompt, condition image, camera actions, seed, guidance, UniPC solver, and 30
+steps. Only resolution tier and shift changed:
+
+| inference cell | adjacent RGB MAD | temporal second difference | flow-compensated RGB MAD |
+|---|---:|---:|---:|
+| 256 tier, shift 3 | 0.04057 | 0.06405 | 0.01530 |
+| 256 tier, shift 10 | 0.04030 | 0.06382 | 0.01502 |
+| 720 tier, shift 3 | 0.03356 | 0.05228 | 0.01311 |
+| 720 tier, shift 10 | 0.03312 | 0.05160 | 0.01252 |
+
+At fixed shift 3, moving from the 256 tier to the 720 tier lowers the three
+temporal-change diagnostics by `17.7%`, `18.8%`, and `14.0%`. At fixed 256,
+changing shift 3 to 10 changes them by only `-0.7%`, `-0.4%`, and `-1.9%`.
+The labeled comparison videos agree with the user's visual observation:
+resolution tier is the dominant factor for this checkpoint; shift is secondary.
+These are diagnostic temporal-change statistics, not a replacement for a
+human flicker study or GT video-quality metrics. RGB MAD and temporal second
+difference are measured after resizing every output to 256x256; the
+flow-compensated residual uses 128x128 analysis frames.
+
+The old run's saved dataset config also says `resolution: '256'`; only the model
+default remains `resolution: '720'`. Therefore the smoother 720-tier result is
+not evidence that this LoRA was trained on high-resolution Nymeria. It instead
+shows that the same weights can use the pretrained model's larger spatial-token
+inference path much more coherently. More latent spatial tokens, different
+positional coordinates, and higher-resolution VAE decoding all change the
+generation computation; this is not equivalent to resizing a completed
+256x256 MP4.
 
 If a matched-resolution, matched-sampler comparison still shows that the old
 model is more realistic, the most likely training cause is the optimization
@@ -85,9 +112,9 @@ contract around the shared global generator LoRA:
 This combination can let the LoRA fit low-resolution Nymeria reconstruction
 more directly while perturbing the pretrained visual prior. It is more
 plausible than fp16 quantization as a training-side contributor. The
-same-checkpoint result also shows that inference resolution/schedule compatibility
-is a separate, high-priority contributor and must be isolated before assigning
-the observed flicker entirely to training.
+same-checkpoint result shows that inference spatial tier is a separate,
+high-priority contributor. A/B/Original must be compared at the same high tier
+before assigning their observed 256-tier flicker entirely to training.
 
 ## Canonical Results Through 2026-07-24
 
@@ -428,27 +455,28 @@ and no-I2V ablation.
 
 Run these in order. Do not change multiple factors in one comparison.
 
-### 1. Finish the same-checkpoint sampling matrix
+### 1. Completed same-checkpoint sampling matrix
 
-The saved pair now establishes:
-
-```text
-old step-7000 at 256 tier, shift 3: flickers
-old step-7000 at 720 tier, shift 10: visibly smoother
-```
-
-The prompt, seed, first-frame bytes, camera-action values, guidance, solver, and
-step count are identical. The remaining required 2x2 cells are:
+The exact five-sample 2x2 matrix is under:
 
 ```text
-old step-7000 at 256 tier, shift 10
-old step-7000 at 720 tier, shift 3
+/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/
+world_camera_nymeria_97f_hung_iter6000/checkpoints/iter_000007000/
+sampler_matrix_fdpolicy5_exact_20260724/
 ```
 
-Those cells separate spatial/token-count conditioning from the denoising
-schedule. Then repeat the decisive cells with Original/A if needed. Record the
-actual merged/direct model path and regular-versus-EMA choice in every output
-directory.
+`temporal_diagnostics.json` contains aggregate and per-sample diagnostics.
+`comparisons/t{0..4}_sampler_resolution_2x2.mp4` contains the labeled visual
+comparisons. The model is
+`/weka/jungbin/tmp_merge/m97f_7000/model`, reconstructed regular weights rather
+than EMA. All four cells use the same five historical JSONL records and the
+historical inference command with `torch.compile` enabled.
+
+The result isolates spatial tier, not shift, as the dominant same-checkpoint
+effect. The next controlled inference experiment is Original/A at both 256 and
+720 tiers with their own EMA weights. Do not compare a merged regular old
+checkpoint to a recent EMA checkpoint and call any difference a training
+effect.
 
 ### 2. Test task/update composition
 
@@ -511,9 +539,9 @@ deprecated TensorFlow-Hub I3D FVD.
 
 Ranked by probability of explaining the observed visual difference:
 
-1. **Confirmed inference-contract effect:** the same old weights flicker at the
-   current 256/shift-3 contract but are smoother at the historical
-   720-tier/shift-10 contract. Resolution versus shift is not yet isolated.
+1. **Confirmed inference spatial-tier effect:** for the same old weights and
+   five exact inputs, the 720 tier is visibly and diagnostically smoother at
+   both shifts. Shift 10 provides only a small change at fixed resolution.
 2. **Most likely training cause after inference matching:** global
    LoRA optimization changed from large mixed-objective updates to small
    homogeneous-task updates, with pure I2V steps and much weaker camera loss on
@@ -522,9 +550,10 @@ Ranked by probability of explaining the observed visual difference:
    subjective realism diverging from reconstruction metrics.
 4. **Lower probability:** prompt/tokenizer and minor filter differences.
 5. **Very low probability:** fp16 latent storage precision.
-6. **Disfavored by direct test:** shift 3 versus shift 10 at 256.
+6. **Disfavored by direct test:** shift 3 versus shift 10 at either fixed tier.
 
 Do not revert to shift 10 as the training default. Shift 3 is the correct
-Cosmos-3 Nano 256-tier contract. If higher visual resolution is required, train
-and evaluate a real higher-resolution bucket with its corresponding native
-schedule rather than labeling a 256 training run as 720.
+Cosmos-3 Nano 256-tier contract. A 720-tier deployment should normally use its
+native shift-10 schedule, but the controlled result shows that shift is not why
+the old 720-tier videos are smooth. First evaluate recent EMA checkpoints at the
+larger tier; only then decide whether higher-tier finetuning is needed.

@@ -309,9 +309,15 @@ forward/inverse/policy across ranks on every up-to-128-clip update and used
 action weight 10; A uses one homogeneous task per 32-clip update, adds pure I2V,
 and uses action weight 2. This may let Nymeria video reconstruction dominate the
 shared LoRA while camera heads still achieve strong inverse metrics. It remains
-a training-side hypothesis. The 2026-07-24 same-checkpoint test confirmed a
-separate inference-contract effect, but resolution tier and shift still need the
-two missing 2x2 cells documented in the audit.
+a training-side hypothesis. The completed 2026-07-24 five-sample
+same-checkpoint 2x2 test identifies spatial inference tier as a separate,
+dominant factor: at fixed shift 3, 720-tier sampling lowers adjacent RGB change,
+temporal second difference, and flow-compensated residual by
+`17.7%/18.8%/14.0%` versus 256; shift 3 to 10 at fixed 256 changes those by only
+`-0.7%/-0.4%/-1.9%`. The old run's dataset config is itself 256, so this is not
+high-resolution Nymeria training; the larger pretrained spatial-token inference
+path is producing the smoother result. See the audit for exact paths and
+caveats.
 
 Official inference syntax gotcha: the config must be passed as the relative Python file path:
 
@@ -380,7 +386,7 @@ A/B were already running when the full-71 callback was added, so their in-memory
 
 Final Phase-1 video-quality comparison as of 2026-07-24: canonical full-71 prefix-1 forward PSNR/SSIM/LPIPS, DreamSim, and FP32 VideoMAE-v2 CD-FVD are Original-100k `19.4988/.612583/.285336/.170482/281.614`, A-100k `19.5343/.614062/.284598/.169134/295.561`, B-100k `18.6945/.586307/.315056/.177504/304.385`, D-100k `18.3851/.576988/.328101/.189021/319.056`, and historical-7k under the current contract `18.4828/.574474/.322919/.175386/282.414`. Corresponding inverse rotation/translation/ATE are Original `.213 deg/3.18 mm/2.36 cm`, A `.272/3.83/2.41`, B `.287/4.04/2.52`, D `.315/4.39/3.03`, and old 7k `.268/4.68/3.99`. C stopped at 65k and has no full-71 report; its compact five-source forward macro is `15.203/.430/.447` and inverse is `.601 deg/12.99 mm/9.63 cm`. The compact five-prefix forward macros are Original `16.955/.497/.368`, A `17.203/.505/.359`, B `17.507/.519/.356`, C as above, and D `16.756/.489/.379`. Original is the best balanced model; A ties it on aligned frame metrics but loses camera/CD-FVD, B benefits from long prefixes but loses prefix-1 quality, and C/D underperform global LoRA.
 
-The historical step-7000 comparison is not a strict EMA match: its old trainable-delta DCP was reconstructed with `nymeria_world/export_merge_lora.py` and sampled from merged regular weights, while Original/A/B/D use EMA. Its exact first frame and `96x9` camera actions are byte/numerically identical between the smooth historical output and the new current-contract output. The same old weights are smooth at the historical 720 tier/shift 10 but flicker at 256/shift 3; therefore old weights alone do not solve flicker. Resolution tier and shift are still coupled, and the required isolating cells are old-7k at 256/shift-10 and 720/shift-3. Detailed tables, paths, caveats, and interpretation are in `native_phase_training/PHASE1_VISUAL_QUALITY_AUDIT.md`.
+The historical step-7000 comparison is not a strict EMA match: its old trainable-delta DCP was reconstructed with `nymeria_world/export_merge_lora.py` and sampled from merged regular weights, while Original/A/B/D use EMA. The exact five-sample 2x2 matrix holds the historical prompt, condition image, `96x9` camera actions, seed, guidance, UniPC-30 solver, model, and inference command fixed. Both 720-tier cells are smoother than both 256-tier cells; shift has only a small fixed-tier effect. Artifacts are under `iter_000007000/sampler_matrix_fdpolicy5_exact_20260724`, including `temporal_diagnostics.json` and five labeled comparison MP4s. Detailed tables, caveats, and interpretation are in `native_phase_training/PHASE1_VISUAL_QUALITY_AUDIT.md`.
 
 Verification bar for this directory is higher than a config import. After changes, run pycompile, TOML dryrun, one-step train smoke, final DCP save, official inference load, and official samples for forward/inverse/policy.
 
