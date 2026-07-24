@@ -123,6 +123,104 @@ def pick_test_windows(
     return selected
 
 
+def pick_explicit_test_windows(
+    windows_json: Path,
+    quality_filter_path: str = "",
+) -> list[dict[str, Any]]:
+    """Resolve an ordered explicit ``[{uuid,start}]`` list against the test manifest."""
+    rows = json.loads(windows_json.read_text())
+    if not isinstance(rows, list) or not rows:
+        raise ValueError(f"{windows_json}: expected a nonempty JSON list")
+
+    split_data = json.loads(SPLIT.read_text())
+    test_uuids = set(split_data["test"])
+    requested: list[tuple[str, int]] = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict) or "uuid" not in row or "start" not in row:
+            raise ValueError(f"{windows_json}: malformed row {index}: {row!r}")
+        uuid = str(row["uuid"])
+        start = int(row["start"])
+        frames = int(row.get("num_frames", NUM_FRAMES))
+        if frames != NUM_FRAMES:
+            raise ValueError(
+                f"{windows_json}: row {index} has num_frames={frames}, expected {NUM_FRAMES}"
+            )
+        if uuid not in test_uuids:
+            raise ValueError(f"{windows_json}: {uuid!r} is not in the held-out split")
+        requested.append((uuid, start))
+    if len(set(requested)) != len(requested):
+        raise ValueError(f"{windows_json}: duplicate (uuid, start) windows")
+
+    wanted_uuids = {uuid for uuid, _start in requested}
+    records: dict[str, dict[str, Any]] = {}
+    with MANIFEST.open() as f:
+        for line in f:
+            record = json.loads(line)
+            uuid = record.get("uuid")
+            if uuid in wanted_uuids:
+                records[uuid] = record
+
+    exclusions = load_quality_filter_exclusions(quality_filter_path, NUM_FRAMES)
+    selected: list[dict[str, Any]] = []
+    for uuid, start in requested:
+        record = records.get(uuid)
+        if record is None or not record.get("camera_path") or not record.get("vision_path"):
+            raise ValueError(f"{windows_json}: missing manifest camera/video record for {uuid}")
+        rgb_path = _rgb_path(record["camera_path"])
+        if not os.path.isfile(rgb_path) or not os.path.isfile(record["vision_path"]):
+            raise FileNotFoundError(
+                f"{windows_json}: missing RGB trajectory or video for {(uuid, start)}"
+            )
+        nb_frames = int(record.get("nb_frames", 0))
+        if start < 0 or start + NUM_FRAMES > nb_frames:
+            raise ValueError(
+                f"{windows_json}: {(uuid, start)} exceeds sequence length {nb_frames}"
+            )
+        exclusion = exclusions.get((uuid, start, start + NUM_FRAMES))
+        if exclusion is not None:
+            if exclusion["split"] != "test":
+                raise ValueError(
+                    f"quality filter split mismatch for {(uuid, start, start + NUM_FRAMES)}"
+                )
+            raise ValueError(
+                f"{windows_json}: explicitly requested window is excluded by the quality filter: "
+                f"{(uuid, start, start + NUM_FRAMES)}"
+            )
+
+        captions = []
+        for window in record.get("t2w_windows", []):
+            caption = (window.get("caption") or "").strip()
+            window_start = int(window.get("start_frame", 0))
+            window_end = min(int(window.get("end_frame", nb_frames)), nb_frames)
+            if (
+                window_start == start
+                and window.get("usable", False)
+                and caption
+                and start + NUM_FRAMES <= window_end
+            ):
+                captions.append(caption)
+        if not captions:
+            raise ValueError(
+                f"{windows_json}: no usable captioned T97 manifest window for {(uuid, start)}"
+            )
+        selected.append(
+            {
+                "uuid": uuid,
+                "start": start,
+                "vision_path": record["vision_path"],
+                "rgb_path": rgb_path,
+                "caption": captions[0],
+            }
+        )
+
+    print(
+        f"[native-eval] resolved {len(selected)}/{len(requested)} explicit held-out windows "
+        f"from {windows_json}",
+        flush=True,
+    )
+    return selected
+
+
 def build_inference_records(
     *, name: str, first_frame: Path, gt_clip: Path, action_path: Path, caption: str, seed: int
 ) -> dict[str, dict[str, Any]]:
@@ -303,9 +401,17 @@ def main() -> None:
     )
     parser.add_argument("--quality-filter", default="")
     parser.add_argument("--replace-standalone-c", action="store_true")
+    parser.add_argument(
+        "--windows-json",
+        type=Path,
+        default=None,
+        help="ordered explicit [{uuid,start,num_frames?}] held-out windows; preserves list order",
+    )
     args = parser.parse_args()
     if args.n < 0:
         parser.error("--n must be non-negative")
+    if args.windows_json is not None and args.n != 0:
+        parser.error("--n cannot be combined with --windows-json")
 
     try:
         requested_prefixes = [int(value.strip()) for value in args.prefix_lengths.split(",") if value.strip()]
@@ -313,11 +419,17 @@ def main() -> None:
         parser.error(f"invalid --prefix-lengths: {error}")
     prefix_lengths, _ = validate_prefix_sampling(requested_prefixes, None, NUM_FRAMES)
 
-    picks = pick_test_windows(
-        n=args.n,
-        seed=args.seed,
-        quality_filter_path=args.quality_filter,
-    )
+    if args.windows_json is not None:
+        picks = pick_explicit_test_windows(
+            args.windows_json,
+            quality_filter_path=args.quality_filter,
+        )
+    else:
+        picks = pick_test_windows(
+            n=args.n,
+            seed=args.seed,
+            quality_filter_path=args.quality_filter,
+        )
     if not picks:
         raise RuntimeError("no held-out T97 windows are available")
 
@@ -332,6 +444,8 @@ def main() -> None:
 
     for index, pick in enumerate(picks):
         name = f"t{index:02d}_{pick['uuid'].replace('/', '_')}"
+        if args.windows_json is not None:
+            name += f"_s{pick['start']}"
         sample_dir = samples_root / name
         sample_dir.mkdir(parents=True, exist_ok=True)
 

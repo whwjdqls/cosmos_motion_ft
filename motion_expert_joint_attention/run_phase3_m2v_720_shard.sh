@@ -16,6 +16,11 @@ for path in "${CKPT}" "${WINDOWS_JSON}"; do
   test -s "${path}"
 done
 test -d "${LATENT_ROOT}"
+N=$(jq 'length' "${WINDOWS_JSON}")
+if [[ ! ${N} =~ ^[1-9][0-9]*$ ]]; then
+  echo "windows JSON must contain a nonempty array: ${WINDOWS_JSON}" >&2
+  exit 2
+fi
 
 if [[ -f ${OUT_DIR}/EVALUATION_COMPLETE ]]; then
   echo "[phase3-m2v-720] SKIP completed ${OUT_DIR}"
@@ -25,13 +30,13 @@ fi
 mkdir -p "${OUT_DIR}"
 echo "[phase3-m2v-720] node=$(hostname) gpu=${CUDA_VISIBLE_DEVICES:-unset}"
 echo "[phase3-m2v-720] ckpt=${CKPT}"
-echo "[phase3-m2v-720] windows=${WINDOWS_JSON}"
+echo "[phase3-m2v-720] windows=${WINDOWS_JSON} n=${N}"
 echo "[phase3-m2v-720] contract=T97 VAE-bucket-480 latent-40x40 shift10 UniPC30 CFG1 seed0"
 
 bash "${D}/run.sh" "${D}/eval_all.py" \
   --ckpt "${CKPT}" \
   --out_dir "${OUT_DIR}" \
-  --n 1 \
+  --n "${N}" \
   --tasks motimg2video \
   --windows_json "${WINDOWS_JSON}" \
   --latent_root "${LATENT_ROOT}" \

@@ -72,35 +72,39 @@ def main() -> None:
 
         metrics_path = part / "video" / "motimg2video_metrics.json"
         metrics = json.loads(metrics_path.read_text())
-        if metrics.get("n") != 1 or len(metrics.get("per_sequence", {})) != 1:
-            raise RuntimeError(f"{metrics_path}: expected exactly one sequence")
-        name, row = next(iter(metrics["per_sequence"].items()))
-        if name in rows:
-            raise RuntimeError(f"duplicate sequence name {name}")
-        rows[name] = row
+        part_rows = metrics.get("per_sequence", {})
+        if metrics.get("n") != len(part_rows) or not part_rows:
+            raise RuntimeError(
+                f"{metrics_path}: inconsistent or empty sequence count "
+                f"(n={metrics.get('n')}, rows={len(part_rows)})"
+            )
+        for name, row in part_rows.items():
+            if name in rows:
+                raise RuntimeError(f"duplicate sequence name {name}")
+            rows[name] = row
 
-        latent = part / "video" / "motimg2video" / f"{name}.npz"
-        gt = part / "viz" / f"motimg2video_{name}_gt.mp4"
-        gen = part / "viz" / f"motimg2video_{name}_gen.mp4"
-        comparison = part / "viz" / f"motimg2video_{name}.mp4"
-        for path in (latent, gt, gen, comparison):
-            if not path.is_file():
-                raise FileNotFoundError(path)
-        gen_probe = _probe_video(gen)
-        if (
-            int(gen_probe["width"]) != 640
-            or int(gen_probe["height"]) != 640
-            or int(gen_probe["nb_frames"]) != 97
-            or gen_probe["r_frame_rate"] != "20/1"
-        ):
-            raise RuntimeError(f"{gen}: unexpected video contract {gen_probe}")
-        artifacts[name] = {
-            "part": str(part),
-            "latents": str(latent),
-            "gt_video": str(gt),
-            "generated_video": str(gen),
-            "comparison_video": str(comparison),
-        }
+            latent = part / "video" / "motimg2video" / f"{name}.npz"
+            gt = part / "viz" / f"motimg2video_{name}_gt.mp4"
+            gen = part / "viz" / f"motimg2video_{name}_gen.mp4"
+            comparison = part / "viz" / f"motimg2video_{name}.mp4"
+            for path in (latent, gt, gen, comparison):
+                if not path.is_file():
+                    raise FileNotFoundError(path)
+            gen_probe = _probe_video(gen)
+            if (
+                int(gen_probe["width"]) != 640
+                or int(gen_probe["height"]) != 640
+                or int(gen_probe["nb_frames"]) != 97
+                or gen_probe["r_frame_rate"] != "20/1"
+            ):
+                raise RuntimeError(f"{gen}: unexpected video contract {gen_probe}")
+            artifacts[name] = {
+                "part": str(part),
+                "latents": str(latent),
+                "gt_video": str(gt),
+                "generated_video": str(gen),
+                "comparison_video": str(comparison),
+            }
 
     aggregate = EA._aggregate_video_metrics(rows)
     args.out_dir.mkdir(parents=True, exist_ok=True)

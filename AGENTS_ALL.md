@@ -846,27 +846,35 @@ Recent M2V results (PSNR/SSIM higher is better; LPIPS lower is better):
 
 There is no single best recent checkpoint. On the sequence-balanced motion-clean71 report, 150k is best for MPJPE (`0.18458 m`), feature MSE (`0.34000`), and root error (`0.15906 m`); 160k is best for PA-MPJPE (`0.09032 m`) and every M2V metric; 140k has the lowest acceleration error (`0.00629`). Against 110k, 150k lowers clean71 MPJPE by `6.04%`, feature MSE by `9.91%`, and root error by `6.98%`; 160k lowers PA-MPJPE by `12.06%` and improves M2V by `+0.1325 dB` PSNR, `+0.00308` SSIM, and `-0.01094` LPIPS. Mean predicted accelerations remain dynamic at approximately `0.00509`, `0.00521`, and `0.00515` for 140k/150k/160k, so none exhibits the invalid static BASE-fallback behavior.
 
-Phase-3 high-tier M2V diagnostic (2026-07-24): this is an inference-only five-window test, not new bridge training and not a full-71 result. It samples baseline `ckpt_step200000.pt` and head-camera `ckpt_step115000.pt` on the identical deterministic motion-clean replacement windows. The Phase-3 temporal contract remains 97 RGB frames, 97 aligned motion frames, and 25 Wan latent frames; the earlier 33-frame observation came from accidentally probing the default T33 cache, not from either checkpoint's training contract. The high-tier path uses `--resolution 480`, which produces square 640x640 decoded videos and `[48,25,40,40]` latents in this pipeline. It overrides only the native generator inference shift from the checkpointed 3 to 10, then uses native generator velocity prediction with UniPC-30, CFG 1, and seed 0. M2V motion is clean conditioning, so no motion solver is invoked. This extrapolates a bridge trained on 256-tier `[48,25,16,16]` video latents to a larger spatial grid; successful execution does not establish that the bridge was trained for this resolution.
+Phase-3 high-tier M2V resolution audit (2026-07-24): baseline `ckpt_step200000.pt` was sampled on the exact sequence-balanced motion-clean71 benchmark, not only the original five replacement windows. The set is the canonical 66 floor-valid held-out rows plus five deterministic same-sequence replacements. The temporal contract is unchanged: 97 RGB frames, 97 aligned clean motion frames, and 25 Wan latent frames. The earlier 33-frame observation came from accidentally probing the default T33 cache and was never this checkpoint's training contract. The high-tier path uses `--resolution 480`, which means the official Cosmos **720 tier** but produces square 640x640 decoded videos and `[48,25,40,40]` latents in this pipeline. It overrides only the native generator inference shift from checkpointed 3 to 10 and otherwise retains native velocity prediction, UniPC-30, CFG 1, and seed 0. M2V motion is clean conditioning, so no motion solver is invoked.
 
-All production sampling was completed on `a3ultravis-a3ultranodeset-0` after the user prohibited node 2. The five per-model GT/generated/comparison sets are finite, nonblank, 97 frames at 20 FPS, and the 20 raw GT/generated MP4s are 640x640. The five four-way videos are `GT | BASE 256/S3 | BASE 720/S10 | HEADCAM 720/S10`; green borders denote GT or the clean frame-0 prefix and red borders denote generated frames 1-96. The aborted node-2 partial directory ending `_aborted_node2_20260724` is noncanonical and must not be used.
+Matched motion-clean71 suffix metrics:
 
-Five-window suffix metrics:
-
-| Model / inference | PSNR dB | SSIM | LPIPS-Alex |
+| Baseline step 200k inference | PSNR dB | SSIM | LPIPS-Alex |
 |---|---:|---:|---:|
-| baseline step 200k, 256 tier / shift 3 | 16.4201 | 0.46469 | 0.38711 |
-| baseline step 200k, 720 tier / shift 10 | 16.0745 | 0.49518 | 0.45498 |
-| headcam step 115k, 720 tier / shift 10 | 16.3287 | 0.49746 | 0.45837 |
+| 256 tier / shift 3 | 16.64946 | 0.52182 | 0.38470 |
+| 720 tier / shift 10 | 16.74922 | 0.60141 | 0.44467 |
 
-On these five cases, high-tier baseline versus 256 baseline changes PSNR by `-0.3456 dB`, SSIM by `+0.03048`, and LPIPS by `+0.06787`; it is therefore not uniformly better under aligned fidelity metrics. Headcam versus high-tier baseline changes PSNR by `+0.2542 dB`, SSIM by `+0.00229`, and LPIPS by `+0.00339` (slightly worse). Do not generalize from five windows; use a matched full-71 high-tier evaluation before selecting a sampler or checkpoint from these aggregates.
+High tier changes PSNR by `+0.09976 dB` and SSIM by `+0.07959`, but worsens LPIPS by `+0.05997`. This is mixed aligned-fidelity evidence, not proof that high-tier inference is categorically better. The full high-tier result is `eval_m2v_motion_clean71_step200000_720tier_s10_unipc30`; all 71 rows completed and its merged `summary.json`, metrics, latent outputs, and videos agree on the exact set. The dedicated three-way gallery `compare_m2v_motion_clean71_step200000_256s3_vs_720s10` contains 71 validated `GT | 256/S3 | 720/S10` MP4s.
 
-Artifacts:
+Resolution is a real Phase-3 bridge extrapolation. At training resolution, each layer presents `25*16*16 = 6,400` video tokens to the bridge; high tier presents `25*40*40 = 40,000`, or 6.25 times as many. `LocalModalityBridge` keeps full generator-to-generator and motion-to-motion attention and uses temporal locality only for cross-modal generator-motion edges. Thus the frame mapping remains correct, but cross-modal softmax competition, per-motion-query key count, and same-modality attention statistics change. Scalar gates do not explicitly compensate for this token-count shift. More resolution-robust follow-ups would normalize cross-attention separately from same-modality attention, pool video tokens per frame before cross-modal exchange and broadcast afterward, or train the bridge on mixed spatial resolutions. Treat these as design hypotheses, not validated fixes.
 
-- Baseline high tier: `/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_m2v_replacement5_step200000_720tier_s10_unipc30`.
-- Headcam high tier: `/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_m2v_replacement5_step115000_720tier_s10_unipc30`.
-- Four-way gallery and machine-readable deltas: `/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/compare_m2v_720_base200k_head115k`.
-- Matched high-tier latent cache and one-window manifests: `/weka/jungbin/cosmos_motion_ft_runs/phase3_m2v_720tier_conditions_T97_replacement5_20260724`.
-- Reproduction/merge/comparison tools: `run_phase3_m2v_720_shard.sh`, `merge_phase3_m2v_720.py`, and `compare_phase3_m2v_720.py`. `eval_all.py --gen_shift_override` records both checkpoint and effective shifts and `--expected_m2v_latent_hw` fails early on a wrong cache.
+The earlier five-replacement diagnostic remains useful for the head-camera checkpoint. Its high-tier suffix metrics are baseline step 200k `16.0745/0.49518/0.45498` and headcam step 115k `16.3287/0.49746/0.45837` for PSNR/SSIM/LPIPS. The five four-way videos are in `compare_m2v_720_base200k_head115k`; the aborted node-2 directory ending `_aborted_node2_20260724` is noncanonical.
+
+The exact 71-window cross-phase gallery is:
+
+`/weka/jungbin/cosmos_motion_ft_runs/phase1_phase3_motion_clean71_resolution_compare_20260724/compare_gt_p1_256_720_p3_256_720`
+
+Each validated 97-frame, 20-FPS, 1280x256 MP4 is ordered `GT | Phase-1 256/S3 | Phase-1 720/S10 | Phase-3 256/S3 | Phase-3 720/S10`. Green denotes the GT tile or clean frame-0 condition; red denotes generated frames 1-96. Phase-1 uses the latest 100k EMA checkpoint and official Cosmos UniPC-30 sampler. Exact `(sequence UUID, start frame)` and condition hashes established that 66 canonical Phase-1 outputs were directly reusable; only the five replacement windows required new 256/S3 and 720/S10 inference. The initial 256 smoke correctly rejected local bookkeeping fields that are not part of the official inference schema; routing records through the existing sanitizer fixed this before production. No model output was silently paired by task index.
+
+Canonical artifacts and tools:
+
+- Phase-3 high-tier clean71 result: `/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k/eval_m2v_motion_clean71_step200000_720tier_s10_unipc30`.
+- Phase-3 exact high-tier cache: `/weka/jungbin/cosmos_motion_ft_runs/phase3_m2v_720tier_conditions_T97_motion_clean71_20260724`.
+- Phase-1/Phase-3 exact inputs, reuse manifest, missing-five outputs, and five-way gallery: `/weka/jungbin/cosmos_motion_ft_runs/phase1_phase3_motion_clean71_resolution_compare_20260724`.
+- Headcam five-window high tier: `/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/eval_m2v_replacement5_step115000_720tier_s10_unipc30`.
+- Phase-3 tools: `shard_windows_json.py`, `run_phase3_m2v_720_shard.sh`, `merge_phase3_m2v_720.py`, and `compare_phase3_m2v_720.py`. `eval_all.py --gen_shift_override` records checkpoint/effective shifts and `--expected_m2v_latent_hw` fails early on a wrong cache.
+- Phase-1/cross-phase tools: `prep_test_eval.py --windows-json`, `prepare_phase1_motion_clean_reuse.py`, `run_phase1_forward_resolution_shard.sh`, and `compare_phase1_phase3_resolutions.py`.
 
 `sample.py` provides standalone per-task samplers. `eval_all.py`, `eval_camera.py`, and `eval_motion_recon.py` are main evaluation helpers.
 
