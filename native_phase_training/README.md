@@ -342,7 +342,7 @@ The compact five-source, five-prefix forward macro results are Original
 best balanced prefix-1 model because it retains the strongest camera metrics
 and best full-suffix CD-FVD. See `PHASE1_VISUAL_QUALITY_AUDIT.md` for policy,
 I2V, per-horizon interpretation, old-checkpoint reconstruction provenance, and
-the unresolved same-checkpoint 256/720 versus shift-3/10 matrix.
+the completed 256/720 resolution-tier comparisons.
 
 Training rank 0 atomically writes `<run>/native_phase1_contract.json` before
 launch. It records the adaptation mode, active/dropped tasks, LoRA enablement and
@@ -614,6 +614,25 @@ config was also 256, so this is a pretrained spatial-resolution inference
 effect, not evidence of high-resolution Nymeria finetuning. See
 `PHASE1_VISUAL_QUALITY_AUDIT.md` before comparing recent 256-tier EMA videos
 with old 640x640 outputs.
+
+The follow-up used every Original/A/B/D 100k EMA checkpoint and all 71
+canonical held-out prefix-1 forward records. Official 720-tier sampling
+produced 640x640 videos with shift 10, UniPC-30, guidance 1, and seed 0. Against
+each model's canonical 256/shift-3 result, second-difference and
+flow-compensated residual improved by `19-22%` and `15-23%`; DreamSim also
+improved for all four models. Frame-aligned PSNR/SSIM/LPIPS worsened for all
+models. CD-FVD changed from `281.614 -> 308.912` (Original), `295.561 ->
+301.229` (A), `304.385 -> 303.792` (B), and `319.056 -> 295.649` (D). Thus the
+high tier reliably reduces the diagnosed flicker, but only D gains a large
+distributional-quality improvement. Raw outputs, reports, and 25 labeled
+comparison videos are under:
+
+```text
+/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/
+phase1_ema100k_resolution_matrix_5_20260724/full71_720/
+```
+
+See `PHASE1_VISUAL_QUALITY_AUDIT.md` for the complete table and limitations.
 
 ### 2026-07-23 Visual-Quality Root-Cause Audit
 

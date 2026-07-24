@@ -95,6 +95,17 @@ positional coordinates, and higher-resolution VAE decoding all change the
 generation computation; this is not equivalent to resizing a completed
 256x256 MP4.
 
+The follow-up full-71 experiment has now reproduced this effect on the
+Original/A/B/D 100k EMA checkpoints. Each checkpoint was sampled at the
+official 720 tier (raw 640x640 video), shift 10, UniPC-30, guidance 1, and seed
+0 using the same 71 prefix-1 records as the canonical 256-tier benchmark.
+Relative to each model's canonical 256/shift-3 result, 68-70 of 71 sequences
+have lower flow-compensated residual and every model has better DreamSim.
+Frame-aligned PSNR/SSIM/LPIPS become worse, however, and CD-FVD improves only
+for B (slightly) and D (substantially). The high tier is therefore a confirmed
+temporal-coherence/semantic-similarity benefit, not a universal reconstruction
+quality improvement.
+
 If a matched-resolution, matched-sampler comparison still shows that the old
 model is more realistic, the most likely training cause is the optimization
 contract around the shared global generator LoRA:
@@ -113,8 +124,9 @@ This combination can let the LoRA fit low-resolution Nymeria reconstruction
 more directly while perturbing the pretrained visual prior. It is more
 plausible than fp16 quantization as a training-side contributor. The
 same-checkpoint result shows that inference spatial tier is a separate,
-high-priority contributor. A/B/Original must be compared at the same high tier
-before assigning their observed 256-tier flicker entirely to training.
+high-priority contributor. The completed high-tier Original/A/B/D comparison
+confirms this while also showing that the adaptation method still materially
+changes distributional quality.
 
 ## Canonical Results Through 2026-07-24
 
@@ -170,6 +182,60 @@ Current interpretation:
   pixel metrics and camera translation/ATE are worse. Its current-contract
   video still visibly flickers, so this score does not establish that the old
   weights alone solve temporal consistency.
+
+### Full-71 720-Tier Follow-Up
+
+The same 71 prefix-1 forward records were sampled from every 100k EMA
+checkpoint with the official 720-tier contract: raw 640x640 output, shift 10,
+UniPC-30, guidance 1, and seed 0. Quality metrics resize GT and predictions to
+the common 256x256 analysis resolution and exclude conditioned RGB frame 0.
+Temporal diagnostics use all 97 generated frames. DreamSim is a paired
+perceptual metric; CD-FVD is the FP32 VideoMAE-v2-SSv2 distribution metric.
+
+| Model | Tier | PSNR | SSIM | LPIPS | DreamSim | CD-FVD | Second diff. | Flow residual |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Original | 256/s3 | 19.4988 | 0.612583 | 0.285336 | 0.170482 | 281.614 | 0.044162 | 0.011055 |
+| Original | 720/s10 | 18.1664 | 0.577551 | 0.314861 | **0.152390** | 308.912 | **0.035647** | **0.009240** |
+| A | 256/s3 | 19.5343 | 0.614062 | 0.284598 | 0.169134 | 295.561 | 0.044529 | 0.011089 |
+| A | 720/s10 | 18.2921 | 0.577013 | 0.318208 | **0.152715** | 301.229 | **0.034978** | **0.009072** |
+| B | 256/s3 | 18.6945 | 0.586307 | 0.315056 | 0.177504 | 304.385 | 0.044197 | 0.011177 |
+| B | 720/s10 | 17.8478 | 0.566787 | 0.333077 | **0.158576** | **303.792** | **0.034325** | **0.008976** |
+| D | 256/s3 | 18.3851 | 0.576988 | 0.328101 | 0.189021 | 319.056 | 0.045110 | 0.011543 |
+| D | 720/s10 | 17.9273 | 0.570685 | 0.333614 | **0.160809** | **295.649** | **0.035045** | **0.008656** |
+
+Paired 256-to-720 temporal changes are:
+
+- Original: second difference `-19.03%` (70/71 lower), flow residual
+  `-15.40%` (68/71 lower).
+- A: second difference `-21.45%` (70/71), flow residual `-17.29%` (68/71).
+- B: second difference `-22.44%` (69/71), flow residual `-18.84%` (69/71).
+- D: second difference `-21.93%` (68/71), flow residual `-22.94%` (70/71).
+
+All four models improve paired DreamSim at the high tier. CD-FVD changes by
+`+27.298` for Original, `+5.668` for A, `-0.593` for B, and `-23.407` for D,
+where lower is better. D consequently has the best high-tier CD-FVD and flow
+residual, despite having weaker frame-aligned fidelity than Original/A. This is
+evidence that camera-token K/V LoRA preserves a useful high-resolution
+distributional pathway better than it appears to at 256, but it is an
+interpretation rather than proof of mechanism.
+
+Artifacts:
+
+```text
+/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/
+phase1_ema100k_resolution_matrix_5_20260724/
+  analysis/SUMMARY.md                         # five-record 256/720/shift matrix
+  viz/                                       # five-record labeled comparisons
+  full71_720/
+    models/{original,A,B,D}/shard_XX/         # 284 raw 640x640 samples
+    analysis/SUMMARY.md                       # merged core + advanced metrics
+    advanced/{original,A,B,D}/                # DreamSim and CD-FVD reports
+    viz/by_model/                             # 20 GT/256/720 comparisons
+    viz/by_cell/                              # 5 GT/Original/A/B/D comparisons
+```
+
+Every comparison MP4 has 97 frames at 20 FPS. GT tiles and conditioned GT
+frames have green borders.
 
 Canonical old-7k outputs and reports:
 
@@ -455,7 +521,7 @@ and no-I2V ablation.
 
 Run these in order. Do not change multiple factors in one comparison.
 
-### 1. Completed same-checkpoint sampling matrix
+### 1. Completed spatial-tier sampling matrices
 
 The exact five-sample 2x2 matrix is under:
 
@@ -473,10 +539,11 @@ than EMA. All four cells use the same five historical JSONL records and the
 historical inference command with `torch.compile` enabled.
 
 The result isolates spatial tier, not shift, as the dominant same-checkpoint
-effect. The next controlled inference experiment is Original/A at both 256 and
-720 tiers with their own EMA weights. Do not compare a merged regular old
-checkpoint to a recent EMA checkpoint and call any difference a training
-effect.
+effect. The follow-up Original/A/B/D 100k EMA full-71 experiment is recorded in
+`Full-71 720-Tier Follow-Up` above. It confirms the smoother high-tier behavior
+while showing a mixed fidelity/distributional result. Do not compare a merged
+regular old checkpoint to a recent EMA checkpoint and call any difference a
+training effect.
 
 ### 2. Test task/update composition
 
@@ -541,7 +608,9 @@ Ranked by probability of explaining the observed visual difference:
 
 1. **Confirmed inference spatial-tier effect:** for the same old weights and
    five exact inputs, the 720 tier is visibly and diagnostically smoother at
-   both shifts. Shift 10 provides only a small change at fixed resolution.
+   both shifts. The result repeats across the Original/A/B/D 100k EMA
+   checkpoints on 71 held-out records. Shift 10 provides only a small change at
+   fixed resolution.
 2. **Most likely training cause after inference matching:** global
    LoRA optimization changed from large mixed-objective updates to small
    homogeneous-task updates, with pure I2V steps and much weaker camera loss on
@@ -553,7 +622,8 @@ Ranked by probability of explaining the observed visual difference:
 6. **Disfavored by direct test:** shift 3 versus shift 10 at either fixed tier.
 
 Do not revert to shift 10 as the training default. Shift 3 is the correct
-Cosmos-3 Nano 256-tier contract. A 720-tier deployment should normally use its
-native shift-10 schedule, but the controlled result shows that shift is not why
-the old 720-tier videos are smooth. First evaluate recent EMA checkpoints at the
-larger tier; only then decide whether higher-tier finetuning is needed.
+Cosmos-3 Nano 256-tier contract. A 720-tier deployment should use its native
+shift-10 schedule. The completed evaluation does not justify switching the
+existing Phase-3 bridge directly to 720: that path was trained with 256-tier
+generator token geometry, and the larger token layout and bridge cost require
+separate validation or retraining.
