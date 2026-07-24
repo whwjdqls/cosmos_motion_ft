@@ -240,9 +240,18 @@ def _video_side_by_side(gt_frames, gen_frames, dst_mp4, fps):
     # ffmpeg hstack (GT | generated); falls back to the two separate clips if ffmpeg fails.
     if gt_frames is not None:
         import subprocess
-        fc = ("[0:v]scale=380:380,pad=iw:ih+26:0:26:black,drawtext=text=GT:x=6:y=3:"
-              "fontcolor=yellow:fontsize=18[a];[1:v]scale=380:380,pad=iw:ih+26:0:26:black,"
-              "drawtext=text=gen:x=6:y=3:fontcolor=yellow:fontsize=18[b];[a][b]hstack")
+        fc = (
+            "[0:v]scale=380:380,pad=iw:ih+26:0:26:black,"
+            "drawbox=x=0:y=26:w=iw:h=ih-26:color=green:t=6,"
+            "drawtext=text=GT:x=6:y=3:fontcolor=green:fontsize=18[a];"
+            "[1:v]scale=380:380,pad=iw:ih+26:0:26:black,"
+            "drawbox=x=0:y=26:w=iw:h=ih-26:color=green:t=6:enable='eq(n,0)',"
+            "drawbox=x=0:y=26:w=iw:h=ih-26:color=red:t=6:enable='gte(n,1)',"
+            "drawtext=text='GEN (GT prefix)':x=6:y=3:fontcolor=green:fontsize=18:"
+            "enable='eq(n,0)',"
+            "drawtext=text=GEN:x=6:y=3:fontcolor=red:fontsize=18:enable='gte(n,1)'[b];"
+            "[a][b]hstack"
+        )
         r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", gt_path, "-i", gen_path,
                             "-filter_complex", fc, dst_mp4], check=False)
         if r.returncode == 0:
@@ -293,6 +302,16 @@ def main():
              "official solver",
     )
     ap.add_argument(
+        "--gen_shift_override",
+        type=float,
+        default=None,
+        help=(
+            "inference-only native generator scheduler shift override. Use 10 with the "
+            "480-pixel VAE bucket to reproduce the repository's high-tier sampling contract; "
+            "the checkpointed shift remains recorded separately"
+        ),
+    )
+    ap.add_argument(
         "--eval_head_camera_alignment",
         action="store_true",
         help=(
@@ -326,6 +345,16 @@ def main():
     ap.add_argument("--num_frames", type=int, default=None)
     ap.add_argument("--fps", type=float, default=float(C.FPS))
     ap.add_argument("--resolution", default="256")
+    ap.add_argument(
+        "--expected_m2v_latent_hw",
+        type=int,
+        default=None,
+        help=(
+            "optional strict M2V latent spatial-size assertion. The cached 256-tier path is "
+            "16x16; this repository's square 480-tier path emits 640x640 pixels and 40x40 "
+            "Wan latents"
+        ),
+    )
     ap.add_argument("--vae_path",
                     default=os.environ.get("WAN_VAE_PATH", "/weka/jungbin/wan22_vae/Wan2.2_VAE.pth"))
     ap.add_argument("--no_video", action="store_true", help="skip all VAE latent->pixel decode")
@@ -338,6 +367,10 @@ def main():
     args = ap.parse_args()
     if args.ckpt is not None and not os.path.isfile(args.ckpt):
         ap.error(f"--ckpt does not exist or is not a file: {args.ckpt}")
+    if args.gen_shift_override is not None and args.gen_shift_override <= 0:
+        ap.error("--gen_shift_override must be positive")
+    if args.expected_m2v_latent_hw is not None and args.expected_m2v_latent_hw <= 0:
+        ap.error("--expected_m2v_latent_hw must be positive")
 
     tasks = [t for t in args.tasks if t in ALL_TASKS]
     bad = [t for t in args.tasks if t not in ALL_TASKS]
@@ -425,6 +458,20 @@ def main():
         model.eval()
         objective = model.objective
 
+    checkpoint_gen_shift = float(model.gen_shift)
+    if args.gen_shift_override is not None:
+        if model.gen_schedule != "native":
+            raise ValueError(
+                "--gen_shift_override is only valid for native generator schedules, got "
+                f"{model.gen_schedule!r}"
+            )
+        model.gen_shift = float(args.gen_shift_override)
+        print(
+            f"[eval_all] inference-only generator shift override: "
+            f"{checkpoint_gen_shift:g} -> {model.gen_shift:g}",
+            flush=True,
+        )
+
     summary["sampling"] = {
         "steps": int(args.steps),
         "cfg": float(args.cfg),
@@ -434,7 +481,11 @@ def main():
         "motion_native_solver": model.motion_native_solver,
         "gen_schedule": model.gen_schedule,
         "gen_shift": float(model.gen_shift),
+        "checkpoint_gen_shift": checkpoint_gen_shift,
+        "gen_shift_overridden": args.gen_shift_override is not None,
         "gen_native_solver": model.gen_native_solver,
+        "vae_resolution": str(args.resolution),
+        "expected_m2v_latent_hw": args.expected_m2v_latent_hw,
     }
 
     # ---- T + latent root: default from ckpt args (mirrors eval_camera) -------------------------
@@ -601,6 +652,16 @@ def main():
                 np.ascontiguousarray(_load_latents(it["lp"]))
             ).float().to(dev)
             _C, T_lat, _h, _w = vlat.shape
+            if (
+                "motimg2video" in mv_tasks
+                and args.expected_m2v_latent_hw is not None
+                and (_h != args.expected_m2v_latent_hw or _w != args.expected_m2v_latent_hw)
+            ):
+                raise RuntimeError(
+                    f"{name}: M2V latent grid is {_h}x{_w}, expected "
+                    f"{args.expected_m2v_latent_hw}x{args.expected_m2v_latent_hw}; "
+                    f"latent_root={latent_root}"
+                )
         cap = it["cap"]
 
         # ---- MOTION tasks: sample -> recon metric -> render ------------------------------------
