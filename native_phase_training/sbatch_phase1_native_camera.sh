@@ -32,11 +32,17 @@ export NATIVEP1_LORA_LR=${NATIVEP1_LORA_LR:-5e-5}
 export NATIVEP1_ACTION_LR_MULT=${NATIVEP1_ACTION_LR_MULT:-4.0}
 export NATIVEP1_ACTION_LOSS_WEIGHT=${NATIVEP1_ACTION_LOSS_WEIGHT:-10.0}
 export NATIVEP1_NORMALIZE_LOSS_BY_ACTIVE=${NATIVEP1_NORMALIZE_LOSS_BY_ACTIVE:-0}
+export NATIVEP1_SHIFT_OVERRIDE=${NATIVEP1_SHIFT_OVERRIDE:-}
 export NATIVEP1_ADAPTATION_MODE=${NATIVEP1_ADAPTATION_MODE:-global_lora}
 export NATIVEP1_PREFIX_LENGTHS=${NATIVEP1_PREFIX_LENGTHS:-1}
 export NATIVEP1_PREFIX_SAMPLING_WEIGHTS=${NATIVEP1_PREFIX_SAMPLING_WEIGHTS:-}
 export NATIVEP1_CLIPS_PER_GPU=${NATIVEP1_CLIPS_PER_GPU:-4}
+export NATIVEP1_EXPECTED_LATENT_HW=${NATIVEP1_EXPECTED_LATENT_HW:-}
+export NATIVEP1_EXPECTED_IMAGE_HW=${NATIVEP1_EXPECTED_IMAGE_HW:-}
+export NATIVEP1_REQUIRE_LATENT_CACHE_CONTRACT=${NATIVEP1_REQUIRE_LATENT_CACHE_CONTRACT:-0}
 export NATIVEP1_RUN_NAME=${NATIVEP1_RUN_NAME:-native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k}
+export NATIVEP1_MAX_ITER=${NATIVEP1_MAX_ITER:-100000}
+export NATIVEP1_SAVE_ITER=${NATIVEP1_SAVE_ITER:-5000}
 export NATIVEP1_AUTO_EVAL=${NATIVEP1_AUTO_EVAL:-1}
 export NATIVEP1_AUTO_EVAL_EVERY=${NATIVEP1_AUTO_EVAL_EVERY:-0}
 export NATIVEP1_PREFLIGHT_STEPS=${NATIVEP1_PREFLIGHT_STEPS:-0}
@@ -61,9 +67,12 @@ echo "[nativep1] replace_standalone_c=${NYMERIA_REPLACE_STANDALONE_C}"
 echo "[nativep1] output_root=${IMAGINAIRE_OUTPUT_ROOT}"
 echo "[nativep1] lora_lr=${NATIVEP1_LORA_LR} action_lr_mult=${NATIVEP1_ACTION_LR_MULT}"
 echo "[nativep1] action_loss_weight=${NATIVEP1_ACTION_LOSS_WEIGHT} normalize_by_active=${NATIVEP1_NORMALIZE_LOSS_BY_ACTIVE}"
+echo "[nativep1] resolution=${NYMERIA_RESOLUTION} shift_override=${NATIVEP1_SHIFT_OVERRIDE:-released-config}"
 echo "[nativep1] adaptation_mode=${NATIVEP1_ADAPTATION_MODE} prefixes=${NATIVEP1_PREFIX_LENGTHS} prefix_weights=${NATIVEP1_PREFIX_SAMPLING_WEIGHTS:-uniform}"
 echo "[nativep1] clips_per_gpu=${NATIVEP1_CLIPS_PER_GPU} (0 means 45056-token budget packing)"
+echo "[nativep1] expected_latent_hw=${NATIVEP1_EXPECTED_LATENT_HW:-unchecked} expected_image_hw=${NATIVEP1_EXPECTED_IMAGE_HW:-unchecked} require_cache_contract=${NATIVEP1_REQUIRE_LATENT_CACHE_CONTRACT}"
 echo "[nativep1] run_name=${NATIVEP1_RUN_NAME}"
+echo "[nativep1] max_iter=${NATIVEP1_MAX_ITER} save_iter=${NATIVEP1_SAVE_ITER}"
 echo "[nativep1] tensorboard=${TB_LOG_DIR:-${IMAGINAIRE_OUTPUT_ROOT}/cosmos3_camera/camera_world/${NATIVEP1_RUN_NAME}/tensorboard}"
 echo "[nativep1] auto_eval=${NATIVEP1_AUTO_EVAL} every=${NATIVEP1_AUTO_EVAL_EVERY:-all_saves} eval_inputs=${NATIVEP1_EVAL_INPUT_DIR} viz_n=${NATIVEP1_VIZ_N}"
 echo "[nativep1] full71_eval=${NATIVEP1_AUTO_EVAL_FULL71} every=${NATIVEP1_FULL71_EVAL_EVERY:-all_saves} eval_inputs=${NATIVEP1_FULL71_EVAL_INPUT_DIR}"
@@ -92,6 +101,14 @@ if [[ -n "${NYMERIA_QUALITY_FILTER}" ]]; then
 elif [[ -n "${NATIVEP1_QUALITY_FILTER_SHA256}" ]]; then
   echo "[nativep1] ERROR: filter SHA was set without NYMERIA_QUALITY_FILTER" >&2
   exit 1
+fi
+
+if [[ "${NATIVEP1_REQUIRE_LATENT_CACHE_CONTRACT}" == "1" ]]; then
+  echo "[nativep1] validating complete latent cache before model construction"
+  /home/jungbin_cho/miniforge3/envs/cosmos/bin/python \
+    /home/jungbin_cho/cosmos_motion_ft/native_phase_training/validate_latent_cache.py \
+    --root "${NYMERIA_LATENT_ROOT}" \
+    --sample-count "${NATIVEP1_CACHE_VALIDATION_SAMPLES:-256}"
 fi
 
 MIN_FREE_MIB=${NATIVEP1_MIN_FREE_MIB:-132000}
@@ -195,6 +212,6 @@ elif (( NATIVEP1_PREFLIGHT_STEPS > 0 )); then
   echo "[nativep1] existing checkpoint $(<"${latest_file}"); skipping first-launch preflight"
 fi
 
-run_native_phase1 100000 5000
+run_native_phase1 "${NATIVEP1_MAX_ITER}" "${NATIVEP1_SAVE_ITER}"
 
 echo "[nativep1] done date=$(date)"

@@ -35,6 +35,12 @@ from cosmos_framework.data.vfm.joint_dataloader import IterativeJointDataLoader
 
 from nymeria_camera_rgb_dataset import MODE_WEIGHTS
 from camera_to_action import DOMAIN_ID
+from native_phase_training.latent_cache_contract import (
+    CACHE_CONTRACT_FILENAME,
+    LatentCacheContract,
+    load_latent_cache_contract,
+    validate_cached_sample,
+)
 
 
 _ACTION_MODES = frozenset({"forward_dynamics", "inverse_dynamics", "policy"})
@@ -188,6 +194,62 @@ def latent_path(uuid: str, start: int, root: str) -> str:
     uuid_safe = uuid.replace("/", "__")
     subj = uuid.split("/")[0] if "/" in uuid else "_misc"
     return os.path.join(root, subj, f"{uuid_safe}_{int(start)}.npz")
+
+
+def validate_training_cache_contract(
+    *,
+    latent_root: str,
+    num_frames: int,
+    fps: float,
+    model_resolution_tier: str | None,
+    expected_latent_hw: int | None,
+    expected_image_hw: int | None,
+    require_contract: bool,
+) -> LatentCacheContract | None:
+    """Validate cache-wide geometry before workers start reading samples."""
+
+    contract_path = os.path.join(latent_root, CACHE_CONTRACT_FILENAME)
+    if not os.path.isfile(contract_path):
+        if require_contract:
+            raise FileNotFoundError(
+                f"required latent-cache contract is missing: {contract_path}"
+            )
+        return None
+
+    contract = load_latent_cache_contract(latent_root)
+    if contract.num_frames != num_frames:
+        raise ValueError(
+            f"latent-cache T mismatch: cache={contract.num_frames} requested={num_frames}"
+        )
+    if abs(contract.fps - fps) > 1e-6:
+        raise ValueError(f"latent-cache FPS mismatch: cache={contract.fps} requested={fps}")
+    if (
+        model_resolution_tier is not None
+        and contract.model_resolution_tier != str(model_resolution_tier)
+    ):
+        raise ValueError(
+            "latent-cache model tier mismatch: "
+            f"cache={contract.model_resolution_tier!r} requested={model_resolution_tier!r}"
+        )
+    if expected_latent_hw is not None and contract.expected_latent_shape[-2:] != (
+        expected_latent_hw,
+        expected_latent_hw,
+    ):
+        raise ValueError(
+            "latent-cache spatial shape mismatch: "
+            f"cache={contract.expected_latent_shape[-2:]} "
+            f"requested={(expected_latent_hw, expected_latent_hw)}"
+        )
+    if expected_image_hw is not None and contract.expected_image_hw != (
+        expected_image_hw,
+        expected_image_hw,
+    ):
+        raise ValueError(
+            "latent-cache image shape mismatch: "
+            f"cache={contract.expected_image_hw} "
+            f"requested={(expected_image_hw, expected_image_hw)}"
+        )
+    return contract
 
 
 @lru_cache(maxsize=16)
@@ -399,6 +461,10 @@ class NymeriaCameraLatentDataset(Dataset):
         prefix_lengths: list[int] | tuple[int, ...] = (1,),
         prefix_sampling_weights: list[float] | tuple[float, ...] | None = None,
         prefix_seed: int = 42,
+        model_resolution_tier: str | None = None,
+        expected_latent_hw: int | None = None,
+        expected_image_hw: int | None = None,
+        require_latent_cache_contract: bool = False,
     ) -> None:
         super().__init__()
         if num_frames % 4 != 1:
@@ -423,6 +489,21 @@ class NymeriaCameraLatentDataset(Dataset):
         self._worker_rng: random.Random | None = None
         self._modes = list(MODE_WEIGHTS)
         self._mode_weights = [MODE_WEIGHTS[m] for m in self._modes]
+        self._cache_contract = validate_training_cache_contract(
+            latent_root=latent_root,
+            num_frames=self.num_frames,
+            fps=self.fps,
+            model_resolution_tier=model_resolution_tier,
+            expected_latent_hw=expected_latent_hw,
+            expected_image_hw=expected_image_hw,
+            require_contract=require_latent_cache_contract,
+        )
+        if self._cache_contract is not None:
+            self._expected_latent_hw = self._cache_contract.expected_latent_shape[-1]
+            self._expected_image_hw = self._cache_contract.expected_image_hw[-1]
+        else:
+            self._expected_latent_hw = expected_latent_hw
+            self._expected_image_hw = expected_image_hw
 
         index = build_cached_index(
             manifest_path,
@@ -481,6 +562,14 @@ class NymeriaCameraLatentDataset(Dataset):
             action = d["camera_action"].astype(np.float32)
             image_size = d["image_size"].astype(np.float32)
 
+        if self._cache_contract is not None:
+            validate_cached_sample(
+                self._cache_contract,
+                latents=latents,
+                camera_action=action,
+                image_size=image_size,
+                context=it["latent_path"],
+            )
         if action.shape[0] != self.num_frames - 1:
             raise ValueError(f"bad cached action shape {action.shape} in {it['latent_path']}")
 
@@ -490,6 +579,21 @@ class NymeriaCameraLatentDataset(Dataset):
                 f"bad cached latent temporal shape {latents.shape} in {it['latent_path']}; "
                 f"expected [C,{expected_latent_frames},H,W]"
             )
+        if self._expected_latent_hw is not None and tuple(latents.shape[-2:]) != (
+            self._expected_latent_hw,
+            self._expected_latent_hw,
+        ):
+            raise ValueError(
+                f"bad cached latent spatial shape {latents.shape} in {it['latent_path']}; "
+                f"expected H=W={self._expected_latent_hw}"
+            )
+        if self._expected_image_hw is not None:
+            actual_image_hw = tuple(int(round(float(value))) for value in image_size[:2])
+            if actual_image_hw != (self._expected_image_hw, self._expected_image_hw):
+                raise ValueError(
+                    f"bad cached image_size {image_size.tolist()} in {it['latent_path']}; "
+                    f"expected transformed H=W={self._expected_image_hw}"
+                )
 
         caption = "" if mode == "inverse_dynamics" else it["cap"]
         if caption and self.replace_standalone_c:

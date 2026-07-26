@@ -17,7 +17,7 @@ import yaml
 CONTRACT_FILENAME = "native_phase1_contract.json"
 RESOLVED_CONTRACT_FILENAME = "resolved_run_contract.json"
 RESOLVED_ENV_FILENAME = "resolved_run_contract.env"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 ALL_TASKS = frozenset({"forward_dynamics", "inverse_dynamics", "policy", "image2video"})
 ADAPTATION_MODES = frozenset({"global_lora", "action_only", "camera_kv_lora"})
@@ -81,6 +81,9 @@ class NativePhase1RunContract:
     lora_enabled: bool
     lora_target_modules: tuple[str, ...]
     training_prefix_lengths: tuple[int, ...]
+    model_resolution: str
+    num_frames: int
+    training_shift: float
 
     def __post_init__(self) -> None:
         if self.schema_version != SCHEMA_VERSION:
@@ -119,13 +122,19 @@ class NativePhase1RunContract:
             raise ValueError(f"{self.adaptation_mode} contract must exclude image2video from training")
         if not self.training_prefix_lengths or any(value <= 0 for value in self.training_prefix_lengths):
             raise ValueError(f"invalid training prefix lengths: {self.training_prefix_lengths}")
+        if not self.model_resolution:
+            raise ValueError("model_resolution must not be empty")
+        if self.num_frames <= 0 or self.num_frames % 4 != 1:
+            raise ValueError(f"num_frames must be positive and 4N+1, got {self.num_frames}")
+        if self.training_shift <= 0.0:
+            raise ValueError(f"training_shift must be positive, got {self.training_shift}")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "NativePhase1RunContract":
-        expected = {
+        legacy_expected = {
             "schema_version",
             "adaptation_mode",
             "active_modes",
@@ -133,6 +142,31 @@ class NativePhase1RunContract:
             "lora_enabled",
             "lora_target_modules",
             "training_prefix_lengths",
+        }
+        schema_version = int(value.get("schema_version", -1))
+        if schema_version == 1:
+            missing = legacy_expected - set(value)
+            extra = set(value) - legacy_expected
+            if missing or extra:
+                raise ValueError(
+                    f"invalid legacy run contract fields: missing={sorted(missing)} "
+                    f"extra={sorted(extra)}"
+                )
+            upgraded = dict(value)
+            upgraded.update(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "model_resolution": "256",
+                    "num_frames": 97,
+                    "training_shift": 3.0,
+                }
+            )
+            value = upgraded
+
+        expected = legacy_expected | {
+            "model_resolution",
+            "num_frames",
+            "training_shift",
         }
         missing = expected - set(value)
         extra = set(value) - expected
@@ -146,6 +180,9 @@ class NativePhase1RunContract:
             lora_enabled=bool(value["lora_enabled"]),
             lora_target_modules=tuple(str(module) for module in value["lora_target_modules"]),
             training_prefix_lengths=tuple(int(length) for length in value["training_prefix_lengths"]),
+            model_resolution=str(value["model_resolution"]),
+            num_frames=int(value["num_frames"]),
+            training_shift=float(value["training_shift"]),
         )
 
 
@@ -164,6 +201,7 @@ def contract_from_config(config: Any) -> NativePhase1RunContract:
     dropped_modes = tuple(sorted(ALL_TASKS - set(active_modes)))
 
     prefix_sets: set[tuple[int, ...]] = set()
+    num_frame_sets: set[int] = set()
     for mode, stream in dataloaders.items():
         try:
             loader = _value(stream, "dataloader")
@@ -175,11 +213,18 @@ def contract_from_config(config: Any) -> NativePhase1RunContract:
                 # ablations always conditioned visual tasks on one RGB frame.
                 configured_prefixes = (1,)
             prefixes = tuple(int(length) for length in configured_prefixes)
+            try:
+                configured_num_frames = int(_value(dataset, "num_frames"))
+            except (AttributeError, KeyError):
+                configured_num_frames = 97
         except (AttributeError, KeyError, TypeError) as error:
             raise ValueError(f"cannot resolve prefix lengths for training mode {mode!r}") from error
         prefix_sets.add(prefixes)
+        num_frame_sets.add(configured_num_frames)
     if len(prefix_sets) != 1:
         raise ValueError(f"training streams disagree on prefix lengths: {sorted(prefix_sets)}")
+    if len(num_frame_sets) != 1:
+        raise ValueError(f"training streams disagree on num_frames: {sorted(num_frame_sets)}")
 
     lora_enabled = bool(_value(model_config, "lora_enabled"))
     lora_target_modules = _parse_targets(_value(model_config, "lora_target_modules"))
@@ -190,6 +235,23 @@ def contract_from_config(config: Any) -> NativePhase1RunContract:
             lora_enabled=lora_enabled,
             lora_target_modules=lora_target_modules,
         )
+    try:
+        model_resolution = str(_value(model_config, "resolution"))
+    except (AttributeError, KeyError):
+        model_resolution = "256"
+    try:
+        flow_config = _value(model_config, "rectified_flow_training_config")
+        shift_config = _value(flow_config, "shift")
+        if isinstance(shift_config, Mapping):
+            training_shift = float(shift_config[model_resolution])
+        else:
+            training_shift = float(shift_config)
+    except (AttributeError, KeyError, TypeError):
+        if model_resolution != "256":
+            raise ValueError(
+                f"legacy config does not record a shift for resolution {model_resolution!r}"
+            )
+        training_shift = 3.0
 
     return NativePhase1RunContract(
         schema_version=SCHEMA_VERSION,
@@ -199,6 +261,9 @@ def contract_from_config(config: Any) -> NativePhase1RunContract:
         lora_enabled=lora_enabled,
         lora_target_modules=lora_target_modules,
         training_prefix_lengths=next(iter(prefix_sets)),
+        model_resolution=model_resolution,
+        num_frames=next(iter(num_frame_sets)),
+        training_shift=training_shift,
     )
 
 
@@ -291,6 +356,29 @@ def resolve_eval_contract(
                 "NYMERIA_DROP_MODES conflicts with the checkpoint contract: "
                 f"environment={requested_drops} checkpoint={contract.dropped_modes}"
             )
+    if "NYMERIA_RESOLUTION" in environment:
+        requested_resolution = environment["NYMERIA_RESOLUTION"].strip()
+        if requested_resolution != contract.model_resolution:
+            raise ValueError(
+                "NYMERIA_RESOLUTION conflicts with the checkpoint contract: "
+                f"environment={requested_resolution!r} checkpoint={contract.model_resolution!r}"
+            )
+    if "NYMERIA_NUM_FRAMES" in environment:
+        requested_frames = int(environment["NYMERIA_NUM_FRAMES"])
+        if requested_frames != contract.num_frames:
+            raise ValueError(
+                "NYMERIA_NUM_FRAMES conflicts with the checkpoint contract: "
+                f"environment={requested_frames} checkpoint={contract.num_frames}"
+            )
+    if "NATIVEP1_SHIFT_OVERRIDE" in environment and environment[
+        "NATIVEP1_SHIFT_OVERRIDE"
+    ].strip():
+        requested_shift = float(environment["NATIVEP1_SHIFT_OVERRIDE"])
+        if abs(requested_shift - contract.training_shift) > 1e-9:
+            raise ValueError(
+                "NATIVEP1_SHIFT_OVERRIDE conflicts with the checkpoint contract: "
+                f"environment={requested_shift} checkpoint={contract.training_shift}"
+            )
     return contract, source, checkpoint, run_dir
 
 
@@ -313,6 +401,10 @@ def write_eval_resolution(
         (
             f"export NATIVEP1_ADAPTATION_MODE={shlex.quote(contract.adaptation_mode)}",
             f"export NYMERIA_DROP_MODES={shlex.quote(drop_modes)}",
+            f"export NYMERIA_RESOLUTION={shlex.quote(contract.model_resolution)}",
+            f"export NYMERIA_NUM_FRAMES={contract.num_frames}",
+            f"export NATIVEP1_SHIFT_OVERRIDE={contract.training_shift}",
+            f"export NATIVEP1_EFFECTIVE_SHIFT={contract.training_shift}",
             "",
         )
     )
@@ -333,6 +425,7 @@ def main() -> None:
     print(
         "[native-contract] "
         f"mode={resolved['adaptation_mode']} dropped={resolved['dropped_modes']} "
+        f"resolution={resolved['model_resolution']} shift={resolved['training_shift']} "
         f"source={resolved['resolved_from']} record={record_path} env={env_path}",
         flush=True,
     )

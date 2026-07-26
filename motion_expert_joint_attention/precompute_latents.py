@@ -67,11 +67,19 @@ import numpy as np
 import torch
 
 # The 7-task config (paths, T, resolution) and the nymeria_world loaders.
+sys.path.insert(0, "/home/jungbin_cho/cosmos_motion_ft")
 sys.path.insert(0, "/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention")
 sys.path.insert(0, "/home/jungbin_cho/cosmos_motion_ft/nymeria_world")
 sys.path.insert(0, "/home/jungbin_cho/cosmos-framework")
 
 import config as C  # noqa: E402  (motion_expert_joint_attention/config.py)
+from native_phase_training.latent_cache_contract import (  # noqa: E402
+    CACHE_CONTRACT_KIND,
+    CACHE_CONTRACT_VERSION,
+    LatentCacheContract,
+    ensure_latent_cache_contract,
+    validate_cached_sample,
+)
 from nymeria_camera_rgb_dataset import (  # noqa: E402
     _load_rgb_cam,
     _rgb_path,
@@ -184,6 +192,42 @@ def out_path(root: str, uuid: str, start: int) -> str:
     uuid_safe = uuid.replace("/", "__")
     subj = uuid.split("/")[0] if "/" in uuid else "_misc"
     return os.path.join(root, subj, f"{uuid_safe}_{start}.npz")
+
+
+def validate_existing_cached_file(path: str, contract: LatentCacheContract) -> None:
+    """Reject a corrupt or incompatible file before treating it as resumable."""
+
+    with np.load(path) as record:
+        latents = record["latents"]
+        camera_action = record["camera_action"]
+        image_size = record["image_size"]
+        record_t = int(record["T"])
+        record_fps = float(record["fps"])
+    validate_cached_sample(
+        contract,
+        latents=latents,
+        camera_action=camera_action,
+        image_size=image_size,
+        context=path,
+    )
+    if record_t != contract.num_frames:
+        raise ValueError(f"{path}: T={record_t} != {contract.num_frames}")
+    if abs(record_fps - contract.fps) > 1e-6:
+        raise ValueError(f"{path}: fps={record_fps} != {contract.fps}")
+
+
+def deduplicate_physical_windows(index: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Encode one file per physical window even when captions duplicate rows."""
+
+    unique: list[dict[str, Any]] = []
+    seen: set[tuple[str, int]] = set()
+    for item in index:
+        key = (str(item["uuid"]), int(item["s"]))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return unique
 
 
 # ----------------------------------------------------------------------------
@@ -305,6 +349,33 @@ def main():
     ap.add_argument("--num_frames", type=int, default=C.VIDEO_NUM_FRAMES)
     ap.add_argument("--fps", type=float, default=float(C.FPS))
     ap.add_argument("--resolution", default="256")
+    ap.add_argument(
+        "--model_resolution_tier",
+        default=None,
+        help="model tier recorded in the cache contract (for example 720)",
+    )
+    ap.add_argument(
+        "--expected_image_hw",
+        type=int,
+        default=None,
+        help="strict square transformed image size, required with --write_cache_contract",
+    )
+    ap.add_argument(
+        "--expected_latent_hw",
+        type=int,
+        default=None,
+        help="strict square latent size, required with --write_cache_contract",
+    )
+    ap.add_argument(
+        "--write_cache_contract",
+        action="store_true",
+        help="atomically create/validate immutable cache metadata under out_root",
+    )
+    ap.add_argument(
+        "--fail_on_error",
+        action="store_true",
+        help="return nonzero if any assigned window fails instead of accepting a partial shard",
+    )
     ap.add_argument("--vae_path",
                     default=os.environ.get("WAN_VAE_PATH",
                                            "/weka/jungbin/wan22_vae/Wan2.2_VAE.pth"))
@@ -325,6 +396,15 @@ def main():
         ap.error(f"num_frames must be 4N+1 for the Wan VAE (got {args.num_frames})")
     if not (0 <= args.shard_id < args.num_shards):
         ap.error(f"shard_id {args.shard_id} out of range for num_shards {args.num_shards}")
+    if args.write_cache_contract and (
+        args.model_resolution_tier is None
+        or args.expected_image_hw is None
+        or args.expected_latent_hw is None
+    ):
+        ap.error(
+            "--write_cache_contract requires --model_resolution_tier, "
+            "--expected_image_hw, and --expected_latent_hw"
+        )
 
     print(f"[precompute] manifest={args.manifest}", flush=True)
     print(f"[precompute] out_root={args.out_root}  T={args.num_frames}  res={args.resolution}", flush=True)
@@ -334,7 +414,14 @@ def main():
                                      args.num_frames, args.windows_json)
     else:
         index = build_index(args.manifest, args.split_file, args.split, args.num_frames)
+    n_source_rows = len(index)
+    index = deduplicate_physical_windows(index)
     n_total_all = len(index)
+    print(
+        f"[precompute] source rows={n_source_rows}; unique physical windows={n_total_all}; "
+        f"duplicate rows={n_source_rows - n_total_all}",
+        flush=True,
+    )
     # deterministic shard slice (stride so each shard sees a spread of sequences).
     index = index[args.shard_id :: args.num_shards]
     if args.limit is not None:
@@ -348,6 +435,35 @@ def main():
         return
 
     os.makedirs(args.out_root, exist_ok=True)
+    cache_contract = None
+    if args.write_cache_contract:
+        cache_contract = LatentCacheContract(
+            schema_version=CACHE_CONTRACT_VERSION,
+            kind=CACHE_CONTRACT_KIND,
+            source_manifest=os.path.abspath(args.manifest),
+            split_file=os.path.abspath(args.split_file),
+            split=args.split,
+            source_window_count=n_source_rows,
+            expected_file_count=n_total_all,
+            num_frames=args.num_frames,
+            fps=args.fps,
+            spatial_transform_resolution=str(args.resolution),
+            model_resolution_tier=str(args.model_resolution_tier),
+            expected_image_hw=(args.expected_image_hw, args.expected_image_hw),
+            expected_latent_shape=(
+                48,
+                1 + (args.num_frames - 1) // 4,
+                args.expected_latent_hw,
+                args.expected_latent_hw,
+            ),
+            expected_camera_shape=(args.num_frames - 1, 9),
+            latent_dtype="float16",
+            vae_path=os.path.abspath(args.vae_path),
+            num_shards=args.num_shards,
+            limit_per_shard=args.limit,
+        )
+        contract_path = ensure_latent_cache_contract(args.out_root, cache_contract)
+        print(f"[precompute] cache_contract={contract_path}", flush=True)
 
     # Load the VAE + the resize/pad pipeline once.
     t0 = time.time()
@@ -367,10 +483,25 @@ def main():
         dst = out_path(args.out_root, uuid, s)
 
         if (not args.overwrite) and os.path.isfile(dst):
-            n_skip += 1
-            if (i + 1) % args.log_every == 0:
-                _progress(i, index, n_done, n_skip, n_fail, bytes_written, t_start)
-            continue
+            if cache_contract is not None and args.fail_on_error:
+                try:
+                    validate_existing_cached_file(dst, cache_contract)
+                except Exception as error:  # noqa: BLE001 - repair invalid resume artifacts
+                    print(
+                        f"[precompute] REPAIR {uuid}@{s}: existing cache is invalid "
+                        f"({type(error).__name__}: {error})",
+                        flush=True,
+                    )
+                else:
+                    n_skip += 1
+                    if (i + 1) % args.log_every == 0:
+                        _progress(i, index, n_done, n_skip, n_fail, bytes_written, t_start)
+                    continue
+            else:
+                n_skip += 1
+                if (i + 1) % args.log_every == 0:
+                    _progress(i, index, n_done, n_skip, n_fail, bytes_written, t_start)
+                continue
 
         try:
             frames = decode_window_pyav(vis, s, T, args.fps)          # (T,H,W,3) uint8
@@ -380,7 +511,15 @@ def main():
                 raise ValueError(f"bad shapes/NaN: frames {frames.shape} act {act.shape}")
 
             latents, image_size = encode_window(vae, pipe, args.resolution, frames, args.device)
-            if not np.isfinite(latents).all():
+            if cache_contract is not None:
+                validate_cached_sample(
+                    cache_contract,
+                    latents=latents,
+                    camera_action=act,
+                    image_size=image_size,
+                    context=f"{uuid}@{s}",
+                )
+            elif not np.isfinite(latents).all():
                 raise ValueError("non-finite latents")
             latent_shape = latents.shape
         except Exception as e:  # noqa: BLE001 — skip any bad window, keep going (resumable)
@@ -419,6 +558,11 @@ def main():
     print(f"  bytes written   : {bytes_written:,} ({bytes_written/1e9:.3f} GB)", flush=True)
     print(f"  elapsed         : {dt:.1f}s ({dt/max(n_done,1):.2f}s / new window)", flush=True)
     print(f"  out_root        : {args.out_root}", flush=True)
+    if args.fail_on_error and n_fail:
+        raise RuntimeError(
+            f"strict precompute failed: shard {args.shard_id}/{args.num_shards} "
+            f"had {n_fail} failed windows"
+        )
 
 
 def _progress(i, index, n_done, n_skip, n_fail, bytes_written, t_start):

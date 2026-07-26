@@ -4,6 +4,37 @@ Initial audit: 2026-07-10. Correctness update: 2026-07-11.
 
 This audit covers the isolated cached-latent Phase 1 path in `native_phase_training/` and was checked against the local `/home/jungbin_cho/cosmos-framework` source.
 
+## 2026-07-26 Released-720-Tier Training Path
+
+The resolution audit established that official high-tier inference is smoother than the 256 tier for the same checkpoint, but that result did not establish that high-resolution Nymeria training works. A separate controlled path now tests that question.
+
+The naming layers are easy to confuse and are pinned as follows:
+
+- model/config tier: `NYMERIA_RESOLUTION=720`;
+- Nymeria transform/cache key: `--resolution 480`;
+- transformed and decoded square frame size: `640x640`;
+- Wan cache shape: fp16 `[48,25,40,40]` for T97;
+- camera action: unchanged `[96,9]`;
+- released Cosmos Nano tier shift: 10.
+
+The technical report's pretraining table says `1/3/5`, while the released local source and inference defaults say `3/5/10`. This run follows the released checkpoint/config contract, per the explicit 2026-07-26 experiment decision. Run-contract schema 2 records resolution, T, and shift so evaluation cannot silently rebuild a high-tier checkpoint under historical 256/shift-3 defaults.
+
+The cache builder now deduplicates physical `(uuid,start)` windows before sharding, while training retains duplicate caption rows. The unfiltered train index is 119,632 rows and 115,583 unique files. Cache producers atomically create one immutable contract, validate every newly encoded sample, write atomically, and fail their shard if any source window fails. Strict resumed builds also validate skipped files and atomically regenerate corrupt or contract-incompatible artifacts. The training launcher requires exact expected-versus-actual cache paths plus a deterministic 256-file geometry sample before model construction.
+
+The real 8-GPU fixed-four smoke passed with finite rank losses and about 117-119 GiB H200 memory use per GPU. It saved a complete iteration-1 DCP containing model/EMA, optimizer, scheduler, and trainer state. The exact resume test loaded iteration 1, restored model/EMA, optimizer, scheduler, and trainer state, advanced with another finite update, and saved iteration 2.
+
+The first high-tier official-inference smoke caught a separate temporal-default bug before submission. Earlier high-tier forward-only tools intentionally omitted `num_frames`; forward action length 96 still forced a 97-frame output, masking the fact that `OmniSampleArgs` had inherited the released 720-tier default of 189. That omission makes generic I2V actually request 189 frames. The new converter now requires explicit T97 for every mode. It also separates model tier from output bucket: action modes use `image_size=480`, while generic I2V uses `resolution=480, aspect_ratio=1,1`; both yield 640x640 while the loaded model remains tier 720. The validator now rejects missing T, wrong FPS, wrong action length/image size, and wrong I2V output bucket.
+
+The corrected official EMA/UniPC smoke completed all four modes from resumed
+iteration 2 under
+`/weka/jungbin/cosmos_motion_ft_runs/smoke_native_phase1_720_bs4_v2/official_inference_4mode_iter2_T97_v2`.
+All raw videos are 640x640/T97/20 FPS; action-bearing modes contain finite
+`[96,9]` payloads; all qualitative and suffix/camera metric manifests completed.
+The video manifest explicitly marks clean frame 0 lime and generated frames
+1-96 red.
+
+The controlled production recipe intentionally keeps the historical Original settings: four tasks, prefix 1, global Q/K/V/O LoRA, action weight 10, LR `5e-5`, action LR 4x, four clips/GPU, PowerEMA, 100k scheduler horizon, and 5k saves. Only spatial tier/cache geometry and its corresponding released shift change. Compact four-mode and canonical full-71 EMA/UniPC evaluations are scheduled every 10k.
+
 ## 2026-07-23 Visual-Quality Follow-up
 
 The historical-versus-current visual-quality investigation is recorded in
@@ -59,7 +90,7 @@ The historical `nymeria_world/prep_test_eval.py` defaults to image size 480 and 
 
 `native_phase_training/prep_test_eval.py` now pins resolution/image size 256, shift 3.0, T97, action96, and 20 FPS. It creates forward/inverse/policy/image-to-video JSONL files from one usable window per held-out UUID, keeps inverse prompts empty, and reports unavailable UUIDs instead of silently reducing the test set. Action modes use NVIDIA's 30-step/guidance-1 defaults; image-to-video uses 35 steps/guidance 6; all use the official UniPC path.
 
-NVIDIA's bundled modality defaults contain shift 10 for the high-resolution release setting. The local evaluator uses the same official inference/UniPC implementation but overrides shift to Nano's native 256-tier value of 3, matching this run's training distribution.
+NVIDIA's bundled modality defaults contain shift 10 for the high-resolution release setting. Historical local evaluators override it to the saved 256-tier value 3. High-tier evaluators retain the saved 720-tier value 10. Evaluation scripts now resolve the immutable run contract and validate every input JSONL before importing the model.
 
 Each record uses a mode-specific sample name so official inference cannot overwrite another mode's files. `visualize_checkpoint.py` requires every requested record in all four JSONL files to succeed, generates three GT/video comparisons plus inverse/policy camera plots per source sample, and only then writes a completion manifest.
 
@@ -71,7 +102,7 @@ Each record uses a mode-specific sample name so official inference cannot overwr
 
 ## Configuration Truth
 
-- Video training uses the `waver` timestep distribution and the resolution-256 shift of 3.
+- Video training uses the `waver` timestep distribution and the shift saved for the active model tier: 3 for historical 256 runs and 10 for the controlled released-720-tier run.
 - `independent_action_schedule=false`, so action noising reuses each sample's vision/video sigma. The configured `train_time_action_distribution=logitnormal` is inactive unless independent action scheduling is enabled.
 - Image-to-video uses the image `logitnormal` distribution.
 - Loss weighting is uniform and action loss weight is 10.0.

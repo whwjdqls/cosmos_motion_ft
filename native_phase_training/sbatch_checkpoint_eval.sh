@@ -21,7 +21,6 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export TOKENIZERS_PARALLELISM=false
 export PYTHONPATH=/home/jungbin_cho/cosmos_motion_ft:/home/jungbin_cho/cosmos_motion_ft/nymeria_world:/home/jungbin_cho/cosmos-framework:${PYTHONPATH:-}
 export WAN_VAE_PATH=${WAN_VAE_PATH:-/weka/jungbin/wan22_vae/Wan2.2_VAE.pth}
-export NYMERIA_RESOLUTION=256
 export HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1}
 export TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-1}
 
@@ -34,11 +33,20 @@ mkdir -p "${EVAL_OUTPUT_DIR}"
 # environment override that disagrees with the checkpoint's saved contract.
 source "${EVAL_OUTPUT_DIR}/resolved_run_contract.env"
 
+/home/jungbin_cho/miniforge3/envs/cosmos/bin/python \
+  /home/jungbin_cho/cosmos_motion_ft/native_phase_training/validate_eval_inputs.py \
+  --input-dir "${EVAL_INPUT_DIR}" \
+  --expected-shift "${NATIVEP1_EFFECTIVE_SHIFT}" \
+  --expected-resolution "${NYMERIA_RESOLUTION}" \
+  --expected-num-frames "${NYMERIA_NUM_FRAMES}" \
+  fd_input.jsonl invdyn_input.jsonl policy_input.jsonl i2v_input.jsonl
+
 echo "[nativeviz] node=$(hostname) date=$(date)"
 echo "[nativeviz] checkpoint=${CHECKPOINT_PATH}"
 echo "[nativeviz] inputs=${EVAL_INPUT_DIR}"
 echo "[nativeviz] output=${EVAL_OUTPUT_DIR}"
 echo "[nativeviz] adaptation_mode=${NATIVEP1_ADAPTATION_MODE} drop_modes=${NYMERIA_DROP_MODES:-none}"
+echo "[nativeviz] resolution=${NYMERIA_RESOLUTION} shift=${NATIVEP1_EFFECTIVE_SHIFT} T=${NYMERIA_NUM_FRAMES}"
 echo "[nativeviz] visible_gpus=${CUDA_VISIBLE_DEVICES:-all}"
 
 /home/jungbin_cho/miniforge3/envs/cosmos/bin/python - <<'PY'

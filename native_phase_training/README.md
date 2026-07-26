@@ -47,6 +47,15 @@ The important compatibility point is that cached latents are a training input op
   - Provides `LatentAwareIterativeJointDataLoader`, which counts cached latent patches correctly when token-budget packing is selected. Production now uses a fixed four clips per GPU; `NATIVEP1_CLIPS_PER_GPU=0` restores the 45,056-token mode.
   - Formats forward/policy captions with the same `ActionPromptJsonFormatter` used by official inference, keeps inverse text exactly empty, and matches the official plain-text image-to-video duration/resolution template.
   - Strictly validates and applies an optional versioned physical-window quality filter. One excluded `(uuid,start,end)` removes every duplicate caption row for that same T97 window.
+  - Validates an optional immutable latent-cache contract before DataLoader workers start and validates each loaded sample against its spatial/temporal/action geometry.
+
+- `latent_cache_contract.py` and `validate_latent_cache.py`
+  - Define the immutable cache provenance/geometry record.
+  - Validate the complete expected physical-window file set and deterministic materialized samples before a production run constructs the model.
+
+- `prepare_phase1_eval_tier.py` and `validate_eval_inputs.py`
+  - Convert canonical held-out records to the released 256 or 720 model tier.
+  - Reject checkpoint/input resolution, shift, or T mismatches before official inference.
 
 - `build_camera_motion_quality_filter.py`
   - Reconstructs the exact cached-latent Phase-1 population and audits direct upright-RGB-camera versus decoded SOMA-Head continuity and rigid-pair consistency.
@@ -116,6 +125,10 @@ The important compatibility point is that cached latents are a training input op
   - Production Slurm launcher for the official-compatible Phase 1 run.
   - A filtered run must provide both `NYMERIA_QUALITY_FILTER` and its exact `NATIVEP1_QUALITY_FILTER_SHA256`; the launcher fails before torchrun on any mismatch.
 
+- `sbatch_precompute_latents_720tier.sh` and `sbatch_phase1_native_camera_720tier.sh`
+  - Build the 24-shard full 640-pixel cache and launch the controlled released-720-tier Phase-1 run.
+  - The training launcher requires a complete cache marker, performs a two-step DCP save/resume preflight, and evaluates compact four-mode plus canonical full-71 inputs every 10k steps.
+
 - `sbatch_phase1_native_camera_qfilter.sh` and `sbatch_phase1_native_camera_qfilter_no_i2v.sh`
   - Pinned launchers for the filtered four-task control and the filtered three-task no-I2V ablation.
 
@@ -137,6 +150,28 @@ Each latent `.npz` is expected to contain:
 - `camera_action`: `[96,9]`, raw Cosmos camera action, not z-scored.
 - `image_size`: usually `[256,256,256,256]`.
 - metadata such as `uuid`, `start`, `T`, `fps`.
+
+The isolated high-tier contract is:
+
+```bash
+export NYMERIA_NUM_FRAMES=97
+export NYMERIA_RESOLUTION=720
+export NYMERIA_LATENT_ROOT=/weka/jungbin/nymeriaplus_kimodo_proportional/joint_latents_T97_720tier_640
+export NATIVEP1_EXPECTED_IMAGE_HW=640
+export NATIVEP1_EXPECTED_LATENT_HW=40
+export NATIVEP1_SHIFT_OVERRIDE=10
+export NATIVEP1_REQUIRE_LATENT_CACHE_CONTRACT=1
+```
+
+For this pipeline, official model tier `720` does not mean a 720x720 square tensor. Nymeria preprocessing uses transform key `480`, which maps the source square clips to `640x640`; Wan then stores fp16 `[48,25,40,40]`. Do not set the training model to resolution `480`: the released Nano model/config tier is `720`, and its released resolution-adaptive shift is 10. At inference, these are separate fields: action modes use `image_size=480`, while generic I2V uses output bucket `resolution=480, aspect_ratio=1,1`; every mode explicitly sets `num_frames=97`.
+
+The unfiltered train manifest produces 119,632 caption rows but only 115,583 unique physical `(uuid,start)` windows. Duplicate captions intentionally remain separate training examples while sharing one cache file. At about 3.67 MiB per file, the full high-tier cache is expected to occupy roughly 414 GiB.
+
+Strict precompute validates every newly encoded file. On a resumed build it also
+reopens every existing file assigned to that shard; an incompatible or truncated
+artifact is regenerated atomically instead of being trusted as a successful skip.
+The dependent training job additionally checks the exact expected file set and a
+spread-out geometry sample before constructing the model.
 
 Camera action convention is the same native camera contract used elsewhere in this repo:
 
@@ -374,9 +409,12 @@ The raw `video` tensor is only `[3,97,1,1]` metadata, so the stock joint loader 
 
 ```text
 latent [48,25,16,16], patch 2x2 -> 25 * 8 * 8 = 1600 vision patch tokens
+720-tier latent [48,25,40,40], patch 2x2 -> 25 * 20 * 20 = 10000 vision patch tokens
 ```
 
 Production uses `NATIVEP1_CLIPS_PER_GPU=4`, so each rank packs exactly four samples and the eight-GPU global batch is 32 clips. Batch size is not part of the rectified-flow or official-sampler contract. The framework requires sample-count and token-count limits to be mutually exclusive, so fixed-four mode sets `max_samples_per_batch=4` and `max_sequence_length=None`. This remains below the native ceiling even at the tokenizer's 4,096-token truncation limit: four worst-case T97 action samples are below 24k tokens, versus the 45,056-token model budget. A real resolved batch on 2026-07-12 contained four samples and 7,323 tokens.
+
+At the 720 tier, a representative 64-text-token action clip is 10,163 packed tokens; four clips are below the 45,056 native budget and five exceed it. Fixed-four mode deliberately disables the token ceiling, but the same calculation shows that four is the natural maximum for typical high-tier clips. The 8-GPU smoke reached finite losses with about 117-119 GiB used per 143.8-GiB H200, leaving roughly 24-26 GiB per GPU.
 
 Set `NATIVEP1_CLIPS_PER_GPU=0` to reproduce the earlier token-budget mode. That mode uses `max_sequence_length=45056`, fits about 25-26 typical samples per rank, and retains the latent-aware counter above. Do not compare iteration counts across these modes without also comparing consumed clips/tokens: roughly 30k token-budget steps and 190k-200k fixed-four steps expose a similar number of clips.
 
@@ -432,6 +470,8 @@ Native RF/loss settings are intentionally inherited from Cosmos Nano:
 
 Do not change these unless explicitly running an ablation. The point of this directory is to match the official sampler/training distribution as closely as practical while using saved latents.
 
+The controlled high-tier run selects `resolution='720'` and shift 10 from the released Cosmos Nano config. NVIDIA's technical report describes a different pretraining table (`1/3/5` at 256p/480p/720p), but the local released checkpoint code and inference defaults use `3/5/10`. This repository follows the released checkpoint/config contract for this run, as explicitly chosen on 2026-07-26.
+
 ## Launch
 
 Dryrun from repo root:
@@ -484,6 +524,51 @@ Production Slurm:
 ```bash
 sbatch native_phase_training/sbatch_phase1_native_camera.sh
 ```
+
+High-tier cache and dependent training:
+
+```bash
+cache_job=$(sbatch --parsable native_phase_training/sbatch_precompute_latents_720tier.sh)
+train_job=$(sbatch --parsable --dependency=afterok:${cache_job} \
+  native_phase_training/sbatch_phase1_native_camera_720tier.sh)
+printf 'cache=%s train=%s\n' "${cache_job}" "${train_job}"
+```
+
+The cache launcher is a three-element exclusive-node array with eight GPUs per element, for 24 deterministic global shards. It excludes node 2. The training dependency releases only if every array element exits successfully; training then performs an exact expected-file-set check and validates 256 spread-out cache samples before model construction.
+
+High-tier production run:
+
+```text
+run: /weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_720tier640_bs4_lora5e5_action4x_ema_100k
+compact eval inputs: /weka/jungbin/cosmos_motion_ft_runs/native_phase1_eval_inputs_viz5_720_T97_release_s10_v1
+full-71 eval inputs: /weka/jungbin/cosmos_motion_ft_runs/native_phase1_eval_inputs_full71_720_T97_release_s10_v1
+```
+
+It is a controlled counterpart to historical Original: all four tasks, prefix 1, global Q/K/V/O LoRA, trainable camera projections, action weight 10, LR `5e-5`, action LR 4x, global batch 32, EMA, 100k scheduler horizon, and 5k checkpoints. Only the spatial tier/cache geometry and the released tier-specific shift change. Evaluation is submitted every 10k checkpoint, not every 5k save.
+
+High-tier acceptance smoke completed before production submission:
+
+```text
+limited cache:
+  /weka/jungbin/nymeriaplus_kimodo_proportional/joint_latents_T97_720tier_640_smoke_v2
+training run:
+  /weka/jungbin/cosmos_motion_ft_runs/smoke_native_phase1_720_bs4_v2/cosmos3_camera/camera_world/native_phase1_720tier_640_bs4_contract_smoke
+resumed checkpoint:
+  checkpoints/iter_000000002
+official inference, visualization, and metrics:
+  /weka/jungbin/cosmos_motion_ft_runs/smoke_native_phase1_720_bs4_v2/official_inference_4mode_iter2_T97_v2
+```
+
+The fixed-four 8-GPU update used about 117-119 GiB per H200 and produced finite
+losses on every rank. Iteration 1 saved model/EMA, optimizer, scheduler, and
+trainer state; exact resume restored iteration 1, advanced one finite update,
+and saved iteration 2. Official EMA/UniPC inference then completed forward,
+inverse, policy, and I2V at explicit T97. Every raw output is 640x640, 97 frames,
+and 20 FPS. Forward, inverse, and policy carry finite `[96,9]` action payloads.
+The three generative comparisons mark clean frame 0 with a lime
+`GT CONDITION` border and generated frames 1-96 with a red `GENERATED` border.
+Suffix-only PSNR/SSIM/LPIPS and camera metric manifests, plus the top-level
+`COMPLETE.json`, were written successfully.
 
 Current production run name:
 
@@ -587,7 +672,7 @@ Set `NATIVEP1_AUTO_EVAL=0` for smoke tests or when checkpoint visualization jobs
 
 The two quality-filter launchers pin `NATIVEP1_AUTO_EVAL=0` because automatic 5k checkpoint callbacks would create 40 unsupervised one-GPU Slurm jobs while other users have multi-node jobs pending. This changes only evaluation scheduling, not training. Evaluate selected checkpoints manually with the same four-mode official path.
 
-The inference command explicitly uses NVIDIA's `cosmos_framework.scripts.inference`, `--sampler unipc`, and EMA weights (also the official default). Action modes use 30 steps, guidance 1, and 256-tier shift 3. Image-to-video uses 35 steps, guidance 6, and shift 3. These values reach `OmniMoTModel.generate_samples_from_batch`, whose log must report `Using sampler: UniPC (shift=3.0, num_steps=...)`.
+The inference command explicitly uses NVIDIA's `cosmos_framework.scripts.inference`, `--sampler unipc`, and EMA weights (also the official default). Action modes use 30 steps and guidance 1; image-to-video uses 35 steps and guidance 6. Resolution and shift must come from `native_phase1_contract.json`: historical runs use 256/shift 3, while the new high-tier run uses 720/shift 10. These values reach `OmniMoTModel.generate_samples_from_batch`; the logged sampler shift must equal the saved contract.
 
 The fixed-prefix JSONLs also contain local bookkeeping fields
 `source_name`, `rgb_prefix_length`, and `latent_prefix_length`. NVIDIA's
@@ -600,7 +685,7 @@ Official inference consumes the clean copies; visualization and metric grouping
 consume the original enriched JSONLs. Do not point the official inference CLI
 directly at the enriched files.
 
-The framework's bundled modality JSON files contain a literal shift of 10 because the release defaults target the high-resolution tier. This run intentionally overrides that one value to 3, matching both Nano's `{256:3, 480:5, 720:10}` map and this run's 256-resolution training distribution. The solver, sigma construction, EMA loading, CFG implementation, and task step/guidance defaults remain NVIDIA's official path; using the unmodified shift 10 would be a train/evaluation mismatch here.
+The framework's bundled modality JSON files contain a literal shift of 10 because the release defaults target the high-resolution tier. Historical 256 runs intentionally override that value to 3. The high-tier run intentionally keeps 10. The solver, sigma construction, EMA loading, CFG implementation, and task step/guidance defaults remain NVIDIA's official path; using either shift with the other run's spatial contract is a train/evaluation mismatch.
 
 A 2026-07-24 controlled audit of the historical step-7000 regular weights
 separated resolution tier from shift on five exact forward-dynamics inputs.
@@ -1052,8 +1137,11 @@ If the job fails before torchrun with a preflight message:
 - inspect with:
 
 ```bash
+squeue -w <node> -o '%.18i %.9P %.24j %.12u %.2t %.10M %.4D %R'
 ssh <node> 'nvidia-smi --query-compute-apps=gpu_bus_id,pid,process_name,used_memory --format=csv,noheader,nounits'
 ```
+
+The `squeue` command is mandatory before every SSH compute action. Never launch through SSH on a node allocated to another user, even when `nvidia-smi` shows apparently idle GPUs. Slurm exclusivity does not prevent outside SSH processes from interfering with a training job.
 
 If inference fails to import config:
 

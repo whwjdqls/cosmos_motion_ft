@@ -31,6 +31,9 @@ from native_phase_training.latent_omni_model import LatentOmniMoTModel  # noqa: 
 from nymeria_camera_rgb_dataset import MODE_WEIGHTS  # noqa: E402
 
 _NUM_FRAMES = int(os.environ.get("NYMERIA_NUM_FRAMES", "97"))
+_MODEL_RESOLUTION = os.environ.get("NYMERIA_RESOLUTION", "256").strip()
+if not _MODEL_RESOLUTION:
+    raise ValueError("NYMERIA_RESOLUTION must not be empty")
 _MODE = os.environ.get("NYMERIA_MODE", "mixture")
 _ALL_TASKS = frozenset({"forward_dynamics", "inverse_dynamics", "policy", "image2video"})
 _DROPPED_MODES = frozenset(
@@ -101,6 +104,21 @@ def _parse_optional_csv_floats(name: str) -> list[float] | None:
 
 _PREFIX_LENGTHS = _parse_csv_ints("NATIVEP1_PREFIX_LENGTHS", "1")
 _PREFIX_SAMPLING_WEIGHTS = _parse_optional_csv_floats("NATIVEP1_PREFIX_SAMPLING_WEIGHTS")
+_EXPECTED_LATENT_HW_ENV = os.environ.get("NATIVEP1_EXPECTED_LATENT_HW", "").strip()
+_EXPECTED_LATENT_HW = int(_EXPECTED_LATENT_HW_ENV) if _EXPECTED_LATENT_HW_ENV else None
+_EXPECTED_IMAGE_HW_ENV = os.environ.get("NATIVEP1_EXPECTED_IMAGE_HW", "").strip()
+_EXPECTED_IMAGE_HW = int(_EXPECTED_IMAGE_HW_ENV) if _EXPECTED_IMAGE_HW_ENV else None
+if _EXPECTED_LATENT_HW is not None and _EXPECTED_LATENT_HW <= 0:
+    raise ValueError("NATIVEP1_EXPECTED_LATENT_HW must be positive")
+if _EXPECTED_IMAGE_HW is not None and _EXPECTED_IMAGE_HW <= 0:
+    raise ValueError("NATIVEP1_EXPECTED_IMAGE_HW must be positive")
+_REQUIRE_LATENT_CACHE_CONTRACT = os.environ.get(
+    "NATIVEP1_REQUIRE_LATENT_CACHE_CONTRACT", "0"
+).lower() in {"1", "true", "yes"}
+_SHIFT_OVERRIDE_ENV = os.environ.get("NATIVEP1_SHIFT_OVERRIDE", "").strip()
+_SHIFT_OVERRIDE = float(_SHIFT_OVERRIDE_ENV) if _SHIFT_OVERRIDE_ENV else None
+if _SHIFT_OVERRIDE is not None and _SHIFT_OVERRIDE <= 0.0:
+    raise ValueError("NATIVEP1_SHIFT_OVERRIDE must be positive")
 _CLIPS_PER_GPU = int(os.environ.get("NATIVEP1_CLIPS_PER_GPU", "4"))
 if _CLIPS_PER_GPU < 0:
     raise ValueError("NATIVEP1_CLIPS_PER_GPU must be >= 0 (use 0 for native token-budget packing)")
@@ -162,7 +180,7 @@ def _resolve_text_tokenizer_path() -> str:
 
 
 _MODEL_CONFIG = copy.deepcopy(NANO_MODEL_CONFIG)
-_MODEL_CONFIG["resolution"] = os.environ.get("NYMERIA_RESOLUTION", "256")
+_MODEL_CONFIG["resolution"] = _MODEL_RESOLUTION
 _MODEL_CONFIG["tokenizer"]["vae_path"] = os.environ.get(
     "WAN_VAE_PATH",
     _MODEL_CONFIG["tokenizer"]["vae_path"],
@@ -170,6 +188,15 @@ _MODEL_CONFIG["tokenizer"]["vae_path"] = os.environ.get(
 _MODEL_CONFIG["vlm_config"]["tokenizer"]["pretrained_model_name"] = _resolve_text_tokenizer_path()
 _MODEL_CONFIG["rectified_flow_training_config"]["action_loss_weight"] = _ACTION_LOSS_WEIGHT
 _MODEL_CONFIG["rectified_flow_training_config"]["normalize_loss_by_active"] = _NORMALIZE_LOSS_BY_ACTIVE
+if _SHIFT_OVERRIDE is not None:
+    effective_shifts = dict(_MODEL_CONFIG["rectified_flow_training_config"]["shift"])
+    if _MODEL_RESOLUTION not in effective_shifts:
+        raise ValueError(
+            f"cannot override shift for resolution {_MODEL_RESOLUTION!r}; "
+            f"available={sorted(effective_shifts)}"
+        )
+    effective_shifts[_MODEL_RESOLUTION] = _SHIFT_OVERRIDE
+    _MODEL_CONFIG["rectified_flow_training_config"]["shift"] = effective_shifts
 
 
 def _task_stream(task: str):
@@ -183,6 +210,10 @@ def _task_stream(task: str):
         prefix_lengths=_PREFIX_LENGTHS,
         prefix_sampling_weights=_PREFIX_SAMPLING_WEIGHTS,
         prefix_seed=42,
+        model_resolution_tier=_MODEL_RESOLUTION,
+        expected_latent_hw=_EXPECTED_LATENT_HW,
+        expected_image_hw=_EXPECTED_IMAGE_HW,
+        require_latent_cache_contract=_REQUIRE_LATENT_CACHE_CONTRACT,
         split="train",
         max_action_dim="${model.config.max_action_dim}",
         cfg_dropout_rate=0.1,

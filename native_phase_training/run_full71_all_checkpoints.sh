@@ -17,7 +17,6 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export TOKENIZERS_PARALLELISM=false
 export PYTHONPATH=/home/jungbin_cho/cosmos_motion_ft:/home/jungbin_cho/cosmos_motion_ft/nymeria_world:/home/jungbin_cho/cosmos-framework:${PYTHONPATH:-}
 export WAN_VAE_PATH=${WAN_VAE_PATH:-/weka/jungbin/wan22_vae/Wan2.2_VAE.pth}
-export NYMERIA_RESOLUTION=256
 export HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1}
 export TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-1}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}
@@ -77,6 +76,13 @@ while true; do
         # Values are validated against the immutable checkpoint contract before
         # experiment.py is imported by official inference.
         source "${output_dir}/resolved_run_contract.env"
+        /home/jungbin_cho/miniforge3/envs/cosmos/bin/python \
+          /home/jungbin_cho/cosmos_motion_ft/native_phase_training/validate_eval_inputs.py \
+          --input-dir "${EVAL_INPUT_DIR}" \
+          --expected-shift "${NATIVEP1_EFFECTIVE_SHIFT}" \
+          --expected-resolution "${NYMERIA_RESOLUTION}" \
+          --expected-num-frames "${NYMERIA_NUM_FRAMES}" \
+          fd_input.jsonl invdyn_input.jsonl
         if [[ "${FULL71_FORCE}" != 1 && -s "${analysis_dir}/COMPLETE.json" ]]; then
             /home/jungbin_cho/miniforge3/envs/cosmos/bin/python - "${output_dir}" <<'PY'
 import json

@@ -19,6 +19,7 @@ from cosmos_framework.data.vfm.action.transforms import build_sequence_plan_from
 from cosmos_framework.data.vfm.augmentors.duration_fps_text_timestamps import DEFAULT_TEMPLATE as DURATION_TEMPLATE
 from cosmos_framework.data.vfm.augmentors.resolution_text_info import DEFAULT_VIDEO_TEMPLATE as RESOLUTION_TEMPLATE
 from cosmos_framework.data.vfm.joint_dataloader import custom_collate_fn
+from cosmos_framework.data.vfm.utils import VIDEO_RES_SIZE_INFO
 from cosmos_framework.inference.action import _format_prompt as format_official_action_prompt
 from cosmos_framework.inference.inference import _format_prompt_with_template
 
@@ -36,8 +37,17 @@ from native_phase_training.latent_nymeria_dataset import (
     load_quality_filter_exclusions,
     replace_standalone_c_with_person,
     rgb_prefix_to_latent_frames,
+    validate_training_cache_contract,
     validate_prefix_sampling,
 )
+from native_phase_training.latent_cache_contract import (
+    CACHE_CONTRACT_KIND,
+    CACHE_CONTRACT_VERSION,
+    LatentCacheContract,
+    ensure_latent_cache_contract,
+)
+from native_phase_training.prepare_phase1_eval_tier import convert_record
+from native_phase_training.validate_eval_inputs import validate_record
 from native_phase_training.camera_token_lora import (
     CameraTokenLoraLinear,
     build_camera_token_mask,
@@ -88,6 +98,8 @@ def _native_run_config(
     adaptation_mode: str,
     active_modes: tuple[str, ...],
     prefix_lengths: tuple[int, ...] = (1, 9, 17, 33, 49),
+    model_resolution: str = "256",
+    training_shift: float = 3.0,
 ) -> SimpleNamespace:
     lora_enabled = adaptation_mode != "action_only"
     targets = (
@@ -96,14 +108,28 @@ def _native_run_config(
         else "q_proj_moe_gen,k_proj_moe_gen,v_proj_moe_gen,o_proj_moe_gen"
     )
     streams = {
-        mode: {"dataloader": {"dataset": {"prefix_lengths": list(prefix_lengths)}}}
+        mode: {
+            "dataloader": {
+                "dataset": {
+                    "prefix_lengths": list(prefix_lengths),
+                    "num_frames": NUM_FRAMES,
+                }
+            }
+        }
         for mode in active_modes
     }
     return SimpleNamespace(
         job=SimpleNamespace(path_local=str(run_dir)),
         model=SimpleNamespace(
             adaptation_mode=adaptation_mode,
-            config=SimpleNamespace(lora_enabled=lora_enabled, lora_target_modules=targets),
+            config=SimpleNamespace(
+                lora_enabled=lora_enabled,
+                lora_target_modules=targets,
+                resolution=model_resolution,
+                rectified_flow_training_config={
+                    "shift": {model_resolution: training_shift}
+                },
+            ),
         ),
         dataloader_train=SimpleNamespace(dataloaders=streams),
     )
@@ -121,6 +147,22 @@ class NativeRunContractTest(unittest.TestCase):
         self.assertEqual(contract.dropped_modes, ("image2video",))
         self.assertEqual(contract.lora_target_modules, ("k_proj_moe_gen", "v_proj_moe_gen"))
         self.assertEqual(contract.training_prefix_lengths, (1, 9, 17, 33, 49))
+        self.assertEqual(contract.model_resolution, "256")
+        self.assertEqual(contract.training_shift, 3.0)
+
+    def test_contract_captures_released_720_shift(self) -> None:
+        contract = contract_from_config(
+            _native_run_config(
+                Path("/run"),
+                adaptation_mode="global_lora",
+                active_modes=("forward_dynamics", "inverse_dynamics", "policy", "image2video"),
+                model_resolution="720",
+                training_shift=10.0,
+            )
+        )
+        self.assertEqual(contract.model_resolution, "720")
+        self.assertEqual(contract.num_frames, NUM_FRAMES)
+        self.assertEqual(contract.training_shift, 10.0)
 
     def test_persisted_contract_is_immutable_across_resume(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -263,6 +305,8 @@ class NativeRunContractTest(unittest.TestCase):
             self.assertEqual(record["training_prefix_lengths"], [1])
             self.assertIn("NATIVEP1_ADAPTATION_MODE=camera_kv_lora", env_path.read_text())
             self.assertIn("NYMERIA_DROP_MODES=image2video", env_path.read_text())
+            self.assertIn("NYMERIA_RESOLUTION=256", env_path.read_text())
+            self.assertIn("NATIVEP1_EFFECTIVE_SHIFT=3.0", env_path.read_text())
 
     def test_eval_shell_resolves_contract_before_importing_inference_config(self) -> None:
         script = Path(__file__).with_name("sbatch_checkpoint_eval.sh").read_text()
@@ -341,6 +385,18 @@ class PackingContractTest(unittest.TestCase):
         self.assertEqual(self.loader._compute_num_tokens_per_sample(sample), expected)
         self.assertLess(26 * expected, 45056)
         self.assertGreaterEqual(27 * expected, 45056)
+
+    def test_720_tier_four_clip_pack_stays_below_native_budget(self) -> None:
+        sample = {
+            "text_token_ids": [torch.arange(64)],
+            "video": [torch.empty(3, NUM_FRAMES, 1, 1)],
+            "video_latents": torch.empty(1, 48, 25, 40, 40),
+            "action": [torch.empty(ACTION_CHUNK_SIZE, 64)],
+        }
+        per_clip = self.loader._compute_num_tokens_per_sample(sample)
+        self.assertEqual(per_clip, 64 + 1 + (25 * 20 * 20 + 2) + ACTION_CHUNK_SIZE)
+        self.assertLess(4 * per_clip, 45056)
+        self.assertGreaterEqual(5 * per_clip, 45056)
 
     def test_nonlatent_batch_falls_back_to_parent_counter(self) -> None:
         sample = {
@@ -606,6 +662,151 @@ class CameraTokenLoraContractTest(unittest.TestCase):
         restored = self._linear()
         restored.load_state_dict(original.state_dict())
         self.assertEqual(set(original.state_dict()), {"weight", "lora_A.weight", "lora_B.weight"})
+
+
+class LatentCacheContractTest(unittest.TestCase):
+    @staticmethod
+    def _contract() -> LatentCacheContract:
+        return LatentCacheContract(
+            schema_version=CACHE_CONTRACT_VERSION,
+            kind=CACHE_CONTRACT_KIND,
+            source_manifest="/data/manifest.jsonl",
+            split_file="/data/split.json",
+            split="train",
+            source_window_count=120,
+            expected_file_count=116,
+            num_frames=NUM_FRAMES,
+            fps=float(FPS),
+            spatial_transform_resolution="480",
+            model_resolution_tier="720",
+            expected_image_hw=(640, 640),
+            expected_latent_shape=(48, 25, 40, 40),
+            expected_camera_shape=(ACTION_CHUNK_SIZE, 9),
+            latent_dtype="float16",
+            vae_path="/models/Wan2.2_VAE.pth",
+            num_shards=24,
+            limit_per_shard=None,
+        )
+
+    def test_cache_contract_is_atomic_and_immutable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            contract = self._contract()
+            path = ensure_latent_cache_contract(root, contract)
+            self.assertEqual(path.name, "latent_cache_contract.json")
+            self.assertEqual(ensure_latent_cache_contract(root, contract), path)
+
+            incompatible = LatentCacheContract(
+                **{
+                    **contract.to_dict(),
+                    "expected_latent_shape": (48, 25, 16, 16),
+                }
+            )
+            with self.assertRaisesRegex(RuntimeError, "contract mismatch"):
+                ensure_latent_cache_contract(root, incompatible)
+
+    def test_training_rejects_wrong_model_tier_or_geometry(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            ensure_latent_cache_contract(root, self._contract())
+            validated = validate_training_cache_contract(
+                latent_root=str(root),
+                num_frames=NUM_FRAMES,
+                fps=float(FPS),
+                model_resolution_tier="720",
+                expected_latent_hw=40,
+                expected_image_hw=640,
+                require_contract=True,
+            )
+            self.assertIsNotNone(validated)
+            with self.assertRaisesRegex(ValueError, "model tier mismatch"):
+                validate_training_cache_contract(
+                    latent_root=str(root),
+                    num_frames=NUM_FRAMES,
+                    fps=float(FPS),
+                    model_resolution_tier="256",
+                    expected_latent_hw=40,
+                    expected_image_hw=640,
+                    require_contract=True,
+                )
+            with self.assertRaisesRegex(ValueError, "spatial shape mismatch"):
+                validate_training_cache_contract(
+                    latent_root=str(root),
+                    num_frames=NUM_FRAMES,
+                    fps=float(FPS),
+                    model_resolution_tier="720",
+                    expected_latent_hw=16,
+                    expected_image_hw=640,
+                    require_contract=True,
+                )
+
+
+class HighTierEvaluationInputContractTest(unittest.TestCase):
+    @staticmethod
+    def _base(mode: str) -> dict:
+        record = {
+            "model_mode": mode,
+            "fps": 20,
+            "shift": 3.0,
+            "num_frames": NUM_FRAMES,
+            "resolution": "256",
+            "aspect_ratio": "1,1",
+        }
+        if mode != "image2video":
+            record.update({"image_size": 256, "action_chunk_size": ACTION_CHUNK_SIZE})
+        return record
+
+    def test_720_action_record_uses_image_size_and_explicit_t97(self) -> None:
+        record = convert_record(
+            self._base("forward_dynamics"),
+            resolution_tier="720",
+            shift=10.0,
+        )
+        self.assertEqual(record["num_frames"], NUM_FRAMES)
+        self.assertEqual(record["image_size"], 480)
+        self.assertNotIn("resolution", record)
+        self.assertNotIn("aspect_ratio", record)
+        validate_record(
+            record,
+            context="forward",
+            expected_shift=10.0,
+            expected_resolution="720",
+            expected_num_frames=NUM_FRAMES,
+        )
+
+    def test_720_i2v_record_uses_640_square_output_bucket(self) -> None:
+        record = convert_record(
+            self._base("image2video"),
+            resolution_tier="720",
+            shift=10.0,
+        )
+        self.assertEqual(record["num_frames"], NUM_FRAMES)
+        self.assertEqual(record["resolution"], "480")
+        self.assertEqual(record["aspect_ratio"], "1,1")
+        self.assertEqual(VIDEO_RES_SIZE_INFO["480"]["1,1"], (640, 640))
+        validate_record(
+            record,
+            context="i2v",
+            expected_shift=10.0,
+            expected_resolution="720",
+            expected_num_frames=NUM_FRAMES,
+        )
+
+    def test_missing_num_frames_is_rejected(self) -> None:
+        record = convert_record(
+            self._base("image2video"),
+            resolution_tier="720",
+            shift=10.0,
+        )
+        record.pop("num_frames")
+        with self.assertRaisesRegex(ValueError, "num_frames is required"):
+            validate_record(
+                record,
+                context="i2v",
+                expected_shift=10.0,
+                expected_resolution="720",
+                expected_num_frames=NUM_FRAMES,
+            )
 
 
 class QualityFilterContractTest(unittest.TestCase):

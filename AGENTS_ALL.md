@@ -236,17 +236,20 @@ This directory is intentionally isolated from `motion_expert_joint_attention/`. 
 Main files:
 
 - `native_phase_training/latent_omni_model.py`: `LatentOmniMoTModel(OmniMoTModel)`. If `video_latents` is present in the training batch, it uses those cached clean VAE latents instead of encoding pixels. Without `video_latents`, it falls back to native `OmniMoTModel`, which is why official inference still works.
-- `native_phase_training/latent_nymeria_dataset.py`: cached-latent Nymeria camera dataset. It emits native action-SFT fields plus dummy video metadata and real `video_latents`. Forward/policy prompts use official action JSON, inverse text is exactly empty, and image-to-video uses the official generic duration/resolution prose.
+- `native_phase_training/latent_nymeria_dataset.py`: cached-latent Nymeria camera dataset. It emits native action-SFT fields plus dummy video metadata and real `video_latents`. Forward/policy prompts use official action JSON, inverse text is exactly empty, and image-to-video uses the official generic duration/resolution prose. New caches can carry an immutable `latent_cache_contract.json`; production high-tier training requires and validates it before workers start.
 - `native_phase_training/latent_nymeria_dataset.py` also defines `CyclingDataLoader`, which is required for long runs. Native `IterativeJointDataLoader` assumes child streams are infinite; finite map-style `DataLoader` streams can otherwise exhaust and make the trainer silently spin without advancing `global_id`.
 - The same file defines `LatentAwareIterativeJointDataLoader`. The stock counter sees only the `[3,97,1,1]` dummy video; the local override adds the real `25*8*8=1600` cached-latent patch tokens. Production defaults to exactly four clips per GPU (`NATIVEP1_CLIPS_PER_GPU=4`); setting that environment variable to `0` restores the audited 45,056-token-budget packing mode.
-- `native_phase_training/experiment.py`: registers Hydra experiment `world_camera_nymeria_latent_nano`, resolves local tokenizer/VAE paths, sets `resolution=256`, and builds the four native streams.
+- `native_phase_training/experiment.py`: registers Hydra experiment `world_camera_nymeria_latent_nano`, resolves local tokenizer/VAE paths, defaults to `resolution=256`, supports a run-pinned resolution/shift override, and builds the four native streams.
 - `native_phase_training/AUDIT.md`: records the finite-loader, prompt, cached-latent packing, and evaluation-contract audits and fixes.
 - `native_phase_training/prep_test_eval.py`: held-out official-inference input builder for forward/inverse/policy/image-to-video, pinned to T97/action96, 20 FPS, 256, and shift 3.0. Use this instead of the historical 480/shift-10 helper.
 - `native_phase_training/visualize_checkpoint.py`: validates four mode-specific official outputs, creates GT/generated videos for forward/policy/image-to-video, camera plots for inverse/policy, and a manifest.
 - `native_phase_training/evaluate_forward_dreamsim.py`: optional canonical-full71 forward evaluator using official DreamSim 0.2.1 over all 96 generated suffix frames, with early/middle/late summaries.
 - `native_phase_training/evaluate_forward_cdfvd.py`: optional canonical-full71 set evaluator using CVPR 2024 content-debiased FVD with VideoMAE-v2-SSv2. This is deliberately not legacy TensorFlow/I3D FVD; it uses all 96 generated suffix frames for the full score and all 32 frames per horizon. See `native_phase_training/FORWARD_VIDEO_METRICS.md` for the pinned revision and exact contract.
 - `native_phase_training/checkpoint_eval_callback.py` plus `sbatch_checkpoint_eval.sh`: production rank 0 submits an isolated official four-mode EMA/UniPC evaluation after every successful checkpoint save. The stock in-training generation callback stays disabled.
-- `native_phase_training/run_contract.py`: persists architecture-critical Phase-1 settings in each run and resolves/validates them before evaluation. Manual C/D/E evaluation must never rely on default adaptation environment values.
+- `native_phase_training/run_contract.py`: persists architecture-critical Phase-1 settings in each run and resolves/validates them before evaluation. Schema 2 includes model resolution, T, and training shift in addition to adapter/task settings. Manual evaluation must never rely on default environment values.
+- `native_phase_training/latent_cache_contract.py`, `validate_latent_cache.py`: immutable cache geometry/provenance plus exact expected-file-set validation.
+- `native_phase_training/prepare_phase1_eval_tier.py`, `validate_eval_inputs.py`: convert canonical held-out records to a released model tier and reject resolution/shift/T conflicts before inference.
+- `native_phase_training/sbatch_precompute_latents_720tier.sh`, `sbatch_phase1_native_camera_720tier.sh`: isolated full-cache and controlled high-tier Phase-1 launchers.
 - `native_phase_training/world_camera_nymeria_latent.toml`: production TOML.
 - `native_phase_training/run_latent_train.py`: training entrypoint. It assigns TensorBoard to `$TB_LOG_DIR` if set, otherwise `${job.path_local}/tensorboard`, avoiding the old shared fallback directory.
 - `native_phase_training/inference_config.py`: official inference shim; use it with `--config-file native_phase_training/inference_config.py`.
@@ -258,6 +261,19 @@ Default data contract:
 - `NYMERIA_NUM_FRAMES=97`, `NYMERIA_RESOLUTION=256`, fps 20;
 - latent `.npz` keys: `latents [48,25,16,16]`, `camera_action [96,9]`, `image_size`;
 - camera action is raw Cosmos `camera_pose`, domain id 2, raw dim 9, padded to 64 only for the native action projection. Do not z-score it.
+
+High-tier training contract added 2026-07-26:
+
+- model config tier is `NYMERIA_RESOLUTION=720`;
+- the Nymeria spatial transform/cache key is `--resolution 480`, which yields raw/transformed `640x640` frames in this pipeline;
+- cached latents are fp16 `[48,25,40,40]`; camera action remains `[96,9]`;
+- released Cosmos Nano config maps tier 720 to shift 10, and this experiment follows that released checkpoint/config contract;
+- full unfiltered train input has 119,632 caption rows but 115,583 unique physical `(uuid,start)` cache files, estimated near 414 GiB;
+- full cache root is `/weka/jungbin/nymeriaplus_kimodo_proportional/joint_latents_T97_720tier_640`;
+- run name is `native_phase1_camera_json_720tier640_bs4_lora5e5_action4x_ema_100k`;
+- the controlled comparison keeps all four tasks, prefix 1, global Q/K/V/O LoRA, action weight 10, LR `5e-5`, action LR 4x, four clips/GPU, EMA, 100k steps, and 5k saves. Only spatial tier/cache geometry and corresponding released shift change from Original.
+
+The real 8-GPU batch-four smoke used 640-pixel cached inputs, reached finite losses on all ranks, stayed near 117-119 GiB per H200, and saved a complete DCP at iteration 1. Exact resume restored all state and saved iteration 2. Official EMA/UniPC inference from that checkpoint completed all four modes at 640x640/T97/20 FPS under `/weka/jungbin/cosmos_motion_ft_runs/smoke_native_phase1_720_bs4_v2/official_inference_4mode_iter2_T97_v2`; action-bearing modes are finite `[96,9]`, and GT/generated provenance is explicit in `viz/manifest.json`. Production job IDs are recorded in `native_phase_training/README.md`.
 
 Task mix:
 
@@ -1102,10 +1118,12 @@ When changing `native_phase_training/`, preserve these invariants:
 - native Cosmos RF distributions and action loss weight stay unchanged unless explicitly running an ablation;
 - action prompts must match official `ActionPromptJsonFormatter`, inverse text must remain exactly empty, and image-to-video must stay on the official generic prompt template;
 - cached-latent batches must use the active fixed-four contract (`max_samples_per_batch=4`, `max_sequence_length=None`); any optional 45,056-token run must use `LatentAwareIterativeJointDataLoader`, never stock counting of the 1x1 dummy pixels;
-- native Phase 1 evaluations must explicitly use 256/shift 3/T97/action96/20 FPS;
+- native Phase 1 evaluations must resolve the saved run contract before model import and use its exact resolution/shift/T; historical 256 runs are 256/shift 3/T97/action96/20 FPS, while the controlled high-tier run is 720/shift 10/T97/action96/20 FPS and decodes at 640x640;
 - production checkpoint visualization must stay out of the training process and use the post-save official-inference Slurm job; smoke runs must disable auto-eval;
 - do not reintroduce Torch compile into the production Slurm launcher unless a clean-node multi-GPU smoke proves it fits;
 - do not start production training on a node with leftover GPU memory consumers; use the launcher preflight or inspect `nvidia-smi`.
+
+Cluster operational rule: before every SSH compute action, first run `squeue -w <node>` from the login node. Only after confirming Slurm ownership may `nvidia-smi` be checked over SSH. Never launch through SSH on a node allocated to another user, even if individual GPUs look idle; Slurm exclusivity does not protect jobs from SSH-launched processes.
 
 ## Server Migration
 
