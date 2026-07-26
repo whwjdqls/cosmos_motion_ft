@@ -546,6 +546,25 @@ full-71 eval inputs: /weka/jungbin/cosmos_motion_ft_runs/native_phase1_eval_inpu
 
 It is a controlled counterpart to historical Original: all four tasks, prefix 1, global Q/K/V/O LoRA, trainable camera projections, action weight 10, LR `5e-5`, action LR 4x, global batch 32, EMA, 100k scheduler horizon, and 5k checkpoints. Only the spatial tier/cache geometry and the released tier-specific shift change. Evaluation is submitted every 10k checkpoint, not every 5k save.
 
+Production was submitted on 2026-07-26 only after commit `a1e49f4` was pushed:
+
+```text
+cache array: 3109
+  launcher: native_phase_training/sbatch_precompute_latents_720tier.sh
+  Slurm logs: /home/jungbin_cho/cosmos_motion_ft/slurm-p1pc720-3109_<array>.out
+  shard logs: /weka/jungbin/nymeriaplus_kimodo_proportional/joint_latents_T97_720tier_640/_logs/
+training: 3110
+  dependency: afterok:3109
+  launcher: native_phase_training/sbatch_phase1_native_camera_720tier.sh
+  Slurm log: /home/jungbin_cho/cosmos_motion_ft/slurm-p1cam720-3110.out
+```
+
+At submission, array elements `3109_0` and `3109_1` started on nodes 1 and 3.
+Element `3109_2` remained pending for resources because nodes 0 and 2 were
+allocated to other users. This is expected: the launcher excludes node 2 and no
+running job was canceled. Training job `3110` remains dependency-held until all
+three cache elements exit successfully.
+
 High-tier acceptance smoke completed before production submission:
 
 ```text

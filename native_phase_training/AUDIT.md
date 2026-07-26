@@ -35,6 +35,11 @@ The video manifest explicitly marks clean frame 0 lime and generated frames
 
 The controlled production recipe intentionally keeps the historical Original settings: four tasks, prefix 1, global Q/K/V/O LoRA, action weight 10, LR `5e-5`, action LR 4x, four clips/GPU, PowerEMA, 100k scheduler horizon, and 5k saves. Only spatial tier/cache geometry and its corresponding released shift change. Compact four-mode and canonical full-71 EMA/UniPC evaluations are scheduled every 10k.
 
+Production submission on 2026-07-26 is cache array `3109` plus training job
+`3110` with dependency `afterok:3109`, from pushed commit `a1e49f4`. Elements
+`3109_0/1` started on Slurm-free nodes 1/3; element 2 waited for resources
+instead of displacing jobs on nodes 0/2. No other user's job was canceled.
+
 ## 2026-07-23 Visual-Quality Follow-up
 
 The historical-versus-current visual-quality investigation is recorded in
