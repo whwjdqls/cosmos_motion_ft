@@ -12,8 +12,8 @@
 set -euo pipefail
 
 D=/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention
-PHASE1=/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/checkpoints/iter_000100000
-PHASE2=/weka/jungbin/cosmos_motion_ft_runs/ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d/ckpt_step200000.pt
+PHASE1=${PHASE1_INIT:-/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/checkpoints/iter_000100000}
+PHASE2=${PHASE2_INIT:-/weka/jungbin/cosmos_motion_ft_runs/ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d/ckpt_step200000.pt}
 RUN_NAME=${PHASE3_NATIVE_BRIDGE_RUN_NAME:-ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k}
 
 echo "[p3brnative] node=$(hostname) date=$(date)"
@@ -25,7 +25,11 @@ echo "[p3brnative] frozen specialists; only 12 local directional modality bridge
 echo "[p3brnative] causal 4x locality: latent0<->frame0, latent1<->frames1..4, ..., latent24<->93..96"
 echo "[p3brnative] required viz every 5k + final: 2 V2M and 2 M2V, native 30-step sampling"
 
-test -f "${PHASE1}/model/.metadata"
+if [[ -d "${PHASE1}" ]]; then
+  test -f "${PHASE1}/model/.metadata"
+else
+  test -f "${PHASE1}"
+fi
 test -f "${PHASE2}"
 nvidia-smi --query-gpu=index,memory.used,memory.free,utilization.gpu --format=csv,noheader
 

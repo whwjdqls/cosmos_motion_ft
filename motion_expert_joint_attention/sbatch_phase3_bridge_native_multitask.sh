@@ -13,8 +13,8 @@ set -euo pipefail
 
 ROOT=/home/jungbin_cho/cosmos_motion_ft
 D=${ROOT}/motion_expert_joint_attention
-PHASE1=/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/checkpoints/iter_000100000
-PHASE2=/weka/jungbin/cosmos_motion_ft_runs/ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d/ckpt_step200000.pt
+PHASE1=${PHASE1_INIT:-/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/checkpoints/iter_000100000}
+PHASE2=${PHASE2_INIT:-/weka/jungbin/cosmos_motion_ft_runs/ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d/ckpt_step200000.pt}
 RUN_NAME=${PHASE3_MULTITASK_RUN_NAME:-ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_multitask}
 
 echo "[p3brmulti] node=$(hostname) date=$(date)"
@@ -29,7 +29,11 @@ echo "[p3brmulti] joint sampling is one common shift-3 UniPC state with exact sc
 echo "[p3brmulti] required viz every 5k + final: two held-out examples for every one of the four tasks"
 echo "[p3brmulti] git=$(git -C "${ROOT}" rev-parse --short HEAD)"
 
-test -f "${PHASE1}/model/.metadata"
+if [[ -d "${PHASE1}" ]]; then
+  test -f "${PHASE1}/model/.metadata"
+else
+  test -f "${PHASE1}"
+fi
 test -f "${PHASE2}"
 test -f "${D}/_verify_phase3_multitask_contracts.py"
 bash "${D}/run.sh" "${D}/_verify_phase3_multitask_contracts.py"

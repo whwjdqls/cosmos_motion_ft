@@ -2,13 +2,17 @@
 
 This is a research checkout for Cosmos-3 Nano motion and egocentric world-model experiments.
 
-The canonical, current context for agents is [`AGENTS_ALL.md`](/home/jungbin_cho/cosmos_motion_ft/AGENTS_ALL.md).
+The canonical, current context for agents is [`AGENTS_ALL.md`](AGENTS_ALL.md).
 Read it first. It consolidates the active joint-attention design, data contracts, run history, launch rules,
 and stale-doc notes.
 
 Current primary work area:
 
 `motion_expert_joint_attention/`
+
+For a fresh-server restore, including environments, cloud paths, data,
+normalization arrays, evaluator weights, and checkpoints, use
+[`migration/SERVER_MIGRATION.md`](migration/SERVER_MIGRATION.md).
 
 Important constraints:
 

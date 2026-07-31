@@ -1127,11 +1127,22 @@ Cluster operational rule: before every SSH compute action, first run `squeue -w 
 
 ## Server Migration
 
-The authoritative GCS artifact and restore contract is
-`migration/SERVER_MIGRATION.md`; machine-readable paths are in
-`migration/GCS_ARTIFACT_MANIFEST.tsv`. The root is
-`gs://mm-jinhyung_kim/jungbin_cho`. Run
-`python migration/verify_migration.py gcs` before relying on the archive.
-Standalone training visualization directories and intermediate checkpoints are
-not required; retained checkpoints and all required split/mean/std/calibration
-artifacts are enumerated explicitly in the migration docs.
+The authoritative restore runbook is `migration/SERVER_MIGRATION.md`.
+Machine-readable contracts are `migration/GCS_ARTIFACT_MANIFEST.tsv` and
+`migration/DRIVE_ARTIFACT_MANIFEST.tsv`. Cloud roots are
+`gs://mm-jinhyung_kim/jungbin_cho` and rclone remote `data:`. Verify with:
+
+```bash
+python migration/verify_migration.py local
+python migration/verify_migration.py gcs
+python migration/verify_drive.py --include-trees
+```
+
+The current Phase-2/3 motion normalization is the Git-tracked
+Nymeria-grounded `uniego283_{mean,std}.npy`, not BONES source stats or the C45
+190-D evaluator stats. `motion_expert/pairs_{train,val}.jsonl` are ignored by
+Git and restore from Drive through `migration/restore_from_drive.sh data`.
+Standalone training visualizations and intermediate checkpoints are not
+required; selected checkpoints, exact splits, mean/std arrays, calibrations,
+evaluator models, and regenerable-cache contracts are enumerated in the
+migration runbook.

@@ -1,10 +1,12 @@
 # Data & Path Provenance (server hand-off document)
 
-Written 2026-07-23, when the a3ultra cluster (`a3ultravis-slurm-login-001`, GCP project
-`lgair-a3-cluster`, zone `us-east4-b`) was being decommissioned. This documents **every
-external path this repo depends on, what it contains, which script produced it, and how
-to regenerate it** — so the repo is self-contained even after `/weka` and `/home` on
-this cluster are gone.
+Written 2026-07-23 and re-audited 2026-07-31 while the a3ultra cluster
+(`a3ultravis-slurm-login-001`, GCP project `lgair-a3-cluster`, zone
+`us-east4-b`) was being decommissioned. This documents the active external
+training/evaluation dependencies, what produced them, and whether they are
+archived or regenerable. Access-gated raw captures and licensed body models are
+an explicit boundary; the archived derived dataset is the operational source
+for restoring this project.
 
 How to read: each entry is *path → contents → generator (script @ repo) → regeneration
 notes → size*. The generator scripts that lived **outside** this repo are vendored under
@@ -24,12 +26,13 @@ copy), `native_phase_training/README.md` / `AUDIT.md`.
 | `kimodo` (a.k.a. `kimodo_open`) | `github.com/whwjdqls/kimodo` | `5e3daac` (= `483b3ca` + the previously-UNTRACKED uniego converters `nymeria_to_uniego.py` / `soma_proportional_to_uniego.py`, committed at hand-off) | SOMA-77 skeleton FK, uniego motion rep, TMR eval, BONES-SEED datasets. Lived at `/home/jungbin_cho/kimodo_open`. The converter scripts this repo's data depends on are also vendored in `external/kimodo_uniego_scripts/` (incl. `soma_proportional_to_uniego.py` + `UNIEGO_REPRESENTATION.md`). |
 | `nymeria_kimodo_pipeline` | `github.com/whwjdqls/nymeria_kimodo_pipelin` (sic — repo name typo) | `cd1b3bc4048957b2ddd3a20fc1baacd29c5d6643` | raw NymeriaPlus → motion/video/camera/text preprocessing (see its README for the full 5-stage pipeline). Also vendored (minus weights/media) at `external/nymeria_kimodo_pipeline/`. |
 
-Conda envs (miniforge, `~/miniforge3`): `cosmos` (torch 2.10.0+cu128 — all Cosmos
-training/inference; exact spec captured at `external/cosmos_env.yml` +
-`external/cosmos_env_pip_freeze.txt`, which pins cosmos-framework as editable installs
-at `82f8229` — reapply `external/cosmos_framework_patches/` on top), `kimodo`, `soma`,
-`nymeria_plus`, `audio` (those four exported to the pipeline repo's `envs/` dir,
-github.com/whwjdqls/nymeria_kimodo_pipelin).
+Conda envs (miniforge, `~/miniforge3`): `cosmos` (torch 2.10.0+cu128, all
+Cosmos training/inference; exact spec in `external/cosmos_env.yml` and
+`external/cosmos_env_pip_freeze.txt`) plus `kimodo`, `soma`, `nymeria_plus`,
+and `audio`. Relocatable exports for the latter four are tracked under
+`external/nymeria_kimodo_pipeline/envs/`. Reapply
+`external/cosmos_framework_patches/` after checking out Cosmos Framework at
+`82f8229`.
 
 ---
 
@@ -44,7 +47,7 @@ github.com/whwjdqls/nymeria_kimodo_pipelin).
 | HF cache `models--Qwen--Qwen3-VL-8B-Instruct` | tokenizer fallback only | HF |
 | HF cache `models--nvidia--TMR-SOMA-RP-v1/snapshots/e427752ae3446dedba49e928c93ddc9f0e413401` | TMR retrieval model for Phase-2 shape/TMR eval (`last_weights/text_encoder.pt`, `stats/motion`) | `hf download nvidia/TMR-SOMA-RP-v1` (snapshot hash pinned in `eval_phase2_shape_tmr.py`) |
 | `/weka/jungbin/wan22_vae/Wan2.2_VAE.pth` (2.7 GB) | Wan2.2 video VAE used by ALL video paths | HF `Wan-AI/Wan2.2-TI2V-5B`, revision `921dbaf3f1674a56f47e83fb80a34bac8a8f203e`, file `Wan2.2_VAE.pth` (provenance: `external/cosmos3_nano_dcp_convert.log`). Env var `WAN_VAE_PATH`. |
-| `/weka/jungbin/model_cache/` | FVD backbone (`cdfvd/vit_g_hybrid_pt_1200e_ssv2_ft.pth` = VideoMAE-g) + `dreamsim` weights, for video eval | public releases, re-downloadable |
+| `/weka/jungbin/model_cache/` | FVD backbone (`cdfvd/vit_g_hybrid_pt_1200e_ssv2_ft.pth` = VideoMAE-g) + `dreamsim` weights, for video eval | public releases; exact tree is also archived on Drive and GCS |
 | `/weka/jungbin/vggt_omega_ckpt/vggt_omega_1b_512.pt` | VGGT camera-estimation baseline ckpt (nymeria_world zero-shot comparisons) | internal/public VGGT release |
 | `/home/jungbin_cho/kimodo_caches/bones_seed_llm2vec_small.pt` (also `/weka/jungbin/kimodo_caches/`) | LLM2Vec caption embeddings cache for BONES-SEED | built by kimodo scripts; regenerable |
 
@@ -65,6 +68,7 @@ GPU-days).
 | `camera/{Sxx}/{seq}.npz` | head Aria `T_world_device` sampled at body frames (Aria Z-up) | pipeline stage 4′ `camera/extract_camera_trajectory.py` | small |
 | `camera_rgb/{Sxx}/{seq}.npz` | **upright RGB-camera** world poses (`cam_world_pos_upright`, `cam_world_rot_upright`, kimodo Y-up) — source of ALL camera actions (`rel_action_from_window` → (T-1,9) rel-SE(3), rot6d) | `external/nymeria_kimodo_pipeline/camera/preprocess_camera_rgb.py` (device→RGB-sensor extrinsic + upright + Z→Y-up), 728 files | 1.8 GB |
 | `joint_latents_T97/{Sxx}/{uuid__seq}_{start}.npz` | precomputed Wan-VAE latents per T=97 window: `latents (48,25,16,16) fp16`, `camera_action (96,9)`, `image_size`, uuid/start/T/fps. 127,956 windows. | `motion_expert_joint_attention/precompute_latents.py` (writer; reader contract in `nymeria_joint_dataset.latent_path` and `native_phase_training/latent_nymeria_dataset.py`) | ~85 GB |
+| `joint_latents_T97_720tier_640/{Sxx}/*.npz` | 720 model-tier cache: RGB transform 640x640, latent `(48,25,40,40)` fp16, T=97, 115,583 train windows | same precompute path; exact contract and completion record are tracked in `migration/cache_contracts/` | ~415 GB, regenerable and not cloud-backed |
 | `joint_latents/` | older T=33 latent cache (superseded by `_T97`) | same script at T=33 | — |
 | `train_test_split.json` | per-SEQUENCE train/test split (whole recordings held out; 71 test windows downstream) | `nymeria_world/make_train_test_split.py` | tiny |
 | `metadata/metadata_atomic_action*.jsonl` (+floor variants) | 20 fps-aligned narration slices + per-slice GT floor (`ground_offset_y`), `usable`, foot-skating | pipeline stages 3/3′/3″ (`build_metadata.py`, `floor/extract_slice_floor.py`, `floor/fallback_floor_and_skating.py`) | 585 MB (dir) |
@@ -99,8 +103,8 @@ bones_pairs_{train,val}.jsonl` + `bones_index_{train,val}.json`) are built by
 | `/weka/jungbin/cosmos_motion_ft_runs/` (`IMAGINAIRE_OUTPUT_ROOT`) | ALL run outputs. Native runs under `cosmos3_camera/camera_world/<run>/checkpoints/iter_XXXXXXXXX` (DCP: `model/` `optim/` `scheduler/` `trainer/`; `model/` ≈ 85 GB holds net+EMA). Joint-attention runs save `ckpt_stepNNNNNN.pt`/`latest.pt` (trainable-delta only, small). | trainers in this repo |
 | Named checkpoints referenced by eval scripts | e.g. `ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d/ckpt_step200000.pt` (Phase-2 motion expert), `ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k*` (Phase-3), `native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/checkpoints/iter_000100000` (Phase-1 v1), `native_phase1_vq_{A..E}_*` (video-quality ablations) | their sbatch launchers in this repo record every hyperparameter |
 
-The authoritative GCS hand-off contract, exact retained-checkpoint list, upload
-driver, restore driver, and verifier are under `migration/`. The bucket roots
+The independent GCS and Drive hand-off contracts, retained-checkpoint lists,
+restore drivers, and verifiers are under `migration/`. The GCS bucket roots
 created on 2026-07-23 are:
 
 ```text
@@ -115,8 +119,10 @@ camera-RGB, metadata, T97 latent, split, floor-calibration, and quality-filter
 artifacts. Selected runs retain their required resumable checkpoint, run
 configuration/log state, and `eval*` directories. Standalone visualization
 directories and intermediate checkpoints are outside the required contract.
-No local source was deleted by migration commands. Run
-`python migration/verify_migration.py gcs` before decommissioning the server.
+No local source was deleted by migration commands. GCS last passed
+`python migration/verify_migration.py gcs` on 2026-07-23. The supplementary
+Drive archive is checked with `python migration/verify_drive.py
+--include-trees`; its exact contract is `migration/DRIVE_ARTIFACT_MANIFEST.tsv`.
 
 ---
 
@@ -131,11 +137,16 @@ No local source was deleted by migration commands. Run
 | `/weka/jungbin/shape_aware_motion_eval_c45_20260715` | Phase-2 shape/TMR eval bundle (C45 TMR ckpt, fps 30) | `prepare_shape_tmr_eval.py` |
 | head-camera calibration JSONs (paths in `motion_expert_joint_attention/config.py` / `head_camera_alignment.DEFAULT_CALIBRATION`) | rigid head-joint→upright-camera SE(3), train-split fit | `estimate_head_camera_calibration.py` |
 
-Repo-internal (already inside git): `motion_expert/stats/uniego283_{mean,std}.npy` and
-`motion_expert_joint_attention/uniego283_{mean,std}.npy` (the 283-D z-score stats — the
-SINGLE normalization every motion model/eval assumes; computed over Nymeria uniego_rep
-via `compute_uniego_stats.py`-style pass), `motion_expert/pairs_{train,val}.jsonl`
-(Nymeria text↔motion pairs).
+Repo-internal: `motion_expert/stats/uniego283_{mean,std}.npy` and the
+byte-identical `motion_expert_joint_attention/uniego283_{mean,std}.npy`. These
+are the active Nymeria-grounded 283-D normalization arrays shared by current
+Phase-2/3 training. BONES source `Mean_uniego.npy`/`Std_uniego.npy` and C45
+evaluator 190-D stats have different roles and must not be substituted.
+
+`motion_expert/pairs_{train,val}.jsonl` are not tracked because `.gitignore`
+excludes them. Exact copies are archived on Drive as
+`cosmos_data/joint_attention/nymeria_pairs_{train,val}.jsonl`; the Drive restore
+script maps them back to the expected repo filenames.
 
 ---
 
@@ -151,6 +162,8 @@ via `compute_uniego_stats.py`-style pass), `motion_expert/pairs_{train,val}.json
   version is `nymeria_kimodo_pipeline/process_nymeriaplus.py`).
 - `external/cosmos3_nano_dcp_convert.log` — provenance of the DCP base checkpoint
   (exact model config + HF revisions of every sub-model, incl. the Wan VAE revision).
+- `external/nymeria_kimodo_pipeline/envs/` — relocatable conda exports for
+  `audio`, `kimodo`, `nymeria_plus`, and `soma`.
 
 ---
 
@@ -159,21 +172,23 @@ via `compute_uniego_stats.py`-style pass), `motion_expert/pairs_{train,val}.json
 Priority order, with sizes. Everything in tier 1–2 is either impossible or GPU-weeks to
 regenerate; tier 3+ is regenerable from tiers above + this repo.
 
-1. **Trained checkpoints you care about** (`cosmos_motion_ft_runs/...`): each native
-   iter dir ≈ 86 GB (or export EMA-merged weights to shrink); joint-attention `.pt`
-   files are small (trainable delta only). → Drive upload in progress for run A.
-2. **`nymeriaplus_kimodo_proportional`** minus regenerables: `uniego_rep` (15 GB),
-   `camera_rgb` (1.8 GB), `metadata/` (585 MB), `train_test_split.json`, kimodo motion
-   npzs `{Sxx}/`. The 277 GB `video/` and ~85 GB `joint_latents_T97/` are re-derivable
-   from raw Nymeria + this repo, but only if you still have raw access — video is the
-   bottleneck for all camera/video training, so archive it if budget allows.
+1. **Trained checkpoints you care about** (`cosmos_motion_ft_runs/...`): each
+   native iter dir is about 86 GB. Full A/B/D DCPs and selected Phase-2/3
+   checkpoints are verified on Drive. GCS retains the original baseline's full
+   DCP; Drive carries its exact 129 MB EMA LoRA/action subset for Phase-3
+   initialization.
+2. **`nymeriaplus_kimodo_proportional`**: Drive contains the derived motion
+   npzs, `uniego_rep`, `camera`, `camera_rgb`, metadata, split, and 277 GB
+   video. GCS additionally contains the 256-tier T97 latent cache. The 720-tier
+   cache is regenerable from these archived sources.
 3. **`seed/soma_proportional_uniegomotion_20fps`** (23 GB incl. per-source stats) —
    regenerable from the SEED release + vendored scripts. `cosmos_text_motion_full`
    (142 GB) only matters for the root text→motion finetune.
 4. **`cosmos3_nano_dcp`** (30 GB) — regenerable from HF in ~1 h (see convert log);
    `wan22_vae` (2.7 GB) — pinned HF revision, re-downloadable.
-5. Eval fixtures (§6) — small; tar the whole `joint_attention/` metadata + eval-input
-   dirs (excluding sample media) for exact reproducibility of reported numbers.
+5. Eval fixtures (§6), evaluator models, LPIPS, and C45 stats are verified on
+   Drive and GCS. Numeric run evaluation outputs are archived without redundant
+   visualization media.
 
 ## 9. Regeneration DAG (from scratch)
 

@@ -1,0 +1,31 @@
+{
+  "expected_camera_shape": [
+    96,
+    9
+  ],
+  "expected_file_count": 115583,
+  "expected_image_hw": [
+    640,
+    640
+  ],
+  "expected_latent_shape": [
+    48,
+    25,
+    40,
+    40
+  ],
+  "fps": 20.0,
+  "kind": "nymeria_wan_latent_cache",
+  "latent_dtype": "float16",
+  "limit_per_shard": null,
+  "model_resolution_tier": "720",
+  "num_frames": 97,
+  "num_shards": 24,
+  "schema_version": 1,
+  "source_manifest": "/weka/jungbin/nymeriaplus_kimodo_proportional/video/manifest_video.jsonl",
+  "source_window_count": 119632,
+  "spatial_transform_resolution": "480",
+  "split": "train",
+  "split_file": "/weka/jungbin/nymeriaplus_kimodo_proportional/train_test_split.json",
+  "vae_path": "/weka/jungbin/wan22_vae/Wan2.2_VAE.pth"
+}

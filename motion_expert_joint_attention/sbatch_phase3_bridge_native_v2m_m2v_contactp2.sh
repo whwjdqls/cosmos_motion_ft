@@ -12,8 +12,8 @@
 set -euo pipefail
 
 D=/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention
-PHASE1=/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/checkpoints/iter_000100000
-PHASE2=/weka/jungbin/cosmos_motion_ft_runs/ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d_w1_1_5_contact_c0p05_v1_h10_s2_unipc35/ckpt_step200000.pt
+PHASE1=${PHASE1_INIT:-/weka/jungbin/cosmos_motion_ft_runs/cosmos3_camera/camera_world/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k/checkpoints/iter_000100000}
+PHASE2=${PHASE2_INIT:-/weka/jungbin/cosmos_motion_ft_runs/ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d_w1_1_5_contact_c0p05_v1_h10_s2_unipc35/ckpt_step200000.pt}
 RUN_NAME=${PHASE3_CONTACT_P2_RUN_NAME:-ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2contact200k}
 
 echo "[p3brp2ct] node=$(hostname) date=$(date)"
@@ -27,7 +27,11 @@ echo "[p3brp2ct] no head-camera loss and no joint-target multitask objectives"
 echo "[p3brp2ct] causal 4x locality: latent0<->frame0, latent1<->frames1..4, ..., latent24<->93..96"
 echo "[p3brp2ct] required viz every 5k + final: 2 V2M and 2 M2V, native UniPC-30 sampling"
 
-test -f "${PHASE1}/model/.metadata"
+if [[ -d "${PHASE1}" ]]; then
+  test -f "${PHASE1}/model/.metadata"
+else
+  test -f "${PHASE1}"
+fi
 test -f "${PHASE2}"
 nvidia-smi --query-gpu=index,memory.used,memory.free,utilization.gpu --format=csv,noheader
 

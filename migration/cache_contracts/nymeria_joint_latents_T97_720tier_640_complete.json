@@ -1,0 +1,22 @@
+{
+  "actual_file_count": 115583,
+  "completed_at_utc": "2026-07-26T13:41:37.657552+00:00",
+  "contract_sha256": "c4147784dbb04179348d75d7b16c52c2f64dde02e084b75593f83a62493e5f23",
+  "expected_file_count": 115583,
+  "expected_image_hw": [
+    640,
+    640
+  ],
+  "expected_latent_shape": [
+    48,
+    25,
+    40,
+    40
+  ],
+  "kind": "nymeria_wan_latent_cache_completion",
+  "materialized_sample_count": 256,
+  "model_resolution_tier": "720",
+  "schema_version": 1,
+  "source_window_count": 119632,
+  "spatial_transform_resolution": "480"
+}
