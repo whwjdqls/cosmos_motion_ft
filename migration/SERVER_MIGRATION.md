@@ -71,7 +71,8 @@ inventory is `GCS_ARTIFACT_MANIFEST.tsv`.
 | 256-tier T97 Wan latents `(48,25,16,16)` fp16 | no | verified, 127,956 files | `precompute_latents.py` |
 | 720-tier T97 Wan latents `(48,25,40,40)` fp16 | contract only | no | `precompute_latents.py`; 115,583 train windows |
 | BONES proportional motion and 283-D UniEgo | verified | verified | SEED release plus vendored converters |
-| BONES uniform motion and stats | upload active on status date | not required by active Phase 2/3 | SEED release |
+| BONES uniform motion | upload active on status date | not required by active Phase 2/3 | SEED release |
+| BONES uniform 369-D stats | verified | not required by active Phase 2/3 | recomputable from uniform motion |
 | 20-fps Kimodo benchmark | verified | splits retained | Kimodo benchmark conversion |
 | Cosmos3-Nano materialized HF snapshot | no | verified | pinned HF download |
 | native Cosmos3-Nano base DCP | no | verified | pinned HF conversion |
@@ -329,10 +330,11 @@ On 2026-07-31:
   `1,431,747,113` bytes;
 - the 20-fps benchmark matched all `94,045` local files and
   `17,888,724,977` bytes on Drive;
-- `python migration/verify_drive.py --include-trees` passed all 39 completed
+- `python migration/verify_drive.py --include-trees` passed all 40 completed
   file/tree entries;
+- all six uniform-motion statistics files matched Drive checksums;
 - the Drive upload remained in progress only for the optional uniform BONES
-  motion tree and its small statistics directory.
+  motion tree.
 
 The current GCS account requires interactive `gcloud auth login`, so the
 2026-07-31 GCS recheck is blocked only by expired credentials. Do not interpret
