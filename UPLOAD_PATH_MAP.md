@@ -31,6 +31,9 @@ Status: ✅ done · ⬆️ pending · ❌ failed. All rows below are ✅ (backup
 | `/weka/jungbin/cosmos_motion_ft_runs/native_phase1_eval_inputs_vq_prefix5_256_T97_qfilter_person_v1/` | `data:cosmos_data/eval_fixtures/native_phase1_eval_inputs_vq_prefix5_256_T97_qfilter_person_v1/` | 11 MB | ✅ |
 | `/weka/jungbin/cosmos_motion_ft_runs/native_phase1_eval_inputs_full71_256_T97_v2/` | `data:cosmos_data/eval_fixtures/native_phase1_eval_inputs_full71_256_T97_v2/` | 130 MB | ✅ |
 | `/weka/jungbin/shape_aware_motion_eval_c45_20260715/` | `data:cosmos_data/eval_fixtures/shape_aware_motion_eval_c45_20260715/` | 487 MB | ✅ |
+| `/weka/jungbin/Kimodo-Motion-Gen-Benchmark-20fps/` (TMR-eval testsuite; hardcoded in shape_aware_TMR/official_tmr_eval.py + shape_tmr_eval_common.py) | `data:cosmos_data/benchmarks/Kimodo-Motion-Gen-Benchmark-20fps/` | 17 GB | ⏳ in progress |
+| `/weka/jungbin/seed/soma_uniform_motions_20fps/` (shape-agnostic motion tree) | `data:cosmos_data/seed/soma_uniform_motions_20fps/` | 127 GB | ⏳ in progress |
+| `/weka/jungbin/seed/stats/soma_uniform_motions_20fps/` (uniform stats) | `data:cosmos_data/seed/stats/soma_uniform_motions_20fps/` | 48 KB | ⏳ in progress |
 
 ## Checkpoints → `data:cosmos_ckpts/`
 
@@ -44,6 +47,7 @@ Status: ✅ done · ⬆️ pending · ❌ failed. All rows below are ✅ (backup
 | `/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_headcam/ckpt_step115000.pt` | `data:cosmos_ckpts/ja_phase3_bridge_native_headcam/ckpt_step115000.pt` | 9.1 GB | ✅ |
 | `/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k_multitask/ckpt_step065000.pt` | `data:cosmos_ckpts/ja_phase3_bridge_native_multitask/ckpt_step065000.pt` | 9.1 GB | ✅ |
 | `/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2contact200k/ckpt_step035000.pt` | `data:cosmos_ckpts/ja_phase3_bridge_native_contact/ckpt_step035000.pt` | 9.1 GB | ✅ |
+| `/weka/jungbin/cosmos_motion_ft_runs/ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d_w1_1_5_contact_c0p05_v1_h10_s2_unipc35/ckpt_step200000.pt` (Phase-2 contact-loss ablation) | `data:cosmos_ckpts/ja_phase2_t2m_ti2m_contact_unipc35/ckpt_step200000.pt` | 5.8 GB | ✅ |
 
 ## Small assets kept in git (NOT on Drive — restore via GitHub clone of `whwjdqls/cosmos_motion_ft`)
 
