@@ -16,7 +16,7 @@ totals, hashes, local paths, and restore paths are in
 | 256-tier T97 Wan latent cache | no | no | verified |
 | 720-tier T97 Wan latent cache | contract only | no; regenerable | no; regenerable |
 | BONES proportional motion and UniEgo trees | no | verified | verified |
-| BONES uniform motion | no | upload active | not required by active Phase 2/3 |
+| BONES uniform motion | no | verified | not required by active Phase 2/3 |
 | 20-fps Kimodo benchmark | no | verified | not required by active Phase 2/3 |
 | evaluator fixtures/models/stats | C45 contract and code only | verified | verified |
 | selected Phase-1 native DCPs A/B/D | no | verified | verified |
