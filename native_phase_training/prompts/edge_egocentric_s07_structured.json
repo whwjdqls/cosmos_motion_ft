@@ -1,0 +1,97 @@
+{
+  "subjects": [
+    {
+      "description": "An adult visible in the kitchen near the right side of the island",
+      "appearance_details": "The person wears a green short-sleeved shirt and blue pants, matching the conditioning frame",
+      "relationship": "Another person observed by the off-camera camera wearer",
+      "location": "Right side of the kitchen island in the opening view",
+      "relative_size": "Medium within frame",
+      "orientation": "Standing beside the island and generally facing into the kitchen",
+      "pose": "Natural upright standing pose",
+      "action": "Remains in the kitchen while the head-mounted viewpoint travels around the table",
+      "state_changes": "Maintains a consistent identity, outfit, and body shape throughout the shot",
+      "clothing": "Green short-sleeved shirt and blue pants",
+      "expression": "Neutral",
+      "gender": "",
+      "age": "Adult",
+      "skin_tone_and_texture": "Natural skin texture consistent with the conditioning frame",
+      "facial_features": "Consistent with the conditioning frame",
+      "number_of_subjects": 1,
+      "number_of_arms": 2,
+      "number_of_legs": 2
+    }
+  ],
+  "background_setting": "A modern residential kitchen matching the conditioning frame, with a white central island, dark stools, grey cabinets, stainless steel refrigerator and appliances, pendant lights, open shelving, a window, and small objects arranged on the island.",
+  "lighting": {
+    "conditions": "Bright indoor ambient lighting supplemented by daylight through the windows",
+    "direction": "Overhead pendant and ceiling lights with soft window light",
+    "shadows": "Soft natural shadows that remain consistent as the viewpoint moves",
+    "illumination_effect": "Stable realistic illumination with mild reflections on appliances and the island surface"
+  },
+  "aesthetics": {
+    "composition": "A wide first-person view in which the kitchen island provides strong parallax as the camera wearer moves around it",
+    "color_scheme": "Neutral grey, white, wood, and stainless steel tones with the visible person's green shirt as an accent",
+    "mood_atmosphere": "Calm everyday domestic activity",
+    "patterns": "Stable cabinet edges, island boundaries, shelving, and floor geometry"
+  },
+  "cinematography": {
+    "camera_motion": "A first-person head-mounted viewpoint translates naturally around the kitchen table toward its opposite side, with clear background parallax, gentle walking bob, and small head rotations. The motion settles near the opposite side as the wearer's right hand reaches stomach level in the lower foreground.",
+    "framing": "Wide first-person egocentric shot from a head-mounted camera",
+    "camera_angle": "Natural eye-level viewpoint of the off-camera wearer",
+    "depth_of_field": "Deep focus across the kitchen",
+    "focus": "The kitchen environment and visible person remain coherently focused during viewpoint motion",
+    "lens_focal_length": "Wide-angle fisheye lens consistent with the conditioning frame"
+  },
+  "style_medium": "Photorealistic live-action egocentric video",
+  "artistic_style": "Natural head-mounted documentary footage",
+  "context": "An off-camera person wearing a head-mounted camera walks through a home kitchen while another person remains visible near the island.",
+  "actions": [
+    {
+      "time": "0:00-0:01",
+      "description": "The off-camera camera wearer stands near the kitchen table and begins walking"
+    },
+    {
+      "time": "0:01-0:03",
+      "description": "The head-mounted viewpoint travels around the kitchen table toward the opposite side with natural walking parallax"
+    },
+    {
+      "time": "0:03-0:04",
+      "description": "The camera wearer reaches the opposite side and positions her right hand at stomach level, briefly bringing the hand into the lower foreground as the viewpoint settles"
+    }
+  ],
+  "text_and_signage_elements": [],
+  "segments": [
+    {
+      "segment_index": 0,
+      "time_range": "0:00-0:01",
+      "description": "Opening first-person view beside the kitchen island",
+      "key_changes": "The off-camera wearer initiates movement",
+      "camera": "Head-mounted viewpoint begins translating with gentle walking motion"
+    },
+    {
+      "segment_index": 1,
+      "time_range": "0:01-0:03",
+      "description": "The wearer walks around the table toward its opposite side while the island, stools, cabinets, and visible person shift with coherent parallax",
+      "key_changes": "The viewpoint changes position across the kitchen without changing the visible person's identity",
+      "camera": "Continuous first-person translation with mild head rotation and walking bob"
+    },
+    {
+      "segment_index": 2,
+      "time_range": "0:03-0:04",
+      "description": "The wearer arrives and raises her right hand to stomach level",
+      "key_changes": "The right hand enters the lower foreground and the camera motion settles",
+      "camera": "Head-mounted movement eases to a stable endpoint"
+    }
+  ],
+  "transitions": [],
+  "temporal_caption": "A continuous first-person head-mounted view begins beside a kitchen table. The unseen camera wearer walks around the table toward its opposite side, producing clear natural parallax and mild walking sway while the other visible person remains consistent near the island. Near the end, the wearer raises her right hand to stomach level in the lower foreground and the viewpoint settles.",
+  "audio_description": "Soft footsteps, subtle clothing rustle, and quiet household ambience",
+  "physical_realism": "The camera path follows plausible human walking with continuous parallax and smooth acceleration. Kitchen geometry, object placement, the visible person's identity, and illumination remain temporally consistent.",
+  "duration": "4s",
+  "fps": 20.0,
+  "resolution": {
+    "H": 256,
+    "W": 256
+  },
+  "aspect_ratio": "1,1"
+}

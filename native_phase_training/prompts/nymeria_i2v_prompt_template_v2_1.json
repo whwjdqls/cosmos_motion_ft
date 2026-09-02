@@ -1,0 +1,24 @@
+{
+  "cinematography": {
+    "camera_motion": "The first-person viewpoint moves with the unseen camera wearer's head and body during the described action.",
+    "camera_angle": "Natural eye-level viewpoint of the unseen camera wearer",
+    "lens_focal_length": "Wide-angle fisheye lens consistent with the conditioning frame"
+  },
+  "style_medium": "Photorealistic live-action egocentric video",
+  "artistic_style": "Natural head-mounted documentary footage",
+  "context": "The action description refers to the unseen camera wearer who controls the first-person viewpoint.",
+  "actions": [
+    {
+      "time": "0:00-0:04",
+      "description": "{{DESCRIPTION}}"
+    }
+  ],
+  "temporal_caption": "The described action is shown through movement of the first-person head-mounted viewpoint and, when relevant, the wearer's hands entering naturally from the frame edges.",
+  "duration": "4s",
+  "fps": 20.0,
+  "resolution": {
+    "H": 256,
+    "W": 256
+  },
+  "aspect_ratio": "1,1"
+}

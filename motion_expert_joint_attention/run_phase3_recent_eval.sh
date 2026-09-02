@@ -13,9 +13,12 @@ fi
 GPU_INDEX=$1
 shift
 
-D=/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention
-RUN=/weka/jungbin/cosmos_motion_ft_runs/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k
-FULL_WINDOWS=/weka/jungbin/cosmos_motion_ft_runs/joint_attention/full71_windows.json
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=../restored_env.sh
+source "${REPO_ROOT}/restored_env.sh"
+D="${REPO_ROOT}/motion_expert_joint_attention"
+RUN="${RUN_ROOT}/ja_phase3_bridge_v2m_m2v_native_p1ema100k_p2native200k"
+FULL_WINDOWS="${RUN_ROOT}/joint_attention/full71_windows.json"
 REPLACEMENT_WINDOWS=${RUN}/eval_full71_step110000_unipc30/motion_clean_replacement5_windows.json
 
 export CUDA_VISIBLE_DEVICES=${GPU_INDEX}

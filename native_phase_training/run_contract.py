@@ -17,7 +17,8 @@ import yaml
 CONTRACT_FILENAME = "native_phase1_contract.json"
 RESOLVED_CONTRACT_FILENAME = "resolved_run_contract.json"
 RESOLVED_ENV_FILENAME = "resolved_run_contract.env"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
+COSMOS_FRAMEWORK_EDGE_INFERENCE_SHIFT = 10.0
 
 ALL_TASKS = frozenset({"forward_dynamics", "inverse_dynamics", "policy", "image2video"})
 ADAPTATION_MODES = frozenset({"global_lora", "action_only", "camera_kv_lora"})
@@ -84,6 +85,13 @@ class NativePhase1RunContract:
     model_resolution: str
     num_frames: int
     training_shift: float
+    inference_shift: float
+    model_family: str
+    conditioning_fps: float
+    base_fps: float
+    vision_loss_scale: float
+    image_loss_scale: float | None
+    action_loss_weight: float
 
     def __post_init__(self) -> None:
         if self.schema_version != SCHEMA_VERSION:
@@ -128,6 +136,18 @@ class NativePhase1RunContract:
             raise ValueError(f"num_frames must be positive and 4N+1, got {self.num_frames}")
         if self.training_shift <= 0.0:
             raise ValueError(f"training_shift must be positive, got {self.training_shift}")
+        if self.inference_shift <= 0.0:
+            raise ValueError(f"inference_shift must be positive, got {self.inference_shift}")
+        if self.model_family not in {"nano", "edge"}:
+            raise ValueError(f"unsupported model family: {self.model_family!r}")
+        if self.conditioning_fps <= 0.0 or self.base_fps <= 0.0:
+            raise ValueError(
+                f"FPS values must be positive: conditioning={self.conditioning_fps} base={self.base_fps}"
+            )
+        if self.vision_loss_scale < 0.0 or self.action_loss_weight < 0.0:
+            raise ValueError("vision/action loss scales must be non-negative")
+        if self.image_loss_scale is not None and self.image_loss_scale < 0.0:
+            raise ValueError("image_loss_scale must be None or non-negative")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -143,6 +163,16 @@ class NativePhase1RunContract:
             "lora_target_modules",
             "training_prefix_lengths",
         }
+        schema2_expected = legacy_expected | {"model_resolution", "num_frames", "training_shift"}
+        schema3_expected = schema2_expected | {
+            "model_family",
+            "conditioning_fps",
+            "base_fps",
+            "vision_loss_scale",
+            "image_loss_scale",
+            "action_loss_weight",
+        }
+        schema4_expected = schema3_expected | {"inference_shift"}
         schema_version = int(value.get("schema_version", -1))
         if schema_version == 1:
             missing = legacy_expected - set(value)
@@ -155,21 +185,61 @@ class NativePhase1RunContract:
             upgraded = dict(value)
             upgraded.update(
                 {
-                    "schema_version": SCHEMA_VERSION,
+                    "schema_version": 2,
                     "model_resolution": "256",
                     "num_frames": 97,
                     "training_shift": 3.0,
                 }
             )
             value = upgraded
+            schema_version = 2
 
-        expected = legacy_expected | {
-            "model_resolution",
-            "num_frames",
-            "training_shift",
-        }
-        missing = expected - set(value)
-        extra = set(value) - expected
+        if schema_version == 2:
+            missing = schema2_expected - set(value)
+            extra = set(value) - schema2_expected
+            if missing or extra:
+                raise ValueError(
+                    f"invalid schema-2 run contract fields: missing={sorted(missing)} extra={sorted(extra)}"
+                )
+            upgraded = dict(value)
+            upgraded.update(
+                {
+                    "schema_version": 3,
+                    "model_family": "nano",
+                    "conditioning_fps": 20.0,
+                    "base_fps": 24.0,
+                    "vision_loss_scale": 1.0,
+                    "image_loss_scale": 1.0,
+                    "action_loss_weight": 10.0,
+                }
+            )
+            value = upgraded
+            schema_version = 3
+
+        if schema_version == 3:
+            missing = schema3_expected - set(value)
+            extra = set(value) - schema3_expected
+            if missing or extra:
+                raise ValueError(
+                    f"invalid schema-3 run contract fields: missing={sorted(missing)} "
+                    f"extra={sorted(extra)}"
+                )
+            upgraded = dict(value)
+            model_family = str(value["model_family"]).strip().lower()
+            upgraded.update(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "inference_shift": (
+                        COSMOS_FRAMEWORK_EDGE_INFERENCE_SHIFT
+                        if model_family == "edge"
+                        else float(value["training_shift"])
+                    ),
+                }
+            )
+            value = upgraded
+
+        missing = schema4_expected - set(value)
+        extra = set(value) - schema4_expected
         if missing or extra:
             raise ValueError(f"invalid run contract fields: missing={sorted(missing)} extra={sorted(extra)}")
         return cls(
@@ -183,6 +253,15 @@ class NativePhase1RunContract:
             model_resolution=str(value["model_resolution"]),
             num_frames=int(value["num_frames"]),
             training_shift=float(value["training_shift"]),
+            inference_shift=float(value["inference_shift"]),
+            model_family=str(value["model_family"]),
+            conditioning_fps=float(value["conditioning_fps"]),
+            base_fps=float(value["base_fps"]),
+            vision_loss_scale=float(value["vision_loss_scale"]),
+            image_loss_scale=(
+                None if value["image_loss_scale"] is None else float(value["image_loss_scale"])
+            ),
+            action_loss_weight=float(value["action_loss_weight"]),
         )
 
 
@@ -202,6 +281,7 @@ def contract_from_config(config: Any) -> NativePhase1RunContract:
 
     prefix_sets: set[tuple[int, ...]] = set()
     num_frame_sets: set[int] = set()
+    fps_sets: set[float] = set()
     for mode, stream in dataloaders.items():
         try:
             loader = _value(stream, "dataloader")
@@ -217,14 +297,21 @@ def contract_from_config(config: Any) -> NativePhase1RunContract:
                 configured_num_frames = int(_value(dataset, "num_frames"))
             except (AttributeError, KeyError):
                 configured_num_frames = 97
+            try:
+                configured_fps = float(_value(dataset, "fps"))
+            except (AttributeError, KeyError):
+                configured_fps = 20.0
         except (AttributeError, KeyError, TypeError) as error:
             raise ValueError(f"cannot resolve prefix lengths for training mode {mode!r}") from error
         prefix_sets.add(prefixes)
         num_frame_sets.add(configured_num_frames)
+        fps_sets.add(configured_fps)
     if len(prefix_sets) != 1:
         raise ValueError(f"training streams disagree on prefix lengths: {sorted(prefix_sets)}")
     if len(num_frame_sets) != 1:
         raise ValueError(f"training streams disagree on num_frames: {sorted(num_frame_sets)}")
+    if len(fps_sets) != 1:
+        raise ValueError(f"training streams disagree on conditioning FPS: {sorted(fps_sets)}")
 
     lora_enabled = bool(_value(model_config, "lora_enabled"))
     lora_target_modules = _parse_targets(_value(model_config, "lora_target_modules"))
@@ -253,6 +340,35 @@ def contract_from_config(config: Any) -> NativePhase1RunContract:
             )
         training_shift = 3.0
 
+    try:
+        model_family = str(_value(model, "model_family")).strip().lower()
+    except (AttributeError, KeyError):
+        try:
+            vlm_config = _value(model_config, "vlm_config")
+            model_name = str(_value(vlm_config, "model_name")).lower()
+            model_family = "edge" if "edge" in model_name else "nano"
+        except (AttributeError, KeyError):
+            model_family = "nano"
+    try:
+        diffusion_config = _value(model_config, "diffusion_expert_config")
+        base_fps = float(_value(diffusion_config, "base_fps"))
+    except (AttributeError, KeyError):
+        base_fps = 24.0
+    flow_config = _value(model_config, "rectified_flow_training_config")
+    try:
+        vision_loss_scale = float(_value(flow_config, "loss_scale"))
+    except (AttributeError, KeyError):
+        vision_loss_scale = 10.0 if model_family == "edge" else 1.0
+    try:
+        image_loss_scale_raw = _value(flow_config, "image_loss_scale")
+    except (AttributeError, KeyError):
+        image_loss_scale_raw = vision_loss_scale
+    image_loss_scale = None if image_loss_scale_raw is None else float(image_loss_scale_raw)
+    try:
+        action_loss_weight = float(_value(flow_config, "action_loss_weight"))
+    except (AttributeError, KeyError):
+        action_loss_weight = 10.0
+
     return NativePhase1RunContract(
         schema_version=SCHEMA_VERSION,
         adaptation_mode=adaptation_mode,
@@ -264,6 +380,15 @@ def contract_from_config(config: Any) -> NativePhase1RunContract:
         model_resolution=model_resolution,
         num_frames=next(iter(num_frame_sets)),
         training_shift=training_shift,
+        inference_shift=(
+            COSMOS_FRAMEWORK_EDGE_INFERENCE_SHIFT if model_family == "edge" else training_shift
+        ),
+        model_family=model_family,
+        conditioning_fps=next(iter(fps_sets)),
+        base_fps=base_fps,
+        vision_loss_scale=vision_loss_scale,
+        image_loss_scale=image_loss_scale,
+        action_loss_weight=action_loss_weight,
     )
 
 
@@ -349,6 +474,13 @@ def resolve_eval_contract(
                 "NATIVEP1_ADAPTATION_MODE conflicts with the checkpoint contract: "
                 f"environment={requested_mode!r} checkpoint={contract.adaptation_mode!r}"
             )
+    if "NATIVEP1_MODEL_FAMILY" in environment:
+        requested_family = environment["NATIVEP1_MODEL_FAMILY"].strip().lower()
+        if requested_family != contract.model_family:
+            raise ValueError(
+                "NATIVEP1_MODEL_FAMILY conflicts with the checkpoint contract: "
+                f"environment={requested_family!r} checkpoint={contract.model_family!r}"
+            )
     if "NYMERIA_DROP_MODES" in environment:
         requested_drops = _parse_drop_modes(environment["NYMERIA_DROP_MODES"])
         if requested_drops != contract.dropped_modes:
@@ -379,6 +511,16 @@ def resolve_eval_contract(
                 "NATIVEP1_SHIFT_OVERRIDE conflicts with the checkpoint contract: "
                 f"environment={requested_shift} checkpoint={contract.training_shift}"
             )
+    if "NATIVEP1_INFERENCE_SHIFT" in environment and environment[
+        "NATIVEP1_INFERENCE_SHIFT"
+    ].strip():
+        requested_inference_shift = float(environment["NATIVEP1_INFERENCE_SHIFT"])
+        if abs(requested_inference_shift - contract.inference_shift) > 1e-9:
+            raise ValueError(
+                "NATIVEP1_INFERENCE_SHIFT conflicts with the checkpoint contract: "
+                f"environment={requested_inference_shift} "
+                f"checkpoint={contract.inference_shift}"
+            )
     return contract, source, checkpoint, run_dir
 
 
@@ -399,12 +541,17 @@ def write_eval_resolution(
     drop_modes = ",".join(contract.dropped_modes)
     env_contents = "\n".join(
         (
+            f"export NATIVEP1_MODEL_FAMILY={shlex.quote(contract.model_family)}",
             f"export NATIVEP1_ADAPTATION_MODE={shlex.quote(contract.adaptation_mode)}",
             f"export NYMERIA_DROP_MODES={shlex.quote(drop_modes)}",
             f"export NYMERIA_RESOLUTION={shlex.quote(contract.model_resolution)}",
             f"export NYMERIA_NUM_FRAMES={contract.num_frames}",
             f"export NATIVEP1_SHIFT_OVERRIDE={contract.training_shift}",
-            f"export NATIVEP1_EFFECTIVE_SHIFT={contract.training_shift}",
+            f"export NATIVEP1_TRAINING_SHIFT={contract.training_shift}",
+            f"export NATIVEP1_INFERENCE_SHIFT={contract.inference_shift}",
+            f"export NATIVEP1_EFFECTIVE_SHIFT={contract.inference_shift}",
+            f"export NATIVEP1_CONDITIONING_FPS={contract.conditioning_fps}",
+            f"export NATIVEP1_BASE_FPS={contract.base_fps}",
             "",
         )
     )
@@ -424,8 +571,11 @@ def main() -> None:
     resolved = json.loads(record_path.read_text())
     print(
         "[native-contract] "
-        f"mode={resolved['adaptation_mode']} dropped={resolved['dropped_modes']} "
-        f"resolution={resolved['model_resolution']} shift={resolved['training_shift']} "
+        f"family={resolved['model_family']} mode={resolved['adaptation_mode']} "
+        f"dropped={resolved['dropped_modes']} fps={resolved['conditioning_fps']} "
+        f"resolution={resolved['model_resolution']} "
+        f"training_shift={resolved['training_shift']} "
+        f"inference_shift={resolved['inference_shift']} "
         f"source={resolved['resolved_from']} record={record_path} env={env_path}",
         flush=True,
     )

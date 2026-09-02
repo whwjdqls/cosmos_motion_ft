@@ -306,7 +306,7 @@ eval_full71_current_shift3_single_gpu_shards/
 | Training model resolution | incorrectly left at 720 | 256 |
 | Training shift selected | 10 | 3 |
 | Quality filter | none | qfilterv1, removes about 1.3% |
-| Caption subject | standalone `C` retained | standalone `C` becomes `A person` |
+| Caption subject | standalone `C` retained | standalone `C` becomes sentence-aware `the person` |
 | EMA | PowerEMA | PowerEMA |
 | Recent evaluation | not uniform/provenance-confounded | official EMA + UniPC |
 

@@ -27,11 +27,21 @@ from __future__ import annotations
 
 import numpy as np
 
-from cosmos_framework.data.vfm.action.domain_utils import (
-    EMBODIMENT_TO_DOMAIN_ID,
-    EMBODIMENT_TO_RAW_ACTION_DIM,
-)
-from cosmos_framework.data.vfm.action.pose_utils import pose_abs_to_rel, pose_rel_to_abs
+try:  # Cosmos-3 Nano framework layout
+    from cosmos_framework.data.vfm.action.domain_utils import (
+        EMBODIMENT_TO_DOMAIN_ID,
+        EMBODIMENT_TO_RAW_ACTION_DIM,
+    )
+    from cosmos_framework.data.vfm.action.pose_utils import pose_abs_to_rel, pose_rel_to_abs
+except ModuleNotFoundError:  # Cosmos-3 Edge framework layout
+    from cosmos_framework.data.generator.action.utils.domain_utils import (
+        EMBODIMENT_TO_DOMAIN_ID,
+        EMBODIMENT_TO_RAW_ACTION_DIM,
+    )
+    from cosmos_framework.data.generator.action.utils.pose_utils import (
+        pose_abs_to_rel,
+        pose_rel_to_abs,
+    )
 
 EMBODIMENT = "camera_pose"
 DOMAIN_ID = EMBODIMENT_TO_DOMAIN_ID[EMBODIMENT]          # 2

@@ -23,8 +23,16 @@ class LatentOmniMoTModel(OmniMoTModel):
 
     _ACTION_MODULES = ("action2llm", "llm2action", "action_modality_embed")
 
-    def __init__(self, config, adaptation_mode: str = "global_lora") -> None:
+    def __init__(
+        self,
+        config,
+        adaptation_mode: str = "global_lora",
+        model_family: str = "nano",
+    ) -> None:
         self.adaptation_mode = str(adaptation_mode)
+        self.model_family = str(model_family).lower()
+        if self.model_family != "nano":
+            raise ValueError(f"legacy LatentOmniMoTModel only supports Nano, got {self.model_family!r}")
         if self.adaptation_mode not in {"global_lora", "action_only", "camera_kv_lora"}:
             raise ValueError(f"unsupported Phase-1 adaptation mode: {self.adaptation_mode!r}")
         super().__init__(config)

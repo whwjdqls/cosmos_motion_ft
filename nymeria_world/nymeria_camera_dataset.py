@@ -101,8 +101,8 @@ class NymeriaPlusCameraActionDataset(Dataset):
         with open(manifest_path) as f:
             for line in f:
                 rec = json.loads(line)
-                cam = rec.get("camera_path")
-                vis = rec.get("vision_path")
+                cam = resolve_legacy_path(rec.get("camera_path"))
+                vis = resolve_legacy_path(rec.get("vision_path"))
                 if not cam or not vis:
                     continue
                 nb = int(rec.get("nb_frames", 0))
@@ -202,3 +202,4 @@ if __name__ == "__main__":
         print(f"  [piped] sequence_plan: {sp.as_dict()}")
         print(f"  [piped] image_size={t.get('image_size')}")
     print("\n[ok] base dataset + ActionTransformPipeline produce the Cosmos action contract.")
+from runtime_paths import resolve_legacy_path

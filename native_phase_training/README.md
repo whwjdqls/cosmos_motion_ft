@@ -10,6 +10,291 @@ The immediate goal is:
 
 This is not the motion-expert path. There is no motion expert and no modality bridge in this directory.
 
+## Cosmos3-Edge Phase 1
+
+The Edge port is isolated behind `NATIVEP1_MODEL_FAMILY=edge` and the Hydra
+experiment `world_camera_nymeria_latent_edge`; the historical Nano experiment
+remains the default.  It uses T97 at the source 20 FPS, 256-tier cached Wan2.2
+latents, all four task streams at `40/25/20/15`, standalone uppercase `C` ->
+`the camera wearer`,
+global Q/K/V/O LoRA, and the released Edge loss scales.
+
+The caption policy is sentence-aware: a marker at the beginning of a sentence
+becomes `The camera wearer`; otherwise it becomes `the camera wearer`.
+Lowercase `c`, `C2`, `_C`, `ABC`, and other embedded occurrences are unchanged.
+The same helper is used by cached-latent training and evaluation preparation.
+`NYMERIA_STANDALONE_C_SUBJECT` records the choice in the resolved Hydra dataset
+config. Its default remains `person` for historical Nano reproduction, while
+the Edge Phase-1 launchers pin `camera_wearer`.
+Runs launched before this 2026-09-01 policy update used the historical `the
+person` wording and are not relabeled retroactively; retraining is required.
+
+The released Edge config makes training and inference shift two distinct
+settings. At model tier `256`, rectified-flow **training uses shift 3**; this
+mapping is spatial (`256 -> 3`, `480 -> 5`, `720 -> 10`) and is not selected by
+FPS. Each Nymeria sample still carries its actual `conditioning_fps=20`, while
+the released model's internal `base_fps=24` and FPS modulation remain unchanged.
+For **native PyTorch Cosmos Framework inference**, the released
+forward-dynamics, inverse-dynamics, `wam`/policy, and image-to-video defaults use
+UniPC shift 10, including the official 256-tier/20-FPS action example. The
+persisted run contract therefore records `training_shift=3` and
+`inference_shift=10` separately. Action evaluation keeps the framework's 30
+steps/guidance 1; image-to-video keeps 35 steps/guidance 6.
+The `rectified_flow_inference_config.shift=1` stored in the model config is a
+scheduler construction value; released per-mode/request sampling arguments
+override it with 10. T97 is within Edge's released 50–150-frame video range,
+and the corresponding 96-action sequence is within its 16–400 action range.
+
+This run follows the released Edge architecture, RF distributions, loss scales,
+FPS conditioning, and official inference stack. It is still a fine-tune, not a
+reproduction of NVIDIA's unpublished pretraining run: it uses Nymeria data,
+T97/20-FPS/256-tier crops, cached VAE latents, global LoRA plus action heads, and
+our `40/25/20/15` task mixture. The released checkpoint config defaults to model
+tier `480`; tier `256` is a released supported tier whose training shift is 3.
+
+Prepare the pinned framework with `prepare_edge_framework.sh`.
+`submit_phase1_edge.sh` queues only Edge-to-DCP conversion and a dependent
+single-L40S gate. Inspect its eight-clip train/save/resume result before running
+`submit_phase1_edge_production.sh`, which queues the full cache and the dependent
+four-L40S, eight-clips-per-rank, replicate-only 100k run. Its effective global
+batch is 32 with no gradient accumulation. The job uses FSDP2 infrastructure
+with `dp_shard=1, dp_replicate=4`, which has DDP semantics and does not shard
+parameters. The reproducible launcher is `sbatch_phase1_edge_4gpu_bs8.sh`.
+
+The required single-GPU gate passed on 2026-08-31 as Slurm job `527144` on an
+L40S: four cached clips, finite losses through step 3, a committed step-2 DCP,
+fresh-process resume from iteration 2, and a committed step-3 DCP.  The run used
+95.11 GiB peak resident host memory (`sacct` `MaxRSS`; about 99.7 GB decimal),
+across the batch step. This is CPU node RAM, not GPU VRAM. `sacct` does not
+identify the exact line at which the peak occurred; likely contributors are
+full model/DCP materialization, PowerEMA, optimizer state, and checkpoint
+save/resume staging. No Python code was added to reserve 95 GiB. “Explicit
+host-memory allocations” means only that the Slurm launchers now request node
+RAM with `#SBATCH --mem=...`: the earlier 8-GiB-default smoke job `527142` was
+killed after step 1 and before a step-2 save was logged, while the otherwise
+equivalent 192-GiB-request job completed.
+
+The direct batch-eight extension passed on 2026-09-01 as single-L40S job
+`527835`: three finite optimizer updates, a committed step-2 DCP, successful
+fresh-process resume, and a committed step-3 DCP. The observed GPU peak was
+33,714 MiB of 46,068 MiB. Its real packed batch contained 12,800 vision, 768
+action, and 1,215 text tokens (14,783 total), well below the 45,056-token model
+budget. W&B run `gw79vb8o` finished and contains the finite loss and gradient
+history.
+
+The first four-rank launch (`527839`) then exposed an observational callback
+incompatibility, not a model or memory failure: inverse-dynamics can validly
+condition every vision token, so Edge returns a scalar graph-preserving dummy
+vision loss, while NVIDIA's `sigma_loss_analysis` callback requires one vision
+loss per sigma/sample. `run_latent_train.py` now removes only that diagnostic
+callback from mixed Phase-1 runs; this does not change the loss, gradients,
+optimizer, checkpoint, or sampling contracts. Four-L40S job `527845` validated
+the correction for 60 global-batch-32 updates, passed the normal step-50
+callbacks, wrote a complete four-rank step-60 DCP, and finished W&B run
+`cf0gd8aj`. Stable steps took about 2.4 seconds. The initial production job
+`527849` reached step 3,548 in 2:19:45 but was deliberately canceled before its
+first checkpoint after the caption subject was corrected from `the person` to
+`the camera wearer`; its W&B run was `q2to7b8t`. It is not a resume source.
+Replacement single-L40S batch-8 smoke job `527982` passed three finite updates,
+step-2 save, fresh-process resume, and step-3 save; its W&B run is `o3t1cv1q`.
+Its initially dependent four-L40S job `527983` failed before model loading or
+W&B initialization because NVML returned GPU-local CPU IDs outside Slurm's
+64-CPU cgroup for two ranks. `run_latent_train.py` now intersects that optional
+CPU-locality hint with the scheduler allocation, falling back to the allocated
+CPUs when the intersection is empty. This affects host scheduling only, not
+model/data/optimizer behavior. Replacement production job `527987` started all
+four ranks and W&B run `6l7ok328`; the API reported it online/running through
+step 55, and the normal step-50 callback reported finite loss and a global
+gradient norm of `0.66602`. Stable updates remained about 2.1--2.4 seconds with
+roughly 33.4 GiB used on each L40S. The clean run is
+`edge_phase1_T97_20fps_bs32_4gpu_bs8_camera_wearer_global_lora_100k_v1`, starts
+from the downloaded Edge base DCP, saves every 5,000 updates, and automatically
+evaluates the compact five-sample suite every 5,000 updates. The versioned
+full-71 and compact evaluation inputs also use `the camera wearer`; inverse
+dynamics remains text-empty.
+
+After two `batch`/`normal` preemptions, a continuation was initially queued on
+`liu-compute` with QoS `ll-med`. Slurm accounting records both terminations as
+explicit `PREEMPTED` events, not CPU exhaustion or host OOM. Because the
+`liu-compute` request had a conservative September 14 start estimate while a
+`batch` test-only request could fit substantially earlier, production was moved
+back to `batch`/`normal` as job `528782` through
+`sbatch_phase1_edge_4gpu_bs8_batch.sh`; the pending liu job `528466` was
+cancelled before the new job could touch the shared run directory. The batch
+request permits the validated `l40s|l40` features, requests four GPUs, and
+excludes the ECC-faulted `ll-l40-1` node. It retains four-way replication,
+eight clips per rank, global batch 32, the same run directory, permanent 5k
+checkpoints, and compact evaluation only at 5k milestones. The launcher adds
+15-minute wall-clock recovery checkpoints; NVIDIA's callback retains only its
+latest three recovery saves and never prunes the permanent 5k milestones.
+
+The continuation keeps 64 CPUs and 512 GiB host RAM. Each rank constructs four
+task streams with four DataLoader workers per stream, so lowering CPU allocation
+would oversubscribe the current input pipeline unless worker counts were changed
+and benchmarked. The one-L40 resume/save gate reported about 95.8 GiB peak host
+RAM, and Slurm `MaxRSS` is a per-step maximum rather than a trustworthy
+four-rank aggregate; therefore the 512-GiB request remains the conservative
+checkpoint/EMA staging envelope. Neither requested resource caused the prior
+preemptions.
+
+`ll-l40-1.grasp.maas` is excluded. Independent Edge smoke job `527953` failed
+there with `cudaErrorECCUncorrectable` during `Module.to_empty()`, before model
+weights or a forward pass, so it is a hardware-health exclusion rather than a
+model/software diagnosis. Resume gate `528475` used
+`sbatch_phase1_edge_resume5000_l40_smoke.sh` on a healthy L40 at `dj-l40-0`.
+It observed zero volatile ECC errors, warm-loaded the complete step-5000
+model/EMA, optimizer, scheduler, and trainer DCP, advanced one real batch-eight
+update with loss `1.6550` and gradient norm `1.06733`, and committed a complete
+18-GiB step-5001 smoke DCP. The source production checkpoint remained read-only.
+The gate completed in 3:42 with exit code zero and about 95.8 GiB peak host RAM.
+
+Production continuation job `528782` is pending on `batch`/`normal` for four
+GPUs with feature constraint `l40s|l40`, 64 CPUs, and 512 GiB host RAM. It will
+resume the production run at step 5,000, generate a new W&B continuation ID,
+and enable the 15-minute rolling recovery cadence. The previous W&B ID
+`6l7ok328` is preserved in the run directory as
+`wandb_id.before_liu_6l7ok328.txt`; `wandb_id.txt` remains absent until the new
+job initializes logging. Slurm currently reports the pending reason as
+`Resources` and projected a September 2 evening start; this is dynamic and must
+be checked with `squeue --start -j 528782`. Test-only requests reduced as far as
+32 CPUs/256 GiB received the same projected placement as 48 CPUs/384 GiB, so
+four simultaneous GPUs—not CPU or RAM—are the observed scheduling bottleneck.
+
+The full 256-tier cache build started on 2026-09-01 as four independent L40
+`srun` shards under `tmux 0`; model training was not submitted. The initial
+single-window extractor averaged about 0.8 windows/s/GPU, 24--26% GPU
+utilization, and roughly 5 GiB GPU memory because MP4 open/seek/decode and file
+write were serialized around each VAE call. `precompute_latents.py` now supports
+bounded parallel PyAV decode and one-group-ahead prefetch. Production keeps VAE
+batch size 1 with four decode workers and prefetch size 8: a 40-window L40 smoke
+ran at 1.5 windows/s and all 40 latent, camera-action, and image-size arrays were
+bit-identical to the original cache; the resumed four shards stabilized around
+1.6 windows/s/GPU with zero failures. A VAE batch-size-4 smoke reached only
+1.4 windows/s and changed fp16 latents slightly (mean relative L2 about 0.3%,
+maximum absolute difference 0.0625), so it was rejected to avoid mixing
+numerically different cache populations. The resumable production launcher is
+`run_precompute_latents_256tier_srun_shards.sh`; final validation still owns the
+`latent_cache_complete.json` marker.
+
+The matching official-inference gate passed on 2026-08-31 as Slurm job
+`527199` against the step-3 smoke checkpoint: all four one-sample requests
+completed at 20 FPS and shift 10, with 30 steps/guidance 1 for action modes and
+35 steps/guidance 6 for image-to-video; visualization and prefix metrics also
+completed. The renewed Edge runtime calls the policy mode `wam`, so sanitization
+maps the repository's canonical `policy` task name to `wam` only at inference.
+Derived Edge JSONLs also resolve legacy `/weka/jungbin/...` asset paths onto the
+restored server before the job is submitted.
+
+The untouched downloaded Cosmos3-Edge snapshot also passed a one-sample,
+four-mode zero-shot baseline as Slurm job `527214`. It loaded the local HF
+snapshot directly (no LoRA/DCP overlay), used 256/T97/20 FPS/seed 0, replaced
+standalone `C` with `the person` in the inference copy, and completed forward,
+inverse, `wam`, and image-to-video generation plus visualization and metrics.
+The reproducible launcher is `sbatch_edge_zeroshot.sh`; the recorded result
+contract and outputs are under
+`cosmos3_camera/camera_world_edge/edge_zeroshot_base_20260825_256_T97_20fps_seed0`.
+
+Runtime distinction: the refreshed 2026-08-25 Edge model card's vLLM/Diffusers
+generic I2V example uses shift 12, 20 steps, and guidance 6. The native PyTorch
+Cosmos Framework commit pinned here (`d4599e2`) still ships I2V shift 10, 35
+steps, and guidance 6. Phase-1 checkpoint evaluation deliberately uses the
+latter so the untouched baseline and fine-tuned checkpoints share one sampler
+contract. Action inference is shift 10/30 steps/guidance 1 in both recipes.
+
+The 2026-09-01 one-clip egocentric audit found that literal `camera wearer`
+wording does not unfreeze generic I2V motion. An audited structured prompt
+raises motion substantially but still hallucinates hands/objects and does not
+recover the GT route; shift 10/35 and shift 12/20 are effectively tied when the
+structured JSON is held fixed. GT-action forward dynamics produces
+trajectory-scale motion, but overshoots and distorts geometry, while `The
+person` versus `The camera wearer` has little effect once the 9D actions are
+supplied. Keep native I2V as the canonical sampler and use forward dynamics
+when camera-path control matters. Exact prompts, jobs, metrics, visual findings,
+artifacts, and limitations are in
+[`EDGE_EGOCENTRIC_INFERENCE_AUDIT.md`](EDGE_EGOCENTRIC_INFERENCE_AUDIT.md).
+
+A pinned Diffusers 0.40 follow-up used the same base Edge weights and Nymeria
+input at 256/T97/20 FPS with the model-card shift-12/20-step/guidance-6 recipe.
+The audited JSON and plain camera-wearer prompt both completed. The plain prompt
+was passed directly with no reasoner upsampling or JSON conversion. It produced
+more raw optical-flow motion but incorrectly approached/centered the person
+visible in the frame; the structured prompt preserved the unseen-wearer
+semantics better. Diffusers and native outputs were not numerically identical
+under otherwise matched structured conditioning, so backend choice must be
+recorded alongside sampler settings. Paths and measurements are in the audit.
+
+The active inference-only Nymeria I2V prompt is the small, versioned v2.1
+template in `prompts/nymeria_i2v_prompt_template_v2_1.json`. It is a 978-byte
+template containing only the source action description, one unseen-wearer
+context sentence, camera motion/angle/lens, style/medium, one temporal-caption
+sentence, and request metadata. v2.0 is preserved beside it and differs by
+exactly one field: it has no `temporal_caption`. The active 871-byte negative
+template is `prompts/nymeria_i2v_negative_prompt_template_v2.json`; it makes no
+assumptions about scene content, activity, people count, or whether the correct
+video should move. It rejects only external/third-person or obstructed camera
+perspectives, unnatural external-camera moves, and generic temporal corruption.
+
+The one-clip 12/20/6 ablation held checkpoint, image, caption, seed, and all
+sampling settings fixed. v2.0 with NVIDIA's 17,578-byte model-card negative had
+mean flow 0.2733; replacing only the negative with Nymeria v2.0 gave 0.1940.
+Adding only the positive v2.1 temporal-caption field raised flow to 0.3162 and
+visually moved the viewpoint around the island with wearer hands entering from
+below, without inventing a full camera operator in front of the lens. These are
+single-sample diagnostic results, not population-level evidence. Future prompt
+versions must add or remove one small block at a time and keep the prior JSON
+files immutable so each ablation remains reproducible.
+
+This templating is not used for training. For Edge I2V inference,
+`sanitize_prefix_inference_inputs.py` replaces standalone uppercase `C` with
+`The camera wearer`, leaves lowercase `c` untouched, renders positive v2.1
+and negative v2.0, and preserves intentionally
+provided structured prompts/negative prompts. The Diffusers launcher exposes
+`NYMERIA_TEMPLATE_JSON` and `USE_NYMERIA_NEGATIVE_TEMPLATE` for controlled
+ablations. Every completed sample stores `positive_prompt.json`,
+`negative_prompt.json`, and `prompt_manifest.json` beside its MP4.
+
+The reusable Edge qualitative cohort is frozen in
+`edge_qualitative20_cohort_v1.json`: it is the first 20 records in the
+canonical full-71 order, plus SHA-256 hashes of all four source JSONLs. The
+completed untouched-checkpoint suite is:
+
+```text
+/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/cosmos3_camera/camera_world_edge/edge_zeroshot_qualitative20_v1_20260901_256_T97_20fps_seed0
+```
+
+It contains 80 native results (20 each for FD, ID, WAM/policy, and I2V), 20
+additional Diffusers I2V results, 60 native GT-vs-generated MP4s, 40 ID/WAM
+camera-trajectory plots, and 20 fixed five-way grids. The five-way order is GT,
+native FD, native WAM, native I2V, and Diffusers I2V. All media are
+256 x 256, T97, 20 FPS, seed 0. FD/ID/WAM use shift 10 / 30 steps / guidance 1;
+both I2V backends use shift 12 / 20 steps / guidance 6.
+
+For the paired I2V comparison, both backends read the same sanitized JSONL and
+therefore share the exact native-normalized positive string, negative string,
+conditioning-image path and SHA-256, media request, seed, and sampler values.
+The Diffusers path imports the official native
+`FlowUniPCMultistepScheduler`, avoiding the slightly different timestep grid of
+the older generic converted scheduler. Prompt upsampling is disabled, no
+metadata sentences are appended to the already-structured JSON, system prompts
+are off, and safety checking/guardrails and diffusion cache are disabled. The
+pipeline/model implementations still differ, so paired outputs are not
+expected to be pixel-identical; backend is the intended experimental variable.
+
+Authoritative files are `prepared/cohort_contract.json`, `validation.json`, and
+`COMPLETE.json`. The fixed grids are in `viz/five_way`; exact prompts and sample
+arguments are saved beside every generated video. Reproduce or resume the suite
+with `sbatch_edge_qualitative20.sh`. Its validator accepts completion only after
+80 native plus 20 Diffusers results have the correct media, action shapes, and
+matched I2V input hashes.
+
+Edge training logs to W&B online by default under project `cosmos3_camera`, group
+`camera_world_edge`, with the Slurm run name. Authentication is intentionally
+not stored in this repository. Before submission, either run `wandb login` in
+the Cosmos environment or export `WANDB_API_KEY`; optionally set `WANDB_ENTITY`
+and `WANDB_PROJECT`. The production submitter fails before queueing the cache if
+online mode has no credential. Set `NATIVEP1_WANDB_MODE=offline` only when an
+offline run that will later be synchronized is intentional.
+
 Bridge compatibility note: future motion bridge work should keep this generator on the native Cosmos
 training/sampling contract. For `motimg2video`, video is the noised target and should use native Cosmos
 RF noising plus official inference sampling. For `video2motion`, video is clean conditioning and the
@@ -103,7 +388,7 @@ The important compatibility point is that cached latents are a training input op
 
 - `prep_test_eval.py`
   - Builds official-inference JSONL inputs for forward dynamics, inverse dynamics, policy, and image-to-video from the 71-sequence held-out split.
-  - Pins the Phase 1 contract to T97/action96, 20 FPS, resolution/image size 256, and shift 3.0.
+  - Pins the historical Nano Phase 1 contract to T97/action96, 20 FPS, resolution/image size 256, and shift 3.0. Edge evaluation derives separate JSONLs with shift 10.
   - Uses one usable window per test sequence, preferring walking/turning clips but falling back to the first usable T97 window.
 
 - `visualize_checkpoint.py`
@@ -119,6 +404,7 @@ The important compatibility point is that cached latents are a training input op
 
 - `run_contract.py`
   - Persists architecture-critical settings in `<run>/native_phase1_contract.json` and resolves them before evaluation imports the experiment config.
+  - Keeps RF training shift separate from sampler inference shift so the Edge 256-tier train/eval contracts remain `3/10` respectively.
   - Rejects incompatible resume settings and conflicting manual evaluation overrides instead of rebuilding a different adapter graph.
 
 - `sbatch_phase1_native_camera.sh`
@@ -243,7 +529,7 @@ The 10% CFG text dropout runs after mode-specific formatting, so it drops the en
 
 The 2026-07-21 A-D suite tests action-loss weighting, longer visual context, and
 how narrowly the generator is adapted. All runs use the pinned quality filter,
-standalone `C -> A person` caption replacement, fixed four clips per GPU (global
+standalone `C -> the person` caption replacement, fixed four clips per GPU (global
 batch 32), 100k scheduler/steps, save every 5k, LoRA/base LR `5e-5`, 4x action-head
 LR, gradient clipping 1.0, and PowerEMA. The suite-specific action loss weight is
 `2.0`, and vision loss is normalized by active suffix elements per sample.
@@ -879,8 +1165,8 @@ The queue was handed over one node at a time so another user's pending two-node 
 
 `sbatch_phase1_native_camera_qfilter_lr1e5_person.sh` is paired with that `1e-5`
 run and changes only caption wording. Before mode-specific JSON/prose formatting, every
-whole-token uppercase `C` is replaced with `A person` using `(?<!\w)C(?!\w)`; lowercase
-`c` and `C` embedded in words or identifiers are untouched. Inverse-dynamics text remains
+whole-token uppercase `C` is replaced with `the person` using `(?<!\w)C(?!\w)`; sentence starts
+use `The person`, while lowercase `c` and `C` embedded in words or identifiers are untouched. Inverse-dynamics text remains
 exactly empty, and the existing 10% whole-prompt CFG dropout remains unchanged. The setting
 is recorded as `replace_standalone_c=true` in the resolved dataset config. Its run path is:
 

@@ -229,6 +229,20 @@ Inference must run from `cosmos-framework`, use `--no-guardrails`, use `.jsonl` 
 
 Read `native_phase_training/README.md` before editing this path. That README is the detailed runbook for the current official-compatible Phase 1 camera/video generator run.
 
+Cosmos3-Edge Phase-1 continuation status on 2026-09-02: complete step-5000
+model/EMA/optimizer/scheduler/trainer DCP is preserved under
+`edge_phase1_T97_20fps_bs32_4gpu_bs8_camera_wearer_global_lora_100k_v1`.
+One-L40 resume gate `528475` passed a real batch-eight step and complete isolated
+step-5001 save on `dj-l40-0`; production job `528782` is pending on
+`batch`/`normal` for four GPUs constrained to validated `l40s|l40`, with
+15-minute rolling recovery checkpoints and permanent 5k checkpoints. Known
+ECC-faulted `ll-l40-1` is excluded. The superseded pending `liu-compute` job
+`528466` was cancelled. Old preemptible job `527987` was cancelled, and its W&B
+ID `6l7ok328` was preserved before the continuation creates a fresh ID. Keep
+the current 64-CPU/512-GiB request unless the four-stream-per-rank loader and
+aggregate checkpoint memory are separately revalidated. Verify dynamic Slurm
+state before reporting progress.
+
 Purpose: train a new Nymeria camera/video generator LoRA that keeps the training and sampling contract close to NVIDIA's native Cosmos-3 Nano action/video setup. This path exists because the older joint-attention Phase 1 and custom sampler showed poorer visual quality than base Cosmos with the official sampler. The new path uses saved Wan-VAE latents for training speed, but it preserves native Cosmos sequence construction, rectified-flow noising, loss masks, losses, action heads, checkpoint format, and official inference compatibility. Batch cardinality is an optimization choice and does not affect sampler compatibility.
 
 This directory is intentionally isolated from `motion_expert_joint_attention/`. It has no motion expert, no 3-way joint attention, and no modality bridge. It should produce a frozen video/camera specialist that future bridge or motion experiments can reuse.
@@ -715,6 +729,24 @@ The same audit independently reproduces the camera preprocessor, ruling out a hi
 
 The broad non-rigidity is rotational and is already present in the source SMPL fit. Over 728 sequences, the per-sequence fixed SOMA-Head-to-camera relation has mean/median full-rotation residual `15.06/14.57 deg` and horizontal-heading residual mean/median `13.05/12.27 deg`. Even within non-overlapping T97 windows the sequence-level mean residual is `8.80 deg` full rotation and `7.81 deg` heading. On all 71 test sequences, the original SMPL Head has `14.53 deg` mean residual to camera, the converted SOMA Head has `14.42 deg`, and SMPL-to-SOMA Head differs by only `0.923 deg` mean. Thus the converter is not creating the main orientation problem; the fitted source Head orientation is not a rigid proxy for the worn RGB camera. Across 642 train sequences, sequence relations differ from a train-global relation by `10.58 deg` mean; grouping by named actor reduces sequence-to-actor-mean disagreement only to `6.57 deg`, so actor calibration cannot remove the remaining session/time/pose variation. The fitted translation lever is much more stable: train mean Head-frame offset is approximately `[-0.0133, 0.0629, 0.1236] m`, with a typical sequence-mean residual of only `4-5 mm` after excluding source discontinuities.
 
+The 2026-08-31 `camhead_v1` absolute-origin follow-up keeps its camera-aligned Head rotation and unchanged Head position, then fits only a constant lever on the exact qfilterv1 clean population. The selected train-only robust lever is `[-0.02214354, 0.05470125, 0.12229882] m`, 1.358 cm from the historical relative-action lever. On all 71 held-out sequences / 1,156,017 clean union frames, corrected absolute optical-center error improves `3.7000 -> 3.4082 cm` (7.89%) while relative translation changes `2.4304 -> 2.4531 mm` (+0.93%) and rotation stays `0.002043 deg`. The same-population original representation is `1.4437 cm / 3.5762 mm / 20.1067 deg`; there is no single row that wins all three quantities. Train-actor calibration reaches 3.3072 cm, while an explicitly leaky per-test-sequence oracle reaches only 2.5710 cm, proving that one constant corrected-Head-frame lever cannot recover most of the absolute-position residual. Keep `head_camera_calibration_train.json` unchanged for existing relative-action checkpoints; the new calibration is experimental/opt-in only. Full leakage contract, 713 per-sequence rows, hashes, aggregate plots, and a 12-case trajectory overlay are under `/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/nymeria_camera_head_recanonicalization_v1/absolute_lever_refit` and documented in `motion_expert_joint_attention/CAMERA_HEAD_RECANONICALIZATION.md`. Because this is calibration-only, it cannot change motion, contacts, skating, floating, or feet.
+
+The 2026-08-31 standard-SOMA visualization under the sibling `qualitative_soma_mesh`
+directory renders the same twelve diverse/diagnostic windows as synchronized original
+and `camhead_v1` 1920x1080 H.264 MP4s, plus peak-impact posters and aggregate plots.
+It uses Kimodo's restored 18,056-vertex/36,108-face standard SOMA-77 skin, compacted
+for rendering to 6,706 vertices/13,576 faces; it is a common visualization body, not
+subject-specific SOMA-X identity geometry. Across 1,217 displayed source frames,
+frame-weighted camera SO(3) error is `32.726843 -> 0.002231 deg`. The common skin makes
+the Head correction visibly large (case-mean affected-surface p95 `73.86 mm`), while
+the selected windows retain maximum decoded position/non-Head-rotation changes of only
+`0.003328 mm`/`2.70e-6 deg`; maximum foot-height and absolute contact-skate changes are
+`5.44e-10 mm` and `1.71e-5 cm/s`. Surface displacement is a derived LBS response to the
+new Head rotation, not a changed UniEgo position channel. The known source jump and
+existing floor defects remain visible in both panels. Exact per-case metrics, asset
+hash, and interpretation contract are in `qualitative_soma_mesh/gallery_manifest.json`
+and `motion_expert_joint_attention/CAMERA_HEAD_RECANONICALIZATION.md`.
+
 There is also a sparse but real source-data discontinuity problem that must not be conflated with the broad orientation issue. Forty-two of 728 camera-bearing sequences contain at least one interval where direct Head-camera separation exceeds `0.5 m`; 47 trip a conservative camera-step gate of at least `0.25 m` or `30 deg` in one 20-FPS frame. Split by component, only 12 sequences have >=`0.25 m` camera translation steps while 39 have >=`30 deg` rotations; similarly, 51 sequences have >=`0.25 m` Head translations but 227 trip the angular gate. The angular count can include genuine fast turns and should be treated as a conservative exclusion criterion, not proof that all 227 recordings have coordinate resets. The metre-scale translations are unambiguous: four train sequences contain `1.54-3.34 m` camera jumps with rotations up to `168.8 deg`; held-out `S17/20230918_s0_kevin_shaw_act2_5g4k0z` has a `1.644 m` camera jump and a simultaneous `0.935 m` raw-SMPL Head jump at transition `1519->1520`, despite MPS `quality_score=1.0` and sub-millisecond sampling error. This proves that at least the severe events are upstream source/registration behavior, not UniEgo decoding.
 
 Exact T97 impact depends on the consumer. The unfiltered native Phase-1 index has 722/119,632 train windows (`0.6035%`) in the conservative camera-or-motion union, but only 95 (`0.0794%`) actually trip the camera gate relevant to its camera targets: 40 translation and 74 rotation windows, with overlap. The motion Phase-2/3 dataset first removes the existing floor-calibration drop list; its remaining aligned population has 539/112,937 affected train windows (`0.4773%`): 89 camera-gate windows (38 translation, 70 rotation), 457 Head-gate windows (70 translation, 452 rotation), 84 direct cross-modal step disagreements, and 93 >0.5 m separation windows. Only 120/112,937 (`0.1063%`) hit the stricter union of translation jumps, cross-modal translation disagreement, or >0.5 m separation; the other 419 are rotation-gate-only. Its corresponding conservative test count is 53/11,938 (`0.4440%`), of which nine are strict translation/separation cases. None of the selected motion-clean71 or replacement-five evaluation windows intersects these masks, so their reported root divergence remains an orientation/representation result rather than a catastrophic-jump artifact. Canonical artifacts are `summary_all.json`, `details_all.jsonl`, `training_window_impact_T97.json`, and complete unfiltered/Phase-2/3-filtered affected-window JSONLs under `/weka/jungbin/cosmos_motion_ft_runs/nymeria_camera_motion_source_audit/final/`. Existing floor filtering does not remove every source jump; future training should additionally exclude the listed rows through a versioned manifest/cache. Do not mutate old checkpoints or cached data in place.
@@ -1055,6 +1087,7 @@ Root:
 - `precompute_floor_calibration.py`: per-seq floor deltas and drop list.
 - `decode_uniego_torch.py`, `uniego_layout.py`: 283-d decode/layout.
 - `head_camera_alignment.py`, `estimate_head_camera_calibration.py`, `head_camera_calibration_train.json`: relative SOMA-Head to upright-camera mapping, reusable rigid fitter, train-only estimator, and production constants.
+- `camera_head_recanonicalization.py`, `build_camera_head_aligned_uniego.py`, `compare_camera_head_aligned_uniego.py`, `visualize_camera_head_aligned_uniego.py`, `visualize_camera_head_aligned_soma_mesh.py`: versioned `camhead_v1` rotation correction, corpus builder, exhaustive preservation comparator, skeleton gallery, and controlled standard-SOMA surface gallery. `estimate_camera_head_absolute_lever.py` and its focused test evaluate the separate experimental absolute-origin lever without changing the corpus or production calibration; `test_camera_head_soma_mesh.py` covers the standard-skin expansion/LBS invariants. See `CAMERA_HEAD_RECANONICALIZATION.md`.
 - `audit_nymeria_camera_motion.py`, `summarize_nymeria_alignment_quality.py`, `visualize_nymeria_alignment_audit.py`: source-level timing/world-frame/continuity audit, exact Phase-1 versus floor-filtered Phase-2/3 window impact, and corrected direct-world visualizations.
 - `estimate_test_actor_head_camera_calibration.py`, `backfill_oracle_actor_head_metrics.py`: explicitly test-leaky per-actor GT oracle fitting and offline augmentation of already-sampled V2M metrics; never use the oracle artifact for training/model selection.
 - `merge_phase3_clean71.py`, `compare_phase3_evals.py`: corrected clean-71 aggregation and paired baseline/candidate comparison.
@@ -1068,6 +1101,62 @@ Root:
 - `sbatch_compare_phase3_step10k_headcam.sh`: exclusive paired step-10k full-71/replacement-5 evaluation launcher.
 - `sbatch_compare_phase3_headcam.sh`: parameterized exclusive paired evaluation launcher (`PHASE3_COMPARE_STEP`).
 - `run.sh`, other `sbatch_*.sh`, `_verify_*.py`, `_diag_*.py`.
+
+`motion_expert_t2m_edge/`:
+
+- Isolated Cosmos-3 Edge Phase-2 T2M+TI2M path. TI2M image+caption tokens come
+  from the frozen Edge reasoner vision path; there are no video-generator
+  tokens, no three-way reasoner/generator/motion attention, and no Phase-1
+  adapter initialization.
+- `model.py`, `layer.py`, `attention.py`: frozen Edge Nemotron reasoner plus the
+  original Nano-style trainable motion pathway. Shared-attention interfaces use
+  Edge hidden/head geometry (2048 residual, 16 Q heads, 8 KV heads, head dim
+  128). Capacity is seven evenly spaced motion blocks at
+  `[3,7,11,15,19,23,27]`, each with the original fresh width-3072 three-linear
+  SwiGLU rather than the Edge reasoner's width-9216 ReLU-squared FFN.
+- `edge_loader.py`: loads the frozen Edge reasoner and its required
+  `k_norm_und_for_gen` tensors from the pinned Edge DCP plus the pinned frozen
+  SigLIP2/projector bundle for TI2M, then discards the unused video-generation
+  pathway.
+- `data.py`: uses native-caption `_t2m_index` for Nymeria T2M, aligned `_index`
+  for 97-frame reasoner-image TI2M, `camera_head_recanonicalization_v1`, its
+  matching mean/std, and floor calibration. Defaults are Nymeria-only:
+  0.75/0.25 T2M/TI2M and `bones_frac=0`. BONES is retained only as an explicit
+  T2M ablation. Standalone uppercase `C` becomes sentence-aware `The camera
+  wearer` / `the camera wearer`, matching retrained Phase 1.
+- `train.py`, `train_visualization.py`, `sample.py`, `checkpoint.py`: x0
+  shifted-native Phase-2 training, strict motion-only checkpoint contracts,
+  UniPC sampling, online W&B scalar/media logging, and deterministic held-out
+  GT-vs-generated rendering. Production freezes five Nymeria test samples per
+  task plus their exact inference seeds, logs loss/gradient norm every 20
+  steps, and renders/uploads T2M `GT | generated` plus TI2M
+  `conditioning image | GT | generated` at step 0 and every 5k steps.
+- `run.sh`: selects the Edge framework and v1 representation paths. Launch CPU
+  checks with `bash motion_expert_t2m_edge/run.sh -m unittest discover -s
+  /home/jungbinc/cosmos_motion_ft/motion_expert_t2m_edge/tests -v`; use
+  `sbatch_l40_smoke.sh`, then the canonical one-GPU `sbatch_train_1gpu.sh`.
+- `SMOKE_RESULTS.md`: the one-L40S schema-v3 Nymeria-only T=16 and
+  production-shape T=200/TI2M=97 gates pass finite forward/backward, nonzero
+  motion gradients, zero frozen gradients, strict reload, and TI2M sampling at
+  7.50 GiB peak allocation. Online W&B/media job `528071` additionally passed
+  scalar loss/grad logging, fixed T2M/TI2M sampling, local H.264 rendering,
+  media upload, and W&B API verification. Schema-v1 prototype and schema-v2
+  BONES-mixture evidence is retained but superseded. Multi-GPU DDP is optional,
+  not an execution gate. Smoke runs prove wiring/memory only, not learned quality;
+  production still requires
+  C45, foot-skating/floating, trajectory, and diverse SOMA comparison.
+- First instrumented one-L40S production job `528072` ran under
+  `edge_7layer_nymeria_t2m_ti2m_v1_wandb_viz`; W&B run `bupzjaj5` has ten
+  fixed production-shape step-0 videos, five TI2M condition images, the
+  full-prompt table, and verified loss/gradient rows through step 20. Slurm
+  preempted it twice before the old 5k checkpoint interval. The superseding
+  launcher atomically overwrites `recovery_latest.pt` every 250 steps, stores
+  model/optimizer/RNG/data-epoch state, uses `--resume auto`, and requests
+  Slurm requeue plus USR1 warning. Clean job `528415` is pending for `Priority`
+  on `liu-compute` with QoS `ll-med` and one L40 under
+  `edge_7layer_nymeria_t2m_ti2m_v1_wandb_viz_preemptsafe`; known ECC-faulted
+  node `ll-l40-1` is excluded. Superseded pending `batch` job `528385` was
+  cancelled before it started.
 
 `motion_expert/`:
 
@@ -1103,6 +1192,23 @@ When changing joint-attention code, preserve these invariants:
 - timestep pre-scale happens exactly once in `JointMotionModel.forward`;
 - camera action stays raw 9-d with loss on `[:9]`;
 - BONES remains text2motion-only.
+
+When changing `motion_expert_t2m_edge/`, preserve these separate invariants:
+
+- this Phase-2 path remains two-role T2M/TI2M (causal frozen reasoner,
+  including visual tokens for TI2M, plus full motion queries), never the
+  Phase-3 three-role joint-attention model;
+- shared attention requires Edge's residual and Q/K head geometry, while the
+  private motion FFN stays the smaller Nano-style SwiGLU;
+- there are exactly seven motion blocks at `[3,7,11,15,19,23,27]`;
+- the reasoner never reads motion, and its detached/frozen branch receives no
+  gradient;
+- checkpoints contain only motion-owned tensors and reject architecture,
+  representation, stats, DCP, or framework drift;
+- data stays `camera_head_recanonicalization_v1`, with native Nymeria T2M
+  spans and 97-frame aligned Nymeria TI2M. BONES defaults off; if explicitly
+  enabled for ablation it is routed only to T2M, remains labeled legacy
+  motion-only, and is never treated as camera/head-equivalent.
 
 When changing data code, be explicit about which index is used (`_index` vs `_t2m_index`) and why. When touching floor grounding, keep `entry["off"]` semantics as calibrated total vertical shift.
 

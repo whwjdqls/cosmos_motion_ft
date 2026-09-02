@@ -162,7 +162,7 @@ The follow-up four-task LR ablation changes only optimizer base/LoRA LR from `5e
 The caption-subject ablation is opt-in through `NYMERIA_REPLACE_STANDALONE_C=1` and
 is pinned by `sbatch_phase1_native_camera_qfilter_lr1e5_person.sh`. It is paired with
 the filtered four-task `1e-5` run: raw captions replace only whole-token uppercase `C`
-with `A person` before official task formatting and CFG dropout. It does not mutate the
+with sentence-aware `the person` before official task formatting and CFG dropout. It does not mutate the
 manifest, cached latents, inverse-dynamics empty prompt, or lowercase/embedded `c` text.
 Focused tests passed 14/14, the native dry-run resolved the flag on all four streams,
 and the exact filtered train index audit found 168,508 replacements across 117,995 of

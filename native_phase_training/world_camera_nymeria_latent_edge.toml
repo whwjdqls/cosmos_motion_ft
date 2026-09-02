@@ -1,0 +1,40 @@
+# Native-compatible cached-latent Cosmos3-Edge Phase 1 LoRA training.
+
+[job]
+task       = "vfm"
+experiment = "world_camera_nymeria_latent_edge"
+project    = "cosmos3_camera"
+group      = "camera_world_edge"
+name       = "world_camera_nymeria_latent_edge"
+wandb_mode = "online"
+
+[model]
+precision = "bfloat16"
+
+# Replicate-only FSDP2 layout: Cosmos retains its DTensor/DCP machinery, but
+# parameters are not sharded.  The launcher changes replicate_degree from 1
+# for the single-GPU gate to 8 for production.
+[model.parallelism]
+data_parallel_shard_degree      = 1
+data_parallel_replicate_degree  = 1
+context_parallel_shard_degree   = 1
+cfg_parallel_shard_degree       = 1
+
+[model.activation_checkpointing]
+mode = "full"
+save_ops_regex = ["fmha"]
+
+[model.tokenizer]
+vae_path = "${oc.env:WAN_VAE_PATH}"
+
+[scheduler]
+cycle_lengths = [100000]
+
+[trainer]
+max_iter       = 100000
+logging_iter   = 50
+grad_accum_iter = 1
+
+[checkpoint]
+load_path = "${oc.env:BASE_CHECKPOINT_PATH}"
+save_iter = 5000

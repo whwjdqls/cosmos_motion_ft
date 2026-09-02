@@ -60,18 +60,22 @@ from uniego_layout import FEAT_DIM, canonicalize_frame0, ground_features
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# Nymeria captions refer to the camera-wearer as a bare "C" ("C is talking with his peer ...").
-# Replace the standalone token with "a person" for more natural training text. No-op for BONES
-# captions (motion descriptions that contain no standalone "C"). Applied to every emitted caption.
+# Nymeria captions refer to the camera wearer as a bare "C" ("C is talking with his peer ...").
+# Expand only that standalone uppercase label. Lowercase ``c`` and identifiers
+# containing C stay unchanged. BONES captions normally contain no standalone C.
 import re as _re
-_C_TOKEN = _re.compile(r"\bC\b")
+_C_TOKEN = _re.compile(r"(?<!\w)C(?!\w)")
 
 
 def humanize_caption(caption: str) -> str:
     if not caption:
         return caption
-    c = _C_TOKEN.sub("a person", caption)
-    return c[:1].upper() + c[1:]  # capitalize the first char ("C is ..." -> "A person is ...")
+
+    def replacement(match: _re.Match[str]) -> str:
+        prefix = match.string[: match.start()].rstrip()
+        return "The camera wearer" if not prefix or prefix[-1] in ".!?" else "the camera wearer"
+
+    return _C_TOKEN.sub(replacement, caption)
 
 # ---------------------------------------------------------------------------------------------
 # Default stat / pairs locations (shared with / mirrored from the PoC).
@@ -87,7 +91,9 @@ if not os.path.exists(SHARED_MEAN_PATH) and os.path.exists(os.path.join(_POC_STA
 
 # Per-source proportional BONES stats (only used when proportional_stats=True). These live next to
 # the proportional bones-seed tree; mirror `motion_expert/bs_dataset.py:{MEAN,STD}_PATH`.
-PROPORTIONAL_DATA_ROOT = "/weka/jungbin/seed/soma_proportional_uniegomotion_20fps"
+from runtime_paths import RUN_ROOT, WEKA_ROOT, resolve_legacy_path
+
+PROPORTIONAL_DATA_ROOT = str(WEKA_ROOT / "seed" / "soma_proportional_uniegomotion_20fps")
 PROPORTIONAL_MEAN_PATH = os.path.join(PROPORTIONAL_DATA_ROOT, "Mean_uniego.npy")
 PROPORTIONAL_STD_PATH = os.path.join(PROPORTIONAL_DATA_ROOT, "Std_uniego.npy")
 
@@ -96,7 +102,7 @@ if not os.path.exists(os.path.dirname(NYMERIA_PAIRS)):
     NYMERIA_PAIRS = os.path.join(os.path.dirname(HERE), "motion_expert", "pairs_{split}.jsonl")
 # BONES pairs jsonl is built offline by build_bones_pairs.py (kimodo env) into RUNS_ROOT/joint_attention
 # on weka (matches config.BONES_PAIRS_TRAIN/VAL + build_bones_pairs.out_dir). Must NOT point at the repo dir.
-BONES_PAIRS = "/weka/jungbin/cosmos_motion_ft_runs/joint_attention/bones_pairs_{split}.jsonl"
+BONES_PAIRS = str(RUN_ROOT / "joint_attention" / "bones_pairs_{split}.jsonl")
 
 N_NEUTRAL_JOINTS = 30
 
@@ -168,7 +174,11 @@ class UniegoPairsDataset(Dataset):
 
     def __getitem__(self, i: int):
         r = self.rows[i]
-        with np.load(r["uniego_path"]) as npz:
+        # Pair manifests were generated on the original server and intentionally
+        # remain immutable.  Resolve their recorded /weka paths at read time on
+        # the restored server instead of rewriting a 600k-row provenance file.
+        uniego_path = resolve_legacy_path(r["uniego_path"])
+        with np.load(uniego_path) as npz:
             feats = npz["features"][r["start"]:r["end"]].astype(np.float32)  # [n, 283]
             nj = npz["neutral_joints"].astype(np.float32)                    # [30, 3]
 

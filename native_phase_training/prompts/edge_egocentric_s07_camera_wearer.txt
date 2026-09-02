@@ -1,0 +1,1 @@
+A first-person egocentric video from a head-mounted camera. The camera wearer is standing near the kitchen table. The camera wearer then walks towards the other side of the kitchen table and positions her right hand in front of her at stomach level. The camera viewpoint moves with the camera wearer's head and body.

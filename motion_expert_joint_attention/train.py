@@ -827,6 +827,7 @@ def main():
         "motion_native_solver": args.motion_native_solver,
         "motion_stats_mean": config.MOTION_STATS_MEAN,
         "motion_stats_std": config.MOTION_STATS_STD,
+        "nymeria_uniego_root": config.NYMERIA_UNIEGO_ROOT,
         "head_camera_alignment": {
             "enabled": bool(args.head_camera_alignment),
             "calibration": args.head_camera_calibration,

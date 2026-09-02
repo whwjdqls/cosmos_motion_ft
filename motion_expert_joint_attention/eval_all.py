@@ -50,12 +50,19 @@ import numpy as np
 import torch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-_NYMERIA_WORLD = "/home/jungbin_cho/cosmos_motion_ft/nymeria_world"
+from runtime_paths import (
+    COSMOS_FRAMEWORK_ROOT,
+    REPO_ROOT,
+    WAN_VAE_PATH,
+    resolve_legacy_path,
+)
+
+_NYMERIA_WORLD = str(REPO_ROOT / "nymeria_world")
 # Insert HERE LAST so it lands at sys.path[0] and shadows motion_expert/sample.py (same-named
 # module on PYTHONPATH). Without this, `import sample` can bind the PoC's sample.py which lacks
 # the 7-task sample_* fns. (When run as a script sys.path[0] is already the script dir, but this
 # makes the harness robust to being imported/launched any other way too.)
-for _p in ("/home/jungbin_cho/cosmos-framework", _NYMERIA_WORLD, HERE):
+for _p in (str(COSMOS_FRAMEWORK_ROOT), _NYMERIA_WORLD, HERE):
     if _p in sys.path:
         sys.path.remove(_p)
     sys.path.insert(0, _p)
@@ -128,7 +135,8 @@ def build_full_index(manifest_path, split_file, split, num_frames, latent_root, 
         for line in f:
             rec = json.loads(line)
             uuid = rec.get("uuid")
-            cam, vis = rec.get("camera_path"), rec.get("vision_path")
+            cam = resolve_legacy_path(rec.get("camera_path"))
+            vis = resolve_legacy_path(rec.get("vision_path"))
             nb = int(rec.get("nb_frames", 0))
             if not uuid or not cam or not vis:
                 continue
@@ -339,8 +347,7 @@ def main():
     ap.add_argument("--split", default="test", choices=["test", "train", "all"])
     ap.add_argument("--manifest", default=C.NYMERIA_MANIFEST)
     ap.add_argument("--split_file", default=C.NYMERIA_SPLIT_FILE)
-    ap.add_argument("--uniego_root",
-                    default="/weka/jungbin/nymeriaplus_kimodo_proportional/uniego_rep")
+    ap.add_argument("--uniego_root", default=C.NYMERIA_UNIEGO_ROOT)
     ap.add_argument("--latent_root", default=None)
     ap.add_argument("--num_frames", type=int, default=None)
     ap.add_argument("--fps", type=float, default=float(C.FPS))
@@ -356,7 +363,7 @@ def main():
         ),
     )
     ap.add_argument("--vae_path",
-                    default=os.environ.get("WAN_VAE_PATH", "/weka/jungbin/wan22_vae/Wan2.2_VAE.pth"))
+                    default=os.environ.get("WAN_VAE_PATH", str(WAN_VAE_PATH)))
     ap.add_argument("--no_video", action="store_true", help="skip all VAE latent->pixel decode")
     ap.add_argument("--motion_viz_limit", type=int, default=-1,
                     help="maximum number of motion-task mp4s to render per task; negative renders all. "
@@ -365,6 +372,8 @@ def main():
                     help="frame batch size for motimg2video LPIPS-Alex evaluation")
     ap.add_argument("--device", default="cuda")
     args = ap.parse_args()
+    if args.device.startswith("cuda") and torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
     if args.ckpt is not None and not os.path.isfile(args.ckpt):
         ap.error(f"--ckpt does not exist or is not a file: {args.ckpt}")
     if args.gen_shift_override is not None and args.gen_shift_override <= 0:
@@ -539,7 +548,7 @@ def main():
     oracle_actor_calibrations = None
     oracle_actor_calibration_payload = None
     if evaluate_head_camera:
-        head_camera_calibration = (
+        head_camera_calibration = resolve_legacy_path(
             args.head_camera_calibration
             or ck_args.get("head_camera_calibration")
             or DEFAULT_CALIBRATION
@@ -967,6 +976,17 @@ def main():
                 "floor_valid_aggregate": valid_video_payload["aggregate"],
             })
 
+    if dev.startswith("cuda") and torch.cuda.is_available():
+        summary["cuda_memory"] = {
+            "peak_allocated_gib": torch.cuda.max_memory_allocated() / (1024 ** 3),
+            "peak_reserved_gib": torch.cuda.max_memory_reserved() / (1024 ** 3),
+        }
+        print(
+            "[eval_all] CUDA peak "
+            f"allocated={summary['cuda_memory']['peak_allocated_gib']:.2f} GiB "
+            f"reserved={summary['cuda_memory']['peak_reserved_gib']:.2f} GiB",
+            flush=True,
+        )
     _write_summary(out_root, summary)
     _print_summary(summary)
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Convert canonical Phase-1 inputs to a released-Nano resolution/shift tier."""
+"""Convert canonical Phase-1 inputs to an explicit native resolution/shift tier."""
 
 from __future__ import annotations
 
@@ -7,8 +7,15 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from runtime_paths import resolve_legacy_path
 
 
 RELEASED_TIER_CONTRACTS = {
@@ -69,6 +76,9 @@ def convert_record(
 
     tier = RELEASED_TIER_CONTRACTS[resolution_tier]
     record = dict(source)
+    for key, value in tuple(record.items()):
+        if key.endswith("_path") and isinstance(value, str):
+            record[key] = resolve_legacy_path(value)
     record["shift"] = float(shift)
     record["num_frames"] = 97
     mode = record.get("model_mode")
@@ -100,12 +110,18 @@ def main() -> None:
         "--shift",
         type=float,
         default=None,
-        help="explicit override; default is the released Nano tier mapping",
+        help="sampling-shift override; default is the released tier's training shift",
     )
     parser.add_argument(
         "--files",
         nargs="+",
         default=["fd_input.jsonl", "invdyn_input.jsonl", "policy_input.jsonl", "i2v_input.jsonl"],
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="keep only the first N records per file; 0 keeps every record",
     )
     args = parser.parse_args()
 
@@ -113,6 +129,8 @@ def main() -> None:
     shift = tier["shift"] if args.shift is None else args.shift
     if shift <= 0:
         raise ValueError("--shift must be positive")
+    if args.limit < 0:
+        raise ValueError("--limit must be non-negative")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     _ensure_samples_link(args.source_dir, args.output_dir)
 
@@ -121,6 +139,9 @@ def main() -> None:
     for filename in args.files:
         source_path = args.source_dir / filename
         records = _read_jsonl(source_path)
+        source_count = len(records)
+        if args.limit:
+            records = records[: args.limit]
         converted = [
             convert_record(
                 source,
@@ -129,6 +150,12 @@ def main() -> None:
             )
             for source in records
         ]
+        for index, record in enumerate(converted, start=1):
+            for key, value in record.items():
+                if key.endswith("_path") and isinstance(value, str) and not Path(value).is_file():
+                    raise FileNotFoundError(
+                        f"{source_path}:{index}: remapped {key} does not exist: {value}"
+                    )
 
         output_path = args.output_dir / filename
         _write_jsonl(output_path, converted)
@@ -137,6 +164,7 @@ def main() -> None:
             "source_sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
             "output": str(output_path.resolve()),
             "count": len(converted),
+            "source_count": source_count,
         }
         total += len(converted)
 
@@ -146,7 +174,16 @@ def main() -> None:
         "source_dir": str(args.source_dir.resolve()),
         "output_dir": str(args.output_dir.resolve()),
         "resolution_tier": int(args.resolution_tier),
-        "released_nano_shift": float(shift),
+        "shift": float(shift),
+        "sampling_shift": float(shift),
+        "default_training_shift": float(tier["shift"]),
+        "shift_source": (
+            "explicit_sampling_override"
+            if args.shift is not None
+            else "released_tier_training_default"
+        ),
+        "record_limit": int(args.limit),
+        "legacy_paths_resolved": True,
         "action_image_size": int(tier["action_image_size"]),
         "vision_resolution": str(tier["vision_resolution"]),
         "vision_aspect_ratio": "1,1",

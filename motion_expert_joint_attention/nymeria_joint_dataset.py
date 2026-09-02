@@ -109,7 +109,9 @@ from uniego_layout import FEAT_DIM, canonicalize_frame0, ground_features
 
 # Pull the verified NymeriaPlus video+camera loaders from nymeria_world (source of truth). We add
 # its dir to sys.path so this repo can import the camera dataset / decode helpers verbatim.
-_NYMERIA_WORLD = "/home/jungbin_cho/cosmos_motion_ft/nymeria_world"
+from runtime_paths import REPO_ROOT, resolve_legacy_path
+
+_NYMERIA_WORLD = str(REPO_ROOT / "nymeria_world")
 if _NYMERIA_WORLD not in sys.path:
     sys.path.insert(0, _NYMERIA_WORLD)
 from nymeria_camera_rgb_dataset import (  # noqa: E402  (path-injected import)
@@ -227,7 +229,7 @@ class NymeriaJointDataset(Dataset):
         train: bool = True,
         require_rgb_cam: bool = True,
         require_usable: bool = True,
-        uniego_root: str = "/weka/jungbin/nymeriaplus_kimodo_proportional/uniego_rep",
+        uniego_root: str = config.NYMERIA_UNIEGO_ROOT,
         floor_calibration_json: Optional[str] = config.FLOOR_CALIBRATION_JSON,
         max_samples: Optional[int] = None,
         seed: int = 0,
@@ -355,8 +357,8 @@ class NymeriaJointDataset(Dataset):
             for line in f:
                 rec = json.loads(line)
                 uuid = rec.get("uuid")
-                vis = rec.get("vision_path")
-                cam = rec.get("camera_path")
+                vis = resolve_legacy_path(rec.get("vision_path"))
+                cam = resolve_legacy_path(rec.get("camera_path"))
                 nb = int(rec.get("nb_frames", 0))
                 if not uuid or not vis or not cam:
                     continue
@@ -445,6 +447,11 @@ class NymeriaJointDataset(Dataset):
             try:
                 bk = dict(bones_kwargs or {})
                 bk.setdefault("cfg_dropout", cfg_dropout)
+                # BONES and Nymeria must enter one shared model space.  When a
+                # versioned motion representation opts into different statistics,
+                # normalize the optional BONES stream with those same arrays.
+                bk.setdefault("mean_path", config.MOTION_STATS_MEAN)
+                bk.setdefault("std_path", config.MOTION_STATS_STD)
                 # Cap BONES clips at T so no BONES motion exceeds T. UniegoPairsDataset with a fixed
                 # T random-crops (train) / center-crops longer clips to exactly T and keeps shorter
                 # ones ragged (<= T) with an all-valid pad mask; the collate then pads the batch to
@@ -509,7 +516,7 @@ class NymeriaJointDataset(Dataset):
             return ""
         if self._train and self._active_rng().random() < self._cfg_dropout:  # 10% CFG drop
             return ""
-        return humanize_caption(caption)  # "C is ..." -> "A person is ..." (Nymeria convention)
+        return humanize_caption(caption)  # "C is ..." -> "The camera wearer is ..."
 
     # -- motion (uniego 283-d): ground -> canon frame0 -> z-score -> PAD to T -----------------
     def _load_motion(self, uni_path: str, s: int, off: Optional[float],

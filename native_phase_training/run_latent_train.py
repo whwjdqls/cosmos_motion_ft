@@ -9,6 +9,7 @@ import traceback
 
 import torch
 from loguru import logger as logging
+from omegaconf import open_dict
 
 # Register experiment/world_camera_nymeria_latent_nano before TOML resolution.
 import native_phase_training.experiment  # noqa: F401
@@ -23,6 +24,48 @@ from cosmos_framework.utils.config import Config
 from cosmos_framework.utils.lazy_config import LazyConfig
 from cosmos_framework.utils.serialization import to_yaml
 from native_phase_training.run_contract import persist_run_contract
+
+
+def _scheduler_compatible_cpu_affinity(
+    requested: set[int], allowed: set[int]
+) -> list[int]:
+    """Keep NVIDIA's GPU-local affinity inside the scheduler's CPU cgroup."""
+    if not allowed:
+        raise ValueError("the scheduler CPU affinity set is empty")
+    compatible = requested & allowed
+    return sorted(compatible if compatible else allowed)
+
+
+def _install_scheduler_compatible_cpu_affinity() -> None:
+    """Prevent NVML affinity from escaping a shared Slurm allocation.
+
+    Cosmos asks NVML for the CPUs local to each physical GPU. On a shared node,
+    Slurm can allocate a different CPU-ID interval; Linux then rejects the
+    framework's ``sched_setaffinity`` call with EINVAL before model loading.
+    Intersecting with the process's existing cgroup affinity preserves locality
+    where possible and otherwise keeps the rank inside its assigned CPUs.
+    """
+    if not hasattr(os, "sched_getaffinity"):
+        return
+
+    from cosmos_framework.utils.device import Device
+
+    allowed = set(os.sched_getaffinity(0))
+    original = Device.get_cpu_affinity
+
+    def get_cpu_affinity(device: Device) -> list[int]:
+        requested = set(original(device))
+        compatible = _scheduler_compatible_cpu_affinity(requested, allowed)
+        if compatible != sorted(requested):
+            logging.warning(
+                "Restricted NVML GPU-local CPU affinity to the scheduler allocation: "
+                f"requested={min(requested) if requested else None}-"
+                f"{max(requested) if requested else None} allowed={min(allowed)}-"
+                f"{max(allowed)} selected={min(compatible)}-{max(compatible)}"
+            )
+        return compatible
+
+    Device.get_cpu_affinity = get_cpu_affinity
 
 
 def _configure_tensorboard_log_dir(config: Config) -> None:
@@ -51,6 +94,23 @@ def _configure_tensorboard_log_dir(config: Config) -> None:
     logging.info(f"TensorBoard log_dir: {log_dir}")
 
 
+def _disable_incompatible_sigma_loss_analysis(config: Config) -> None:
+    """Remove the vision-only sigma diagnostic from mixed-task Phase-1 runs.
+
+    In inverse-dynamics batches every vision token is conditioned, so Edge
+    returns its graph-preserving scalar dummy vision loss while ``sigma`` still
+    has one value per sample. NVIDIA's diagnostic callback requires matching
+    per-instance tensors and aborts on that valid action-only batch. The
+    callback is observational only; removing it does not change training loss,
+    gradients, optimizer state, or sampling.
+    """
+    callbacks = config.trainer.callbacks
+    if "sigma_loss_analysis" in callbacks:
+        with open_dict(callbacks):
+            del callbacks["sigma_loss_analysis"]
+        logging.info("Disabled sigma_loss_analysis for mixed Phase-1 task batches")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Cached-latent native Cosmos SFT")
     parser.add_argument("--sft-toml", required=True)
@@ -65,6 +125,7 @@ def main() -> None:
 
     config: Config = load_experiment_from_toml(args.sft_toml, extra_overrides=args.opts)
     _configure_tensorboard_log_dir(config)
+    _disable_incompatible_sigma_loss_analysis(config)
     if args.deterministic:
         _apply_deterministic_config_overrides(config)
     args.config = args.sft_toml
@@ -97,6 +158,7 @@ def main() -> None:
             debugpy.listen(("0.0.0.0", 3002))
             debugpy.wait_for_client()
 
+    _install_scheduler_compatible_cpu_affinity()
     launch(config, args)
 
 

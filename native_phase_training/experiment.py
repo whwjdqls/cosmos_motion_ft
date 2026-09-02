@@ -10,11 +10,12 @@ import sys
 from hydra.core.config_store import ConfigStore
 from torch.utils.data import DistributedSampler
 
-from cosmos_framework.configs.base.experiment.sft.models.nano_model_config import NANO_MODEL_CONFIG
 from cosmos_framework.utils.lazy_config import LazyCall as L
 from cosmos_framework.utils.lazy_config import LazyDict
 
-ROOT = "/home/jungbin_cho/cosmos_motion_ft"
+from runtime_paths import REPO_ROOT, RUN_ROOT, WEKA_ROOT  # noqa: E402
+
+ROOT = str(REPO_ROOT)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 NYMERIA_WORLD = os.path.join(ROOT, "nymeria_world")
@@ -24,11 +25,27 @@ if NYMERIA_WORLD not in sys.path:
 from native_phase_training.latent_nymeria_dataset import (  # noqa: E402
     CyclingDataLoader,
     LatentAwareIterativeJointDataLoader,
+    MODE_WEIGHTS,
     get_nymeria_camera_latent_sft_dataset,
 )
 from native_phase_training.checkpoint_eval_callback import NativeCheckpointEvalSubmitter  # noqa: E402
-from native_phase_training.latent_omni_model import LatentOmniMoTModel  # noqa: E402
-from nymeria_camera_rgb_dataset import MODE_WEIGHTS  # noqa: E402
+
+_MODEL_FAMILY = os.environ.get("NATIVEP1_MODEL_FAMILY", "nano").strip().lower()
+if _MODEL_FAMILY == "edge":
+    from cosmos_framework.configs.base.experiment.sft.models.edge_model_config import (  # noqa: E402
+        EDGE_MODEL_CONFIG as _BASE_MODEL_CONFIG,
+    )
+    from cosmos_framework.data.generator.processors import build_processor  # noqa: E402
+    from native_phase_training.latent_omni_model_edge import LatentOmniMoTModelEdge as _MODEL_CLASS  # noqa: E402
+elif _MODEL_FAMILY == "nano":
+    from cosmos_framework.configs.base.experiment.sft.models.nano_model_config import (  # noqa: E402
+        NANO_MODEL_CONFIG as _BASE_MODEL_CONFIG,
+    )
+    from native_phase_training.latent_omni_model import LatentOmniMoTModel as _MODEL_CLASS  # noqa: E402
+else:
+    raise ValueError(f"NATIVEP1_MODEL_FAMILY must be 'nano' or 'edge', got {_MODEL_FAMILY!r}")
+
+_EXPERIMENT_NAME = f"world_camera_nymeria_latent_{_MODEL_FAMILY}"
 
 _NUM_FRAMES = int(os.environ.get("NYMERIA_NUM_FRAMES", "97"))
 _MODEL_RESOLUTION = os.environ.get("NYMERIA_RESOLUTION", "256").strip()
@@ -48,7 +65,7 @@ if _MODE != "mixture" and _MODE not in MODE_WEIGHTS:
     raise ValueError(f"NYMERIA_MODE={_MODE!r} is not active; active tasks={sorted(MODE_WEIGHTS)}")
 _LATENT_ROOT = os.environ.get(
     "NYMERIA_LATENT_ROOT",
-    f"/weka/jungbin/nymeriaplus_kimodo_proportional/joint_latents_T{_NUM_FRAMES}",
+    str(WEKA_ROOT / "nymeriaplus_kimodo_proportional" / f"joint_latents_T{_NUM_FRAMES}"),
 )
 _QUALITY_FILTER_PATH = os.environ.get("NYMERIA_QUALITY_FILTER", "").strip()
 _REPLACE_STANDALONE_C = os.environ.get("NYMERIA_REPLACE_STANDALONE_C", "0").lower() in {
@@ -56,6 +73,12 @@ _REPLACE_STANDALONE_C = os.environ.get("NYMERIA_REPLACE_STANDALONE_C", "0").lowe
     "true",
     "yes",
 }
+_STANDALONE_C_SUBJECT = os.environ.get("NYMERIA_STANDALONE_C_SUBJECT", "person").strip().lower()
+if _STANDALONE_C_SUBJECT not in {"person", "camera_wearer"}:
+    raise ValueError(
+        "NYMERIA_STANDALONE_C_SUBJECT must be 'person' or 'camera_wearer', "
+        f"got {_STANDALONE_C_SUBJECT!r}"
+    )
 _FULL_FT = bool(os.environ.get("NYMERIA_FULL_FT", ""))
 _LORA_LR = float(os.environ.get("NATIVEP1_LORA_LR", "5.0e-05"))
 _FULL_FT_LR = float(os.environ.get("NATIVEP1_FULL_FT_LR", "1.0e-04"))
@@ -131,11 +154,16 @@ if _AUTO_EVAL_EVERY < 0:
     raise ValueError("NATIVEP1_AUTO_EVAL_EVERY must be non-negative")
 _EVAL_INPUT_DIR = os.environ.get(
     "NATIVEP1_EVAL_INPUT_DIR",
-    "/weka/jungbin/cosmos_motion_ft_runs/native_phase1_eval_inputs_viz5_256_T97_v2",
+    str(RUN_ROOT / "native_phase1_eval_inputs_viz5_256_T97_v2"),
 )
 _AUTO_EVAL_FULL71 = os.environ.get(
     "NATIVEP1_AUTO_EVAL_FULL71", "1" if _AUTO_EVAL else "0"
 ).lower() in {"1", "true", "yes"}
+if _MODEL_FAMILY == "edge" and _AUTO_EVAL_FULL71:
+    raise ValueError(
+        "automatic full-71 evaluation is not yet enabled for Edge; use the compact "
+        "four-mode Edge evaluator and run full-71 explicitly after the training gate"
+    )
 _AUTO_EVAL_FULL71_EVERY = int(
     os.environ.get("NATIVEP1_FULL71_EVAL_EVERY", str(_AUTO_EVAL_EVERY))
 )
@@ -143,7 +171,7 @@ if _AUTO_EVAL_FULL71_EVERY < 0:
     raise ValueError("NATIVEP1_FULL71_EVAL_EVERY must be non-negative")
 _FULL71_EVAL_INPUT_DIR = os.environ.get(
     "NATIVEP1_FULL71_EVAL_INPUT_DIR",
-    "/weka/jungbin/cosmos_motion_ft_runs/native_phase1_eval_inputs_full71_256_T97_v2",
+    str(RUN_ROOT / "native_phase1_eval_inputs_full71_256_T97_v2"),
 )
 
 
@@ -161,7 +189,8 @@ def _resolve_text_tokenizer_path() -> str:
             raise FileNotFoundError(f"COSMOS_TEXT_TOKENIZER_PATH has no tokenizer.json: {explicit}")
         return explicit
 
-    cache = os.path.expanduser("~/.cache/huggingface/hub")
+    hf_home = os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
+    cache = os.environ.get("HUGGINGFACE_HUB_CACHE", os.path.join(hf_home, "hub"))
     cosmos_tok = _latest_existing_dir(os.path.join(cache, "models--nvidia--Cosmos3-Nano/snapshots/*/text_tokenizer"))
     if cosmos_tok and os.path.isfile(os.path.join(cosmos_tok, "tokenizer.json")):
         return cosmos_tok
@@ -179,13 +208,38 @@ def _resolve_text_tokenizer_path() -> str:
     )
 
 
-_MODEL_CONFIG = copy.deepcopy(NANO_MODEL_CONFIG)
+def _resolve_edge_model_root() -> str:
+    root = os.environ.get("EDGE_MODEL_ROOT", "/mnt/projects/ll/jungbinc/weka/Cosmos3-Edge")
+    required = ("modular_model_index.json", "tokenizer.json", "preprocessor_config.json")
+    missing = [name for name in required if not os.path.isfile(os.path.join(root, name))]
+    if missing:
+        raise FileNotFoundError(f"EDGE_MODEL_ROOT={root!r} is missing required processor files: {missing}")
+    return root
+
+
+_MODEL_CONFIG = copy.deepcopy(_BASE_MODEL_CONFIG)
 _MODEL_CONFIG["resolution"] = _MODEL_RESOLUTION
 _MODEL_CONFIG["tokenizer"]["vae_path"] = os.environ.get(
     "WAN_VAE_PATH",
     _MODEL_CONFIG["tokenizer"]["vae_path"],
 )
-_MODEL_CONFIG["vlm_config"]["tokenizer"]["pretrained_model_name"] = _resolve_text_tokenizer_path()
+if _MODEL_FAMILY == "edge":
+    # Resolve the renewed Edge bridge processor entirely from the pinned local
+    # artifact.  This intentionally replaces the released revision="main"
+    # LazyCall so offline runs cannot drift to another Hub revision.
+    _MODEL_CONFIG["vlm_config"]["tokenizer"] = L(build_processor)(
+        tokenizer_type=_resolve_edge_model_root(),
+    )
+    temporal_mode = _MODEL_CONFIG["diffusion_expert_config"].get(
+        "vision_temporal_position_mode", "latent_index"
+    )
+    if temporal_mode != "latent_index":
+        raise ValueError(
+            "cached Edge training requires diffusion_expert_config."
+            f"vision_temporal_position_mode='latent_index', got {temporal_mode!r}"
+        )
+else:
+    _MODEL_CONFIG["vlm_config"]["tokenizer"]["pretrained_model_name"] = _resolve_text_tokenizer_path()
 _MODEL_CONFIG["rectified_flow_training_config"]["action_loss_weight"] = _ACTION_LOSS_WEIGHT
 _MODEL_CONFIG["rectified_flow_training_config"]["normalize_loss_by_active"] = _NORMALIZE_LOSS_BY_ACTIVE
 if _SHIFT_OVERRIDE is not None:
@@ -207,6 +261,7 @@ def _task_stream(task: str):
         latent_root=_LATENT_ROOT,
         quality_filter_path=_QUALITY_FILTER_PATH,
         replace_standalone_c=_REPLACE_STANDALONE_C,
+        standalone_c_subject=_STANDALONE_C_SUBJECT,
         prefix_lengths=_PREFIX_LENGTHS,
         prefix_sampling_weights=_PREFIX_SAMPLING_WEIGHTS,
         prefix_seed=42,
@@ -237,28 +292,39 @@ def _task_stream(task: str):
 
 _DATALOADERS = {t: _task_stream(t) for t in MODE_WEIGHTS} if _MODE == "mixture" else {_MODE: _task_stream(_MODE)}
 
-world_camera_nymeria_latent_nano = LazyDict(
+_DEFAULTS = [
+    {"override /model": "mot_fsdp"},
+    {"override /data_train": None},
+    {"override /data_val": None},
+    {"override /optimizer": "fusedadamw"},
+    {"override /scheduler": "lambdalinear"},
+    {"override /checkpoint": "s3"},
+    {"override /callbacks": ["basic", "optimization", "job_monitor"]},
+    {"override /ema": "power"},
+    {"override /tokenizer": "wan2pt2_tokenizer"},
+    {"override /sound_tokenizer": None},
+]
+# The Nano framework base config registers a cluster group.  The Edge release
+# removed that group from the VFM defaults, so attempting to override it is a
+# Hydra composition error before training starts.
+if _MODEL_FAMILY == "nano":
+    _DEFAULTS.append({"override /cluster": None})
+_DEFAULTS.extend(
+    [
+        {"override /vlm_config": None},
+        {"override /ckpt_type": "dcp"},
+        "_self_",
+    ]
+)
+
+world_camera_nymeria_latent = LazyDict(
     dict(
-        defaults=[
-            {"override /model": "mot_fsdp"},
-            {"override /data_train": None},
-            {"override /data_val": None},
-            {"override /optimizer": "fusedadamw"},
-            {"override /scheduler": "lambdalinear"},
-            {"override /checkpoint": "s3"},
-            {"override /callbacks": ["basic", "optimization", "job_monitor"]},
-            {"override /ema": "power"},
-            {"override /tokenizer": "wan2pt2_tokenizer"},
-            {"override /sound_tokenizer": None},
-            {"override /cluster": None},
-            {"override /vlm_config": None},
-            {"override /ckpt_type": "dcp"},
-            "_self_",
-        ],
-        job=dict(project="cosmos3_camera", group="camera_world", name="world_camera_nymeria_latent_nano", wandb_mode="disabled"),
-        model=L(LatentOmniMoTModel)(
+        defaults=_DEFAULTS,
+        job=dict(project="cosmos3_camera", group="camera_world", name=_EXPERIMENT_NAME, wandb_mode="disabled"),
+        model=L(_MODEL_CLASS)(
             config=copy.deepcopy(_MODEL_CONFIG),
             adaptation_mode=_ADAPTATION_MODE,
+            model_family=_MODEL_FAMILY,
             _recursive_=False,
         ),
         optimizer=dict(
@@ -325,7 +391,15 @@ world_camera_nymeria_latent_nano = LazyDict(
                 training_stats=dict(log_freq=100),
                 checkpoint_eval=L(NativeCheckpointEvalSubmitter)(
                     enabled=_AUTO_EVAL,
-                    sbatch_script=os.path.join(ROOT, "native_phase_training", "sbatch_checkpoint_eval.sh"),
+                    sbatch_script=os.path.join(
+                        ROOT,
+                        "native_phase_training",
+                        (
+                            "sbatch_checkpoint_eval_edge.sh"
+                            if _MODEL_FAMILY == "edge"
+                            else "sbatch_checkpoint_eval.sh"
+                        ),
+                    ),
                     eval_input_dir=_EVAL_INPUT_DIR,
                     output_subdir="checkpoint_evals",
                     every_n_iterations=_AUTO_EVAL_EVERY,
@@ -379,25 +453,34 @@ world_camera_nymeria_latent_nano = LazyDict(
     flags={"allow_objects": True},
 )
 
-world_camera_nymeria_latent_nano["model"]["config"]["tokenizer"]["encode_exact_durations"] = [_NUM_FRAMES]
-world_camera_nymeria_latent_nano["model"]["config"]["lora_enabled"] = (
+world_camera_nymeria_latent["model"]["config"]["tokenizer"]["encode_exact_durations"] = [_NUM_FRAMES]
+world_camera_nymeria_latent["model"]["config"]["lora_enabled"] = (
     not _FULL_FT and _ADAPTATION_MODE != "action_only"
 )
-world_camera_nymeria_latent_nano["model"]["config"]["lora_rank"] = 16
-world_camera_nymeria_latent_nano["model"]["config"]["lora_alpha"] = 32
-world_camera_nymeria_latent_nano["model"]["config"]["lora_target_modules"] = (
+world_camera_nymeria_latent["model"]["config"]["lora_rank"] = 16
+world_camera_nymeria_latent["model"]["config"]["lora_alpha"] = 32
+world_camera_nymeria_latent["model"]["config"]["lora_target_modules"] = (
     "k_proj_moe_gen,v_proj_moe_gen"
     if _ADAPTATION_MODE == "camera_kv_lora"
     else "q_proj_moe_gen,k_proj_moe_gen,v_proj_moe_gen,o_proj_moe_gen"
 )
-world_camera_nymeria_latent_nano["model"]["config"]["lora_keep_trainable_modules"] = (
-    "action2llm,llm2action,action_modality_embed"
-)
+if _MODEL_FAMILY == "nano":
+    # This compatibility field is supplied by the pinned Nano framework.  Edge
+    # applies the same allowlist directly in LatentOmniMoTModelEdge before FSDP.
+    world_camera_nymeria_latent["model"]["config"]["lora_keep_trainable_modules"] = (
+        "action2llm,llm2action,action_modality_embed"
+    )
 
 cs = ConfigStore.instance()
 cs.store(
     group="experiment",
     package="_global_",
-    name="world_camera_nymeria_latent_nano",
-    node=world_camera_nymeria_latent_nano,
+    name=_EXPERIMENT_NAME,
+    node=world_camera_nymeria_latent,
 )
+
+# Historical importers sometimes access this symbol directly.
+if _MODEL_FAMILY == "nano":
+    world_camera_nymeria_latent_nano = world_camera_nymeria_latent
+else:
+    world_camera_nymeria_latent_edge = world_camera_nymeria_latent

@@ -51,7 +51,9 @@ import torch
 # live in the root experiment's trainer. Import by absolute path so this module
 # is usable from anywhere (e.g. cwd == cosmos-framework for the relative
 # QWEN_JSON used by build_network).
-_ROOT = "/home/jungbin_cho/cosmos_motion_ft"
+from runtime_paths import COSMOS_FRAMEWORK_ROOT, HF_HOME, REPO_ROOT  # noqa: E402
+
+_ROOT = str(REPO_ROOT)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
@@ -67,7 +69,7 @@ from train_motion_ft import (  # noqa: E402
 
 __all__ = ["FrozenCosmos", "SPECIAL_TOKENS"]
 
-_COSMOS_FRAMEWORK = "/home/jungbin_cho/cosmos-framework"
+_COSMOS_FRAMEWORK = str(COSMOS_FRAMEWORK_ROOT)
 _ABS_QWEN_JSON = os.path.join(
     _COSMOS_FRAMEWORK,
     "cosmos_framework/model/vfm/vlm/qwen3_vl/configs/Qwen3-VL-8B-Instruct.json",
@@ -76,8 +78,9 @@ if os.path.exists(_ABS_QWEN_JSON):
     _root_train.QWEN_JSON = _ABS_QWEN_JSON
 
 
-_NANO_GLOB = os.path.expanduser(
-    "~/.cache/huggingface/hub/models--nvidia--Cosmos3-Nano/snapshots/*"
+_NANO_GLOB = os.path.join(
+    os.environ.get("HUGGINGFACE_HUB_CACHE", str(HF_HOME / "hub")),
+    "models--nvidia--Cosmos3-Nano/snapshots/*",
 )
 
 

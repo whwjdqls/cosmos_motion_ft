@@ -25,6 +25,7 @@ from native_phase_training.visualize_checkpoint import (
     _make_video_comparison,
     _plot_camera_comparison,
 )
+from native_phase_training.sanitize_prefix_inference_inputs import runtime_mode_matches
 from nymeria_world.eval_inverse_dynamics import eval_seq, gt_abs
 
 
@@ -76,7 +77,10 @@ def _load_successful_output(inference_root: Path, record: dict[str, Any]) -> tup
     payload = json.loads(output_path.read_text())
     if payload.get("status") != "success":
         raise RuntimeError(f"failed inference output {output_path}: {payload.get('message')}")
-    if payload.get("args", {}).get("model_mode") != record["model_mode"]:
+    if not runtime_mode_matches(
+        actual_mode=payload.get("args", {}).get("model_mode"),
+        canonical_mode=record["model_mode"],
+    ):
         raise ValueError(f"mode mismatch in {output_path}")
     return sample_dir, payload
 

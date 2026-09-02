@@ -1,0 +1,46 @@
+{
+  "subjects": [],
+  "background_setting": "A natural first-person environment established by the conditioning frame. The surroundings change in perspective with clear coherent parallax as the camera wearer moves through the scene.",
+  "lighting": {
+    "conditions": "Natural available lighting consistent with the conditioning frame",
+    "direction": "Preserve the light directions established by the conditioning frame as the viewpoint moves",
+    "shadows": "Natural, stable shadows consistent with the visible light sources",
+    "illumination_effect": "Photorealistic exposure and reflections without artificial relighting"
+  },
+  "aesthetics": {
+    "composition": "A natural first-person composition with the peripheral distortion of a head-mounted action camera",
+    "color_scheme": "Natural colors and white balance consistent with the conditioning frame",
+    "mood_atmosphere": "Natural everyday egocentric footage",
+    "patterns": "Natural scene geometry and textures viewed from a continuously changing first-person position"
+  },
+  "cinematography": {
+    "camera_motion": "The camera is rigidly attached to the unseen wearer's head and follows the wearer's described activity with clear continuous translation and rotation through the scene. The viewpoint produces strong coherent background parallax throughout the clip, natural walking bob, brief head turns, and smooth acceleration and deceleration. The off-camera wearer controls the viewpoint; people visible in the conditioning frame remain separate from the camera.",
+    "framing": "Wide first-person egocentric shot from a head-mounted camera",
+    "camera_angle": "Natural eye-level viewpoint of the off-camera wearer",
+    "depth_of_field": "Deep focus typical of egocentric action-camera footage",
+    "focus": "The environment and visible people remain coherently focused during viewpoint motion",
+    "lens_focal_length": "Wide-angle fisheye lens consistent with the conditioning frame"
+  },
+  "style_medium": "Photorealistic live-action egocentric video",
+  "artistic_style": "Natural head-mounted documentary footage",
+  "context": "A single continuous recording made by an off-camera person wearing a head-mounted camera. The action description refers to the off-camera wearer's activity; people visible in the conditioning frame are separate people unless the description explicitly states otherwise.",
+  "actions": [
+    {
+      "time": "0:00-0:04",
+      "description": "{{DESCRIPTION}} This action is performed by the unseen camera wearer and is expressed as first-person viewpoint motion."
+    }
+  ],
+  "text_and_signage_elements": [],
+  "segments": [],
+  "transitions": [],
+  "temporal_caption": "Starting exactly from the conditioning frame, the head-mounted viewpoint continuously follows the off-camera wearer through the described activity with obvious translational parallax and natural head-and-body motion until the final frame.",
+  "audio_description": "Natural ambient sound consistent with the conditioning frame and described activity",
+  "physical_realism": "Camera motion follows plausible human head and body movement with continuous translation, coherent parallax, and smooth acceleration. The environment remains physically coherent as it is observed from changing viewpoints.",
+  "duration": "4s",
+  "fps": 20.0,
+  "resolution": {
+    "H": 256,
+    "W": 256
+  },
+  "aspect_ratio": "1,1"
+}

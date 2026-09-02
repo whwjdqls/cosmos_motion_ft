@@ -23,24 +23,53 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, get_worker_info
 
-from cosmos_framework.data.vfm.action.json_formatter import ActionPromptJsonFormatter
-from cosmos_framework.data.vfm.action.transforms import (
-    build_sequence_plan_from_mode,
-    pad_action_to_max_dim,
-)
-from cosmos_framework.data.vfm.augmentors.duration_fps_text_timestamps import DEFAULT_TEMPLATE as DURATION_TEMPLATE
-from cosmos_framework.data.vfm.augmentors.resolution_text_info import DEFAULT_VIDEO_TEMPLATE as RESOLUTION_TEMPLATE
-from cosmos_framework.data.vfm.augmentors.text_tokenizer import TextTokenizerTransform
-from cosmos_framework.data.vfm.joint_dataloader import IterativeJointDataLoader
+try:  # Cosmos3 Edge-capable framework (generator namespace).
+    from cosmos_framework.data.generator.action.utils.action_processing import pad_action_to_max_dim
+    from cosmos_framework.data.generator.action.utils.json_formatter import ActionPromptJsonFormatter
+    from cosmos_framework.data.generator.action.utils.transforms import build_sequence_plan_from_mode
+    from cosmos_framework.data.generator.augmentors.duration_fps_text_timestamps import (
+        DEFAULT_TEMPLATE as DURATION_TEMPLATE,
+    )
+    from cosmos_framework.data.generator.augmentors.resolution_text_info import (
+        DEFAULT_VIDEO_TEMPLATE as RESOLUTION_TEMPLATE,
+    )
+    from cosmos_framework.data.generator.augmentors.text_tokenizer import TextTokenizerTransform
+    from cosmos_framework.data.generator.joint_dataloader import IterativeJointDataLoader
+    from cosmos_framework.data.generator.sequence_packing import SequencePlan
+except ImportError:  # Pinned Nano framework used by the historical runs.
+    from cosmos_framework.data.vfm.action.json_formatter import ActionPromptJsonFormatter
+    from cosmos_framework.data.vfm.action.transforms import (
+        build_sequence_plan_from_mode,
+        pad_action_to_max_dim,
+    )
+    from cosmos_framework.data.vfm.augmentors.duration_fps_text_timestamps import (
+        DEFAULT_TEMPLATE as DURATION_TEMPLATE,
+    )
+    from cosmos_framework.data.vfm.augmentors.resolution_text_info import (
+        DEFAULT_VIDEO_TEMPLATE as RESOLUTION_TEMPLATE,
+    )
+    from cosmos_framework.data.vfm.augmentors.text_tokenizer import TextTokenizerTransform
+    from cosmos_framework.data.vfm.joint_dataloader import IterativeJointDataLoader
+    from cosmos_framework.data.vfm.sequence_packing import SequencePlan
 
-from nymeria_camera_rgb_dataset import MODE_WEIGHTS
-from camera_to_action import DOMAIN_ID
+# Keep this cached-latent dataset independent of the pixel dataset's framework
+# imports.  The values are the native Cosmos action-SFT contract.
+_BASE_MODE_WEIGHTS = {
+    "forward_dynamics": 0.40,
+    "inverse_dynamics": 0.25,
+    "policy": 0.20,
+    "image2video": 0.15,
+}
+_DROPPED_MODES = {mode.strip() for mode in os.environ.get("NYMERIA_DROP_MODES", "").split(",") if mode.strip()}
+MODE_WEIGHTS = {mode: weight for mode, weight in _BASE_MODE_WEIGHTS.items() if mode not in _DROPPED_MODES}
+DOMAIN_ID = 2  # Native Cosmos embodiment domain ``camera_pose``.
 from native_phase_training.latent_cache_contract import (
     CACHE_CONTRACT_FILENAME,
     LatentCacheContract,
     load_latent_cache_contract,
     validate_cached_sample,
 )
+from runtime_paths import WEKA_ROOT
 
 
 _ACTION_MODES = frozenset({"forward_dynamics", "inverse_dynamics", "policy"})
@@ -48,11 +77,36 @@ _VISUAL_GENERATION_MODES = frozenset({"forward_dynamics", "policy", "image2video
 _QUALITY_FILTER_KIND = "nymeria_camera_motion_quality_filter"
 _QUALITY_FILTER_VERSION = 1
 _STANDALONE_C_PATTERN = re.compile(r"(?<!\w)C(?!\w)")
+_STANDALONE_C_SUBJECTS = {
+    "person": ("The person", "the person"),
+    "camera_wearer": ("The camera wearer", "the camera wearer"),
+}
+
+
+def replace_standalone_c(caption: str, subject: str) -> str:
+    """Expand Nymeria's whole-token subject marker without touching words."""
+    if subject not in _STANDALONE_C_SUBJECTS:
+        raise ValueError(
+            f"standalone C subject must be one of {sorted(_STANDALONE_C_SUBJECTS)}, "
+            f"got {subject!r}"
+        )
+    sentence_initial, sentence_internal = _STANDALONE_C_SUBJECTS[subject]
+
+    def replacement(match: re.Match[str]) -> str:
+        prefix = match.string[: match.start()].rstrip()
+        return sentence_initial if not prefix or prefix[-1] in ".!?" else sentence_internal
+
+    return _STANDALONE_C_PATTERN.sub(replacement, caption)
 
 
 def replace_standalone_c_with_person(caption: str) -> str:
-    """Replace the anonymized whole-token subject marker without touching words."""
-    return _STANDALONE_C_PATTERN.sub("A person", caption)
+    """Historical standalone-C rewrite used by Nano and early Edge runs."""
+    return replace_standalone_c(caption, "person")
+
+
+def replace_standalone_c_with_camera_wearer(caption: str) -> str:
+    """Rewrite the subject marker as the off-camera egocentric actor."""
+    return replace_standalone_c(caption, "camera_wearer")
 
 
 def rgb_prefix_to_latent_frames(prefix_length: int, num_frames: int) -> int:
@@ -390,16 +444,16 @@ class LatentAwareIterativeJointDataLoader(IterativeJointDataLoader):
     video, so this override adds the real patchified latent token count.
     """
 
-    def _compute_num_tokens_per_sample(self, data_batch: dict) -> int:
-        num_tokens = super()._compute_num_tokens_per_sample(data_batch)
+    def _cached_vision_token_delta(self, data_batch: dict) -> int:
         if "video_latents" not in data_batch:
-            return num_tokens
+            return 0
 
         videos = list(_iter_raw_videos(data_batch["video"]))
         latents = list(_iter_cached_latents(data_batch["video_latents"]))
         if len(videos) != len(latents):
             raise ValueError(f"video/video_latents item mismatch: {len(videos)} != {len(latents)}")
 
+        delta = 0
         for video, latent in zip(videos, latents, strict=True):
             if tuple(video.shape[-2:]) != (1, 1):
                 raise ValueError(
@@ -411,8 +465,24 @@ class LatentAwareIterativeJointDataLoader(IterativeJointDataLoader):
                 raise ValueError(
                     f"latent spatial shape {(latent_h, latent_w)} is not divisible by patch size {self.patch_spatial}"
                 )
-            num_tokens += latent_t * (latent_h // self.patch_spatial) * (latent_w // self.patch_spatial)
-        return num_tokens
+            delta += latent_t * (latent_h // self.patch_spatial) * (latent_w // self.patch_spatial)
+        return delta
+
+    def _compute_token_split_per_sample(self, data_batch: dict) -> tuple[int, int]:
+        """Attribute cached tokens to the generation tower in current Cosmos."""
+        parent = getattr(super(), "_compute_token_split_per_sample", None)
+        if parent is None:
+            raise AttributeError("parent IterativeJointDataLoader has no token-split API")
+        und_tokens, gen_tokens = parent(data_batch)
+        return und_tokens, gen_tokens + self._cached_vision_token_delta(data_batch)
+
+    def _compute_num_tokens_per_sample(self, data_batch: dict) -> int:
+        # Current Cosmos computes this through self._compute_token_split_per_sample,
+        # so the dynamic dispatch above has already added the cached tokens.  The
+        # pinned Nano framework has no split API and needs the historical delta here.
+        if hasattr(IterativeJointDataLoader, "_compute_token_split_per_sample"):
+            return super()._compute_num_tokens_per_sample(data_batch)
+        return super()._compute_num_tokens_per_sample(data_batch) + self._cached_vision_token_delta(data_batch)
 
 
 def _format_prompt_for_mode(
@@ -444,9 +514,15 @@ def _format_prompt_for_mode(
 class NymeriaCameraLatentDataset(Dataset):
     def __init__(
         self,
-        manifest_path: str = "/weka/jungbin/nymeriaplus_kimodo_proportional/video/manifest_video.jsonl",
-        split_file: str = "/weka/jungbin/nymeriaplus_kimodo_proportional/train_test_split.json",
-        latent_root: str = "/weka/jungbin/nymeriaplus_kimodo_proportional/joint_latents_T97",
+        manifest_path: str = str(
+            WEKA_ROOT / "nymeriaplus_kimodo_proportional" / "video" / "manifest_video.jsonl"
+        ),
+        split_file: str = str(
+            WEKA_ROOT / "nymeriaplus_kimodo_proportional" / "train_test_split.json"
+        ),
+        latent_root: str = str(
+            WEKA_ROOT / "nymeriaplus_kimodo_proportional" / "joint_latents_T97"
+        ),
         num_frames: int = 97,
         fps: float = 20.0,
         mode: str = "forward_dynamics",
@@ -458,6 +534,7 @@ class NymeriaCameraLatentDataset(Dataset):
         seed: int = 0,
         quality_filter_path: str = "",
         replace_standalone_c: bool = False,
+        standalone_c_subject: str = "person",
         prefix_lengths: list[int] | tuple[int, ...] = (1,),
         prefix_sampling_weights: list[float] | tuple[float, ...] | None = None,
         prefix_seed: int = 42,
@@ -479,6 +556,12 @@ class NymeriaCameraLatentDataset(Dataset):
         self.mode = mode
         self.max_action_dim = int(max_action_dim)
         self.replace_standalone_c = bool(replace_standalone_c)
+        if standalone_c_subject not in _STANDALONE_C_SUBJECTS:
+            raise ValueError(
+                f"standalone_c_subject must be one of {sorted(_STANDALONE_C_SUBJECTS)}, "
+                f"got {standalone_c_subject!r}"
+            )
+        self.standalone_c_subject = standalone_c_subject
         self.prefix_lengths, self.prefix_sampling_weights = validate_prefix_sampling(
             prefix_lengths,
             prefix_sampling_weights,
@@ -597,14 +680,22 @@ class NymeriaCameraLatentDataset(Dataset):
 
         caption = "" if mode == "inverse_dynamics" else it["cap"]
         if caption and self.replace_standalone_c:
-            caption = replace_standalone_c_with_person(caption)
+            caption = replace_standalone_c(caption, self.standalone_c_subject)
         rgb_prefix_length, latent_prefix_length = self._choose_prefix(mode)
-        sequence_plan = build_sequence_plan_from_mode(
-            mode=mode,
-            video_length=self.num_frames,
-            action_length=self.num_frames - 1,
-            video_temporal_downsample=4,
-        )
+        if mode == "image2video":
+            sequence_plan = SequencePlan(
+                has_text=True,
+                has_vision=True,
+                has_action=False,
+                condition_frame_indexes_vision=[0],
+            )
+        else:
+            sequence_plan = build_sequence_plan_from_mode(
+                mode=mode,
+                video_length=self.num_frames,
+                action_length=self.num_frames - 1,
+                video_temporal_downsample=4,
+            )
         if mode in _VISUAL_GENERATION_MODES:
             sequence_plan.condition_frame_indexes_vision = list(range(latent_prefix_length))
 

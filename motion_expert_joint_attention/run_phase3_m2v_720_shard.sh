@@ -10,7 +10,10 @@ CKPT=$1
 OUT_DIR=$2
 WINDOWS_JSON=$3
 LATENT_ROOT=$4
-D=/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=../restored_env.sh
+source "${REPO_ROOT}/restored_env.sh"
+D="${REPO_ROOT}/motion_expert_joint_attention"
 
 for path in "${CKPT}" "${WINDOWS_JSON}"; do
   test -s "${path}"

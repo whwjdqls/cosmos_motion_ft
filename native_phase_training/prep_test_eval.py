@@ -22,7 +22,7 @@ from nymeria_camera_dataset import decode_window_pyav
 from nymeria_camera_rgb_dataset import _rgb_path, rel_action_from_window
 from native_phase_training.latent_nymeria_dataset import (
     load_quality_filter_exclusions,
-    replace_standalone_c_with_person,
+    replace_standalone_c,
     rgb_prefix_to_latent_frames,
     validate_prefix_sampling,
 )
@@ -402,6 +402,12 @@ def main() -> None:
     parser.add_argument("--quality-filter", default="")
     parser.add_argument("--replace-standalone-c", action="store_true")
     parser.add_argument(
+        "--standalone-c-subject",
+        choices=("person", "camera_wearer"),
+        default="person",
+        help="semantic subject used when --replace-standalone-c is enabled",
+    )
+    parser.add_argument(
         "--windows-json",
         type=Path,
         default=None,
@@ -493,7 +499,7 @@ def main() -> None:
         )
 
         eval_caption = (
-            replace_standalone_c_with_person(pick["caption"])
+            replace_standalone_c(pick["caption"], args.standalone_c_subject)
             if args.replace_standalone_c
             else pick["caption"]
         )

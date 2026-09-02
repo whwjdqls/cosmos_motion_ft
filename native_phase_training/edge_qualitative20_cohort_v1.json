@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "name": "edge_qualitative20_v1",
+  "selection_rule": "First 20 records, in canonical full71 JSONL order",
+  "source_root": "/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/native_phase1_eval_inputs_full71_256_T97_v2",
+  "source_sha256": {
+    "fd_input.jsonl": "0f73bd362214f87147928a8134f79308faf40f3bb50887de8a94b4176452a244",
+    "invdyn_input.jsonl": "db87c53a92d6e2569e26e094ca679592b9e9d24e3171214292d5c76356f5d718",
+    "policy_input.jsonl": "c0e9443ce79808147db0ec90eacde1e0a5c1020a36498bd9130426f110f10cd3",
+    "i2v_input.jsonl": "9bae17b907f2a0bdc20f29fae1eca25b048eaae5605e85b164a3df9b9c874102"
+  },
+  "samples": [
+    "t00_S07_20231013_s0_shelley_jones_act3_w23p1b",
+    "t01_S05_20230817_s1_rebecca_ward_act2_39a7o2",
+    "t02_S19_20230926_s1_megan_mejia_act4_qfzkks",
+    "t03_S07_20231004_s1_ashley_reyes_act4_mhhxmg",
+    "t04_S19_20231020_s0_anthony_chen_act1_vhzag9",
+    "t05_S10_20230828_s1_omar_patterson_act4_seazrw",
+    "t06_S12_20230612_s0_jason_smith_act4_r35kbc",
+    "t07_S06_20230711_s0_frederick_young_act3_q30n7j",
+    "t08_S14_20230607_s0_james_johnson_act0_e72nhq",
+    "t09_S02_20231110_s0_thomas_brown_act4_x3t73z",
+    "t10_S12_20230706_s0_breanna_reese_act0_cfg468",
+    "t11_S01_20230706_s1_morgan_terrell_act3_9ops7e",
+    "t12_S19_20230919_s1_jessica_webster_act3_sry5zc",
+    "t13_S13_20230717_s0_danielle_ortiz_act1_kn2tq7",
+    "t14_S02_20231011_s1_daniel_kim_act2_6lxp22",
+    "t15_S14_20230726_s1_thomas_nixon_act1_k0zomm",
+    "t16_S02_20230614_s1_matthew_harper_act1_cimupu",
+    "t17_S02_20231003_s1_allen_evans_act0_1w2b7b",
+    "t18_S02_20231128_s1_michael_vargas_act0_yvskcx",
+    "t19_S11_20230816_s1_jeffery_bryant_act1_2a6fxu"
+  ]
+}

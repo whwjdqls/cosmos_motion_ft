@@ -55,8 +55,10 @@ import numpy as np
 import torch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-_NYMERIA_WORLD = "/home/jungbin_cho/cosmos_motion_ft/nymeria_world"
-for _p in (HERE, _NYMERIA_WORLD, "/home/jungbin_cho/cosmos-framework"):
+from runtime_paths import COSMOS_FRAMEWORK_ROOT, REPO_ROOT, WAN_VAE_PATH, resolve_legacy_path
+
+_NYMERIA_WORLD = str(REPO_ROOT / "nymeria_world")
+for _p in (HERE, _NYMERIA_WORLD, str(COSMOS_FRAMEWORK_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
@@ -114,7 +116,8 @@ def build_test_index(
         for line in f:
             rec = json.loads(line)
             uuid = rec.get("uuid")
-            cam, vis = rec.get("camera_path"), rec.get("vision_path")
+            cam = resolve_legacy_path(rec.get("camera_path"))
+            vis = resolve_legacy_path(rec.get("vision_path"))
             nb = int(rec.get("nb_frames", 0))
             if not uuid or not cam or not vis:
                 continue
@@ -243,8 +246,7 @@ def main():
     ap.add_argument("--fps", type=float, default=float(C.FPS))
     ap.add_argument("--resolution", default="256")
     ap.add_argument("--vae_path",
-                    default=os.environ.get("WAN_VAE_PATH",
-                                           "/weka/jungbin/wan22_vae/Wan2.2_VAE.pth"))
+                    default=os.environ.get("WAN_VAE_PATH", str(WAN_VAE_PATH)))
     ap.add_argument("--no_video", action="store_true",
                     help="skip VAE decode of generated/GT video (inverse_dynamics metrics only)")
     ap.add_argument("--device", default="cuda")

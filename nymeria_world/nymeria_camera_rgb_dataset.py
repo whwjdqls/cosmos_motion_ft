@@ -26,7 +26,10 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from cosmos_framework.data.vfm.action.pose_utils import pose_abs_to_rel
+try:  # Cosmos-3 Nano framework layout
+    from cosmos_framework.data.vfm.action.pose_utils import pose_abs_to_rel
+except ModuleNotFoundError:  # Cosmos-3 Edge framework layout
+    from cosmos_framework.data.generator.action.utils.pose_utils import pose_abs_to_rel
 from camera_to_action import DOMAIN_ID  # camera_pose -> 2
 
 # A single corrupt/undecodable video makes one rank's PyAV worker hang -> stalls the
@@ -107,7 +110,9 @@ class NymeriaCameraRGBDataset(Dataset):
         with open(manifest_path) as f:
             for line in f:
                 rec = json.loads(line)
-                cam, vis, nb = rec.get("camera_path"), rec.get("vision_path"), int(rec.get("nb_frames", 0))
+                cam = resolve_legacy_path(rec.get("camera_path"))
+                vis = resolve_legacy_path(rec.get("vision_path"))
+                nb = int(rec.get("nb_frames", 0))
                 if not cam or not vis:
                     continue
                 if keep_uuids is not None and rec.get("uuid") not in keep_uuids:
@@ -226,3 +231,4 @@ if __name__ == "__main__":
         print(f"  [{i}] mode={b['mode']:16s} video={tuple(b['video'].shape)} action={act} "
               f"cap='{b['ai_caption'][:40]}' has_action={sp.has_action} cond_vis={sp.condition_frame_indexes_vision[:3]}")
     print("mode counts:", dict(c))
+from runtime_paths import resolve_legacy_path

@@ -57,6 +57,7 @@ per-subject subdir, with ``uuid_safe = uuid.replace("/", "__")``::
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import Future, ThreadPoolExecutor
 import json
 import os
 import sys
@@ -67,10 +68,15 @@ import numpy as np
 import torch
 
 # The 7-task config (paths, T, resolution) and the nymeria_world loaders.
-sys.path.insert(0, "/home/jungbin_cho/cosmos_motion_ft")
-sys.path.insert(0, "/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention")
-sys.path.insert(0, "/home/jungbin_cho/cosmos_motion_ft/nymeria_world")
-sys.path.insert(0, "/home/jungbin_cho/cosmos-framework")
+from runtime_paths import COSMOS_FRAMEWORK_ROOT, REPO_ROOT, resolve_legacy_path
+
+for _path in (
+    REPO_ROOT,
+    REPO_ROOT / "motion_expert_joint_attention",
+    REPO_ROOT / "nymeria_world",
+    COSMOS_FRAMEWORK_ROOT,
+):
+    sys.path.insert(0, str(_path))
 
 import config as C  # noqa: E402  (motion_expert_joint_attention/config.py)
 from native_phase_training.latent_cache_contract import (  # noqa: E402
@@ -113,7 +119,8 @@ def build_index(
         for line in f:
             rec = json.loads(line)
             uuid = rec.get("uuid")
-            cam, vis = rec.get("camera_path"), rec.get("vision_path")
+            cam = resolve_legacy_path(rec.get("camera_path"))
+            vis = resolve_legacy_path(rec.get("vision_path"))
             nb = int(rec.get("nb_frames", 0))
             if not cam or not vis:
                 continue
@@ -168,7 +175,8 @@ def build_explicit_index(
         for line in f:
             rec = json.loads(line)
             uuid = rec.get("uuid")
-            cam, vis = rec.get("camera_path"), rec.get("vision_path")
+            cam = resolve_legacy_path(rec.get("camera_path"))
+            vis = resolve_legacy_path(rec.get("vision_path"))
             nb = int(rec.get("nb_frames", 0))
             if not uuid or not cam or not vis:
                 continue
@@ -301,38 +309,85 @@ def make_pipeline():
     )
 
 
-def encode_window(vae, pipe, resolution, frames_uint8: np.ndarray, device: str):
-    """frames (T,H,W,3) uint8 -> (latents (z,T_lat,h,w) fp16, image_size (4,) fp32).
+def encode_windows(
+    vae,
+    pipe,
+    resolution,
+    frames_batch_uint8: list[np.ndarray],
+    device: str,
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Encode one same-resolution batch of ``(T,H,W,3)`` uint8 windows.
 
-    Replicates omni_mot_model.get_data_and_condition's vision path:
-      resize+reflection-pad -> /127.5 - 1 -> VAE.encode -> crop padding in latent.
+    This is the batched equivalent of the native vision path:
+    resize+reflection-pad -> /127.5 - 1 -> VAE.encode -> crop latent padding.
     """
-    video = torch.from_numpy(frames_uint8).permute(3, 0, 1, 2).contiguous()  # [3,T,H,W] uint8
+    if not frames_batch_uint8:
+        return []
 
-    # 1. resize + reflection-pad to the resolution bucket; attaches image_size.
-    sample = pipe({"video": video, "mode": "image2video", "ai_caption": ""}, resolution)
-    vid = sample["video"]                         # [3,T,Hp,Wp], still uint8 (pipeline only resizes/pads)
-    image_size = sample["image_size"].float()     # (4,) [target_h, target_w, orig_h, orig_w]
+    transformed: list[torch.Tensor] = []
+    image_sizes: list[torch.Tensor] = []
+    for frames_uint8 in frames_batch_uint8:
+        video = torch.from_numpy(frames_uint8).permute(3, 0, 1, 2).contiguous()
+        sample = pipe({"video": video, "mode": "image2video", "ai_caption": ""}, resolution)
+        vid = sample["video"]
+        image_size = sample["image_size"].float()
+        if vid.dtype != torch.uint8:
+            raise TypeError(f"expected uint8 from pipeline, got {vid.dtype}")
+        transformed.append(vid)
+        image_sizes.append(image_size)
 
-    # 2. uint8 -> [-1, 1] float, exactly as _normalize_video_databatch_inplace.
-    assert vid.dtype == torch.uint8, f"expected uint8 from pipeline, got {vid.dtype}"
-    vid = vid.to(device=device, dtype=torch.float32) / 127.5 - 1.0
-    vid = vid.unsqueeze(0)                          # [1,3,T,Hp,Wp]
+    transformed_shapes = {tuple(video.shape) for video in transformed}
+    if len(transformed_shapes) != 1:
+        raise ValueError(f"cannot batch transformed video shapes: {sorted(transformed_shapes)}")
 
-    # 3. Wan2.2-VAE encode -> [1, z_dim, T_lat, Hp//16, Wp//16].
+    videos = torch.stack(transformed, dim=0).to(device=device, dtype=torch.float32)
+    videos = videos / 127.5 - 1.0
     with torch.no_grad():
-        latent = vae.encode(vid).contiguous().float()
+        latent_batch = vae.encode(videos).contiguous().float()
+    if latent_batch.shape[0] != len(frames_batch_uint8):
+        raise ValueError(
+            f"VAE returned batch {latent_batch.shape[0]} for {len(frames_batch_uint8)} inputs"
+        )
 
-    # 4. crop reflection padding in latent space (mirrors _remove_padding_from_latent).
     spatial_factor = vae.spatial_compression_factor
-    orig_h = int(image_size[2].item())
-    orig_w = int(image_size[3].item())
-    h_lat = max(orig_h // spatial_factor, 1)
-    w_lat = max(orig_w // spatial_factor, 1)
-    latent = latent[:, :, :, :h_lat, :w_lat].contiguous()   # [1, z, T_lat, h, w]
+    output: list[tuple[np.ndarray, np.ndarray]] = []
+    for latent, image_size in zip(latent_batch, image_sizes, strict=True):
+        orig_h = int(image_size[2].item())
+        orig_w = int(image_size[3].item())
+        h_lat = max(orig_h // spatial_factor, 1)
+        w_lat = max(orig_w // spatial_factor, 1)
+        latent = latent[:, :, :h_lat, :w_lat].contiguous()
+        latents = latent.to(torch.float16).cpu().numpy()
+        output.append((latents, image_size.cpu().numpy()))
+    return output
 
-    latents = latent[0].to(torch.float16).cpu().numpy()      # (z, T_lat, h, w)
-    return latents, image_size.cpu().numpy()
+
+def encode_window(vae, pipe, resolution, frames_uint8: np.ndarray, device: str):
+    """Backward-compatible single-window wrapper around :func:`encode_windows`."""
+
+    return encode_windows(vae, pipe, resolution, [frames_uint8], device)[0]
+
+
+def _decode_and_prepare_window(
+    item: dict[str, Any],
+    num_frames: int,
+    fps: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """CPU-side decode and camera-action preparation for one physical window."""
+
+    start = int(item["s"])
+    frames = decode_window_pyav(item["vis"], start, num_frames, fps)
+    pos, rot = _load_rgb_cam(item["rgb"])
+    action = rel_action_from_window(
+        pos[start : start + num_frames], rot[start : start + num_frames]
+    )
+    if (
+        frames.shape[0] != num_frames
+        or action.shape != (num_frames - 1, 9)
+        or not np.isfinite(action).all()
+    ):
+        raise ValueError(f"bad shapes/NaN: frames {frames.shape} action {action.shape}")
+    return frames, action
 
 
 # ----------------------------------------------------------------------------
@@ -377,9 +432,33 @@ def main():
         help="return nonzero if any assigned window fails instead of accepting a partial shard",
     )
     ap.add_argument("--vae_path",
-                    default=os.environ.get("WAN_VAE_PATH",
-                                           "/weka/jungbin/wan22_vae/Wan2.2_VAE.pth"))
+                    default=os.environ.get(
+                        "WAN_VAE_PATH",
+                        os.path.join(
+                            os.environ.get("WEKA_ROOT", "/mnt/projects/ll/jungbinc/weka"),
+                            "wan22_vae",
+                            "Wan2.2_VAE.pth",
+                        ),
+                    ))
     ap.add_argument("--device", default="cuda")
+    ap.add_argument(
+        "--batch_size",
+        type=int,
+        default=1,
+        help="number of same-resolution windows per Wan-VAE encode call",
+    )
+    ap.add_argument(
+        "--decode_workers",
+        type=int,
+        default=1,
+        help="parallel PyAV decode workers; one future batch is prefetched during VAE encode",
+    )
+    ap.add_argument(
+        "--prefetch_size",
+        type=int,
+        default=None,
+        help="decoded windows held per bounded prefetch group (default: max(batch_size, decode_workers))",
+    )
     ap.add_argument("--num_shards", type=int, default=1,
                     help="split the window index into this many disjoint shards")
     ap.add_argument("--shard_id", type=int, default=0, help="which shard this process handles")
@@ -396,6 +475,14 @@ def main():
         ap.error(f"num_frames must be 4N+1 for the Wan VAE (got {args.num_frames})")
     if not (0 <= args.shard_id < args.num_shards):
         ap.error(f"shard_id {args.shard_id} out of range for num_shards {args.num_shards}")
+    if args.batch_size <= 0:
+        ap.error(f"batch_size must be positive (got {args.batch_size})")
+    if args.decode_workers <= 0:
+        ap.error(f"decode_workers must be positive (got {args.decode_workers})")
+    if args.prefetch_size is None:
+        args.prefetch_size = max(args.batch_size, args.decode_workers)
+    if args.prefetch_size <= 0:
+        ap.error(f"prefetch_size must be positive (got {args.prefetch_size})")
     if args.write_cache_contract and (
         args.model_resolution_tier is None
         or args.expected_image_hw is None
@@ -465,23 +552,13 @@ def main():
         contract_path = ensure_latent_cache_contract(args.out_root, cache_contract)
         print(f"[precompute] cache_contract={contract_path}", flush=True)
 
-    # Load the VAE + the resize/pad pipeline once.
-    t0 = time.time()
-    vae = load_vae(args.vae_path, args.resolution, args.num_frames, args.device)
-    pipe = make_pipeline()
-    print(f"[precompute] Wan2.2-VAE loaded ({vae.model.count_param()/1e6:.1f}M params) "
-          f"in {time.time()-t0:.1f}s; encoding...", flush=True)
-
     n_done = n_skip = n_fail = 0
     bytes_written = 0
     latent_shape = None
-    t_start = time.time()
-
-    for i, it in enumerate(index):
-        uuid, vis, rgb, s = it["uuid"], it["vis"], it["rgb"], it["s"]
-        T = args.num_frames
+    pending: list[tuple[dict[str, Any], str]] = []
+    for it in index:
+        uuid, s = it["uuid"], int(it["s"])
         dst = out_path(args.out_root, uuid, s)
-
         if (not args.overwrite) and os.path.isfile(dst):
             if cache_contract is not None and args.fail_on_error:
                 try:
@@ -494,57 +571,140 @@ def main():
                     )
                 else:
                     n_skip += 1
-                    if (i + 1) % args.log_every == 0:
-                        _progress(i, index, n_done, n_skip, n_fail, bytes_written, t_start)
                     continue
             else:
                 n_skip += 1
-                if (i + 1) % args.log_every == 0:
-                    _progress(i, index, n_done, n_skip, n_fail, bytes_written, t_start)
                 continue
+        pending.append((it, dst))
 
-        try:
-            frames = decode_window_pyav(vis, s, T, args.fps)          # (T,H,W,3) uint8
-            pos, rot = _load_rgb_cam(rgb)
-            act = rel_action_from_window(pos[s : s + T], rot[s : s + T])  # (T-1,9)
-            if frames.shape[0] != T or act.shape[0] != T - 1 or not np.isfinite(act).all():
-                raise ValueError(f"bad shapes/NaN: frames {frames.shape} act {act.shape}")
+    print(
+        f"[precompute] execution batch_size={args.batch_size} "
+        f"decode_workers={args.decode_workers} prefetch_size={args.prefetch_size} "
+        f"pending={len(pending)} "
+        f"validated_existing={n_skip}",
+        flush=True,
+    )
+    if not pending:
+        print("[precompute] shard already complete; no VAE load required", flush=True)
+        return
 
-            latents, image_size = encode_window(vae, pipe, args.resolution, frames, args.device)
-            if cache_contract is not None:
-                validate_cached_sample(
-                    cache_contract,
-                    latents=latents,
-                    camera_action=act,
-                    image_size=image_size,
-                    context=f"{uuid}@{s}",
+    # Load the VAE + resize/pad pipeline once after validating resumable files.
+    t0 = time.time()
+    vae = load_vae(args.vae_path, args.resolution, args.num_frames, args.device)
+    pipe = make_pipeline()
+    print(f"[precompute] Wan2.2-VAE loaded ({vae.model.count_param()/1e6:.1f}M params) "
+          f"in {time.time()-t0:.1f}s; encoding...", flush=True)
+    t_start = time.time()
+    last_progress = n_skip
+
+    def submit_decode_batch(
+        pool: ThreadPoolExecutor,
+        batch: list[tuple[dict[str, Any], str]],
+    ) -> list[tuple[dict[str, Any], str, Future[tuple[np.ndarray, np.ndarray]]]]:
+        return [
+            (
+                item,
+                dst,
+                pool.submit(_decode_and_prepare_window, item, args.num_frames, args.fps),
+            )
+            for item, dst in batch
+        ]
+
+    with ThreadPoolExecutor(max_workers=args.decode_workers) as decode_pool:
+        next_offset = 0
+        current_batch = pending[next_offset : next_offset + args.prefetch_size]
+        next_offset += len(current_batch)
+        current_futures = submit_decode_batch(decode_pool, current_batch)
+
+        while current_futures:
+            prepared: list[tuple[dict[str, Any], str, np.ndarray, np.ndarray]] = []
+            for item, dst, future in current_futures:
+                uuid, s = item["uuid"], int(item["s"])
+                try:
+                    frames, action = future.result()
+                except Exception as error:  # noqa: BLE001 - preserve resumable skip behavior
+                    n_fail += 1
+                    print(
+                        f"[precompute] SKIP {uuid}@{s} decode "
+                        f"({type(error).__name__}: {error})",
+                        flush=True,
+                    )
+                    continue
+                prepared.append((item, dst, frames, action))
+
+            # Keep at most one CPU batch prefetched while the current GPU batch runs.
+            next_batch = pending[next_offset : next_offset + args.prefetch_size]
+            next_offset += len(next_batch)
+            next_futures = submit_decode_batch(decode_pool, next_batch)
+
+            for encode_offset in range(0, len(prepared), args.batch_size):
+                encode_records = prepared[encode_offset : encode_offset + args.batch_size]
+                frames_batch = [record[2] for record in encode_records]
+                try:
+                    encoded = encode_windows(
+                        vae, pipe, args.resolution, frames_batch, args.device
+                    )
+                except Exception as error:  # noqa: BLE001 - batch failure is unrecoverable in strict mode
+                    for item, _dst, _frames, _action in encode_records:
+                        print(
+                            f"[precompute] SKIP {item['uuid']}@{int(item['s'])} encode "
+                            f"({type(error).__name__}: {error})",
+                            flush=True,
+                        )
+                    n_fail += len(encode_records)
+                    if args.fail_on_error:
+                        raise
+                    continue
+
+                for (item, dst, _frames, action), (latents, image_size) in zip(
+                    encode_records, encoded, strict=True
+                ):
+                    uuid, s = item["uuid"], int(item["s"])
+                    try:
+                        if cache_contract is not None:
+                            validate_cached_sample(
+                                cache_contract,
+                                latents=latents,
+                                camera_action=action,
+                                image_size=image_size,
+                                context=f"{uuid}@{s}",
+                            )
+                        elif not np.isfinite(latents).all():
+                            raise ValueError("non-finite latents")
+
+                        os.makedirs(os.path.dirname(dst), exist_ok=True)
+                        tmp = dst + f".tmp.{os.getpid()}.npz"
+                        np.savez(
+                            tmp,
+                            latents=latents,
+                            camera_action=action.astype(np.float32),
+                            image_size=image_size.astype(np.float32),
+                            uuid=uuid,
+                            start=np.int64(s),
+                            T=np.int64(args.num_frames),
+                            fps=np.float32(args.fps),
+                        )
+                        os.replace(tmp, dst)
+                    except Exception as error:  # noqa: BLE001 - preserve resumable skip behavior
+                        n_fail += 1
+                        print(
+                            f"[precompute] SKIP {uuid}@{s} write/validate "
+                            f"({type(error).__name__}: {error})",
+                            flush=True,
+                        )
+                        continue
+
+                    bytes_written += os.path.getsize(dst)
+                    n_done += 1
+                    latent_shape = latents.shape
+
+            handled = n_done + n_skip + n_fail
+            if handled - last_progress >= args.log_every or handled == len(index):
+                _progress(
+                    len(index), n_done, n_skip, n_fail, bytes_written, t_start
                 )
-            elif not np.isfinite(latents).all():
-                raise ValueError("non-finite latents")
-            latent_shape = latents.shape
-        except Exception as e:  # noqa: BLE001 — skip any bad window, keep going (resumable)
-            n_fail += 1
-            print(f"[precompute] SKIP {uuid}@{s} ({type(e).__name__}: {e})", flush=True)
-            continue
-
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        tmp = dst + f".tmp.{os.getpid()}.npz"  # unique per-proc atomic write (no cross-shard race on shared dst)
-        np.savez(
-            tmp,
-            latents=latents,
-            camera_action=act.astype(np.float32),
-            image_size=image_size.astype(np.float32),
-            uuid=uuid,
-            start=np.int64(s),
-            T=np.int64(T),
-            fps=np.float32(args.fps),
-        )
-        os.replace(tmp, dst)
-        bytes_written += os.path.getsize(dst)
-        n_done += 1
-
-        if (i + 1) % args.log_every == 0 or (i + 1) == len(index):
-            _progress(i, index, n_done, n_skip, n_fail, bytes_written, t_start)
+                last_progress = handled
+            current_futures = next_futures
 
     dt = time.time() - t_start
     print("=" * 72, flush=True)
@@ -565,11 +725,12 @@ def main():
         )
 
 
-def _progress(i, index, n_done, n_skip, n_fail, bytes_written, t_start):
+def _progress(total, n_done, n_skip, n_fail, bytes_written, t_start):
     dt = time.time() - t_start
-    rate = (i + 1) / max(dt, 1e-9)
-    eta = (len(index) - (i + 1)) / max(rate, 1e-9)
-    print(f"[precompute] {i+1}/{len(index)}  new={n_done} skip={n_skip} fail={n_fail}  "
+    handled = n_done + n_skip + n_fail
+    rate = n_done / max(dt, 1e-9)
+    eta = (total - handled) / max(rate, 1e-9)
+    print(f"[precompute] {handled}/{total}  new={n_done} skip={n_skip} fail={n_fail}  "
           f"{bytes_written/1e9:.3f}GB  {rate:.1f} win/s  ETA {eta/60:.1f}m", flush=True)
 
 

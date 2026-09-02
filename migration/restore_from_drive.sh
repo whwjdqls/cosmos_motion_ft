@@ -100,7 +100,7 @@ if [[ "${SECTION}" == run-metadata ]]; then
     cd "${METADATA_STAGING}"
     sha256sum -c ./*.tar.zst.sha256
     for archive in ./*.tar.zst; do
-      tar --zstd -xf "${archive}" -C "${RUN_ROOT}"
+      unzstd -c "${archive}" | tar -xf - -C "${RUN_ROOT}"
     done
   )
 fi

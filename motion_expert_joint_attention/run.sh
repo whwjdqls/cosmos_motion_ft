@@ -67,9 +67,9 @@
 
 set -euo pipefail
 
-# --- conda: activate the `cosmos` env (cu128) ---
-source ~/miniforge3/etc/profile.d/conda.sh
-conda activate cosmos
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=../restored_env.sh
+source "${REPO_ROOT}/restored_env.sh"
 
 # --- env hygiene (load-bearing for the cosmos CUDA stack) ---
 export LD_LIBRARY_PATH=
@@ -77,11 +77,10 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export TOKENIZERS_PARALLELISM=false
 
 # --- cwd: cosmos-framework root (relative QWEN_JSON / asset paths resolve here) ---
-cd /home/jungbin_cho/cosmos-framework
+cd "${COSMOS_FRAMEWORK_ROOT}"
 
 # --- import paths: framework + both motion-expert repos ---
-export PYTHONPATH=/home/jungbin_cho/cosmos-framework:/home/jungbin_cho/cosmos_motion_ft:/home/jungbin_cho/cosmos_motion_ft/motion_expert:/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention
+export PYTHONPATH
 
 # --- exec the requested script through the env's python ---
-PY=~/miniforge3/envs/cosmos/bin/python
-exec "$PY" "$@"
+exec "${COSMOS_PYTHON}" "$@"

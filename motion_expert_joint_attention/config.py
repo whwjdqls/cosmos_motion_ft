@@ -120,7 +120,12 @@ assert set(TASK_WEIGHTS) == set(TASKS), "TASK_WEIGHTS must cover exactly TASKS"
 # ----------------------------------------------------------------------------
 # Canonical paths.
 # ----------------------------------------------------------------------------
-_PoC = "/home/jungbin_cho/cosmos_motion_ft/motion_expert"
+_REPO_ROOT = os.environ.get(
+    "REPO_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
+_WEKA_ROOT = os.environ.get("WEKA_ROOT", "/mnt/projects/ll/jungbinc/weka")
+_RUN_ROOT = os.environ.get("RUN_ROOT", os.path.join(_WEKA_ROOT, "cosmos_motion_ft_runs"))
+_PoC = os.path.join(_REPO_ROOT, "motion_expert")
 
 # Nymeria (text, motion) pairs -- reused verbatim from the PoC.
 NYMERIA_PAIRS_TRAIN = os.path.join(_PoC, "pairs_train.jsonl")
@@ -131,8 +136,12 @@ NYMERIA_PAIRS_VAL = os.path.join(_PoC, "pairs_val.jsonl")
 # for BONES-SEED; see README / dataset.py). Motion is the ONLY modality that is
 # z-scored: camera actions stay un-normalized (Cosmos-exact) and video stays in
 # VAE latent space -- never cross-normalize (see DESIGN_7TASK.md section 4).
-SHARED_MEAN = os.path.join(_PoC, "stats", "uniego283_mean.npy")
-SHARED_STD = os.path.join(_PoC, "stats", "uniego283_std.npy")
+SHARED_MEAN = os.environ.get(
+    "MOTION_STATS_MEAN", os.path.join(_PoC, "stats", "uniego283_mean.npy")
+)
+SHARED_STD = os.environ.get(
+    "MOTION_STATS_STD", os.path.join(_PoC, "stats", "uniego283_std.npy")
+)
 # Aliases that name the 283-d motion stats explicitly (same files; clearer at the
 # 7-task call sites that also juggle camera/video).
 MOTION_STATS_MEAN = SHARED_MEAN
@@ -140,8 +149,8 @@ MOTION_STATS_STD = SHARED_STD
 
 # BONES-SEED (text, motion) pairs in the 283-d uniego rep, built offline in the
 # kimodo env (build_bones_pairs.py) and consumed here as plain jsonl.
-BONES_PAIRS_TRAIN = "/weka/jungbin/cosmos_motion_ft_runs/joint_attention/bones_pairs_train.jsonl"
-BONES_PAIRS_VAL = "/weka/jungbin/cosmos_motion_ft_runs/joint_attention/bones_pairs_val.jsonl"
+BONES_PAIRS_TRAIN = os.path.join(_RUN_ROOT, "joint_attention", "bones_pairs_train.jsonl")
+BONES_PAIRS_VAL = os.path.join(_RUN_ROOT, "joint_attention", "bones_pairs_val.jsonl")
 
 # ----------------------------------------------------------------------------
 # NymeriaPlus aligned 5-modality source (tasks 1,2,3,5,6,7 + task-4 image variant).
@@ -149,22 +158,40 @@ BONES_PAIRS_VAL = "/weka/jungbin/cosmos_motion_ft_runs/joint_attention/bones_pai
 # (uuid, start_frame). Video latents are PRECOMPUTED offline (precompute_latents.py)
 # so the trainer only runs vae2llm/patchify -- see DESIGN_7TASK.md section 2.
 # ----------------------------------------------------------------------------
-NYMERIA_MANIFEST = "/weka/jungbin/nymeriaplus_kimodo_proportional/video/manifest_video.jsonl"
-NYMERIA_SPLIT_FILE = "/weka/jungbin/nymeriaplus_kimodo_proportional/train_test_split.json"
+NYMERIA_MANIFEST = os.path.join(
+    _WEKA_ROOT, "nymeriaplus_kimodo_proportional", "video", "manifest_video.jsonl"
+)
+NYMERIA_SPLIT_FILE = os.path.join(
+    _WEKA_ROOT, "nymeriaplus_kimodo_proportional", "train_test_split.json"
+)
+# Defaults to the immutable historical representation.  A new representation must
+# opt in together with matching normalization statistics; see
+# ``use_camera_head_v1.sh``.  Keeping the old path as default preserves every existing
+# checkpoint's feature semantics.
+NYMERIA_UNIEGO_ROOT = os.environ.get(
+    "NYMERIA_UNIEGO_ROOT",
+    os.path.join(_WEKA_ROOT, "nymeriaplus_kimodo_proportional", "uniego_rep"),
+)
 # Per-sequence floor calibration + bad-window drop list, precomputed offline by
 # precompute_floor_calibration.py (kimodo env, CPU). Corrects the SOMA fit's constant
 # per-seq foot penetration below the GT floor (delta_seq = d_minc(seq) - c0, applied ON TOP
 # of the per-window multi-floor ground_offset_y) and lists wrong-floor / deep-penetration
 # windows to skip at index-build time. If the file is missing the dataset WARNS loudly and
 # proceeds uncalibrated (backward compat). See README "Floor calibration".
-FLOOR_CALIBRATION_JSON = (
-    "/weka/jungbin/nymeriaplus_kimodo_proportional/metadata/floor_calibration.json")
+FLOOR_CALIBRATION_JSON = os.path.join(
+    _WEKA_ROOT,
+    "nymeriaplus_kimodo_proportional",
+    "metadata",
+    "floor_calibration.json",
+)
 # Root for precomputed Wan2.2-VAE video latents: {uuid}_{start}.npz holds the
 # packed (T_lat, C, h, w) latents (+ optionally the (T-1,9) camera action).
-VIDEO_LATENT_ROOT = "/weka/jungbin/nymeriaplus_kimodo_proportional/joint_latents"
+VIDEO_LATENT_ROOT = os.path.join(
+    _WEKA_ROOT, "nymeriaplus_kimodo_proportional", "joint_latents"
+)
 
 # Root for all run outputs / checkpoints (NFS, visible to every node).
-RUNS_ROOT = "/weka/jungbin/cosmos_motion_ft_runs"
+RUNS_ROOT = _RUN_ROOT
 
 # ----------------------------------------------------------------------------
 # Default training hyperparameters. train.py should seed its argparse defaults

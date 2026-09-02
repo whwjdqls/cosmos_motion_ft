@@ -60,7 +60,8 @@ from joint_motion_model import JointMotionModel
 from uniego_layout import FEAT_DIM, N_JOINTS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-UNIEGO_ROOT = "/weka/jungbin/nymeriaplus_kimodo_proportional/uniego_rep"
+
+UNIEGO_ROOT = config.NYMERIA_UNIEGO_ROOT
 
 DEFAULT_PROMPTS = [
     "a person walks forward",
@@ -1009,7 +1010,9 @@ def load_joint_model(ckpt_path: str, *, device="cuda", objective_cli=None,
     coupling = str(a.get("coupling", "joint"))
     textimg_condition = str(a.get("textimg_condition", "generator"))
     head_camera_alignment = bool(a.get("head_camera_alignment", False))
-    head_camera_calibration = a.get("head_camera_calibration")
+    from runtime_paths import PHASE1_GEN_INIT, resolve_legacy_path
+
+    head_camera_calibration = resolve_legacy_path(a.get("head_camera_calibration"))
     # Before this option existed, reasoner-side TI2M consumed the raw 640x640 Nymeria frame.
     # Preserve that behavior for old checkpoints; all newly trained checkpoints record 256.
     reasoner_image_size = int(
@@ -1055,7 +1058,13 @@ def load_joint_model(ckpt_path: str, *, device="cuda", objective_cli=None,
     # Bridge-only / frozen-specialist Phase-3 checkpoints save only trainable bridge tensors.
     # Recreate the actual training-time model by loading the recorded frozen specialists first,
     # then overlay this checkpoint's trainable delta below.
-    init_gen = a.get("init_gen")
+    init_gen = resolve_legacy_path(a.get("init_gen"))
+    if init_gen and not os.path.exists(init_gen) and PHASE1_GEN_INIT.is_file():
+        print(
+            f"[sample][paths] restored Phase-1 dependency {a.get('init_gen')!r} "
+            f"-> portable delta {str(PHASE1_GEN_INIT)!r}"
+        )
+        init_gen = str(PHASE1_GEN_INIT)
     if init_gen:
         if os.path.exists(init_gen):
             native_weights = str(a.get("init_gen_dcp_weights", "ema"))
@@ -1067,7 +1076,7 @@ def load_joint_model(ckpt_path: str, *, device="cuda", objective_cli=None,
         else:
             print(f"[sample][WARN] ckpt records init_gen={init_gen!r}, but the file is missing; "
                   "evaluating without the frozen generator specialist.")
-    init_motion = a.get("init_motion")
+    init_motion = resolve_legacy_path(a.get("init_motion"))
     if init_motion:
         if os.path.exists(init_motion):
             msd = load_joint_pt(init_motion)
@@ -1133,14 +1142,15 @@ def main():
     ap.add_argument("--skeleton", default=None,
                     help="uniego npz to take neutral_joints from; default = first S01 train actor")
     # Stats live in the repo dir (same constant path train.py uses): uniego283_{mean,std}.npy.
-    ap.add_argument("--mean", default=os.path.join(HERE, "uniego283_mean.npy"))
-    ap.add_argument("--std", default=os.path.join(HERE, "uniego283_std.npy"))
+    ap.add_argument("--mean", default=config.MOTION_STATS_MEAN)
+    ap.add_argument("--std", default=config.MOTION_STATS_STD)
     ap.add_argument("--ablation", choices=["cfg", "both"], default="cfg",
                     help="cfg=just the CFG-guided sample; both=ALSO save the null/uncond "
                          "(empty-prompt) sample for the does-text-matter test")
     args = ap.parse_args()
 
     dev = "cuda"
+    torch.cuda.reset_peak_memory_stats()
     mean = torch.from_numpy(np.load(args.mean)).float().to(dev)
     std = torch.from_numpy(np.load(args.std)).float().to(dev)
 
@@ -1188,6 +1198,8 @@ def main():
 
     # ---- render-ready manifest (consumed by viz.py in the kimodo env) ----
     np.save(os.path.join(args.out, "skeleton_neutral_joints.npy"), nj)
+    peak_allocated_gib = torch.cuda.max_memory_allocated() / (1024 ** 3)
+    peak_reserved_gib = torch.cuda.max_memory_reserved() / (1024 ** 3)
     json.dump(
         {
             "n_joints": N_JOINTS, "feat_dim": FEAT_DIM,
@@ -1199,11 +1211,17 @@ def main():
             "reasoner_image_size": model.reasoner_image_size,
             "cfg": args.cfg, "T": args.T, "steps": args.steps,
             "skeleton": args.skeleton or "default_S01_neutral_joints",
+            "peak_cuda_allocated_gib": peak_allocated_gib,
+            "peak_cuda_reserved_gib": peak_reserved_gib,
             "samples": manifest,
         },
         open(os.path.join(args.out, "manifest.json"), "w"), indent=2,
     )
-    print(f"[sample] wrote {len(manifest)} samples + manifest.json to {args.out}")
+    print(
+        f"[sample] wrote {len(manifest)} samples + manifest.json to {args.out} | "
+        f"peak_cuda_allocated={peak_allocated_gib:.2f} GiB "
+        f"peak_cuda_reserved={peak_reserved_gib:.2f} GiB"
+    )
 
 
 if __name__ == "__main__":

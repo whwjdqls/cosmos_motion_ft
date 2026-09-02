@@ -71,11 +71,16 @@ from cosmos_framework.utils.vfm.lora import (
 # --------------------------------------------------------------------------------------
 MOTION_DIM = 369
 HIDDEN = 4096
-_NANO_GLOB = os.path.expanduser(
-    "~/.cache/huggingface/hub/models--nvidia--Cosmos3-Nano/snapshots/*"
+_HF_HOME = os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
+_NANO_GLOB = os.path.join(
+    os.environ.get("HUGGINGFACE_HUB_CACHE", os.path.join(_HF_HOME, "hub")),
+    "models--nvidia--Cosmos3-Nano/snapshots/*",
 )
 NANO_SNAPSHOT = sorted(glob(_NANO_GLOB))[0] if glob(_NANO_GLOB) else None
-QWEN_JSON = "cosmos_framework/model/vfm/vlm/qwen3_vl/configs/Qwen3-VL-8B-Instruct.json"
+QWEN_JSON = os.environ.get(
+    "COSMOS_QWEN_CONFIG",
+    "cosmos_framework/model/vfm/vlm/qwen3_vl/configs/Qwen3-VL-8B-Instruct.json",
+)
 SPECIAL_TOKENS = {
     "eos_token_id": 1,
     "start_of_generation": 2,

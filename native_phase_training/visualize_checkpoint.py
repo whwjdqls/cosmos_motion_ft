@@ -15,6 +15,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from native_phase_training.sanitize_prefix_inference_inputs import runtime_mode_matches
+
 
 VIDEO_MODES = ("forward_dynamics", "policy", "image2video")
 ACTION_PLOT_MODES = ("inverse_dynamics", "policy")
@@ -330,7 +332,10 @@ def _load_successful_output(path: Path, expected_mode: str) -> dict[str, Any]:
     payload = json.loads(path.read_text())
     if payload.get("status") != "success":
         raise ValueError(f"failed inference output at {path}: {payload.get('message')}")
-    if payload.get("args", {}).get("model_mode") != expected_mode:
+    if not runtime_mode_matches(
+        actual_mode=payload.get("args", {}).get("model_mode"),
+        canonical_mode=expected_mode,
+    ):
         raise ValueError(f"mode mismatch at {path}")
     return payload
 

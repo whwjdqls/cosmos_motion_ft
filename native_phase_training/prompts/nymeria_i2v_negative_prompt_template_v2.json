@@ -1,0 +1,16 @@
+{
+  "cinematography": {
+    "camera_motion": "Motion controlled by an external camera, or a runaway push-in, zoom, orbit, teleport, or discontinuous drift unrelated to natural head movement",
+    "framing": "Third-person framing or an invented body, head, headset, or camera rig obstructs the first-person view",
+    "camera_angle": "Third-person, over-the-shoulder, selfie, mirror, surveillance, overhead, or aerial viewpoint"
+  },
+  "context": "An external camera viewpoint or an obstructed view instead of a natural first-person head-mounted recording.",
+  "temporal_caption": "Third-person framing, an invented foreground body or camera rig, flicker, warping, duplicated or malformed anatomy, disappearing objects, cuts, and discontinuous camera motion.",
+  "duration": "4s",
+  "fps": 20.0,
+  "resolution": {
+    "H": 256,
+    "W": 256
+  },
+  "aspect_ratio": "1,1"
+}

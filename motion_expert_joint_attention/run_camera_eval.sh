@@ -37,25 +37,24 @@ N="${2:-8}"
 [[ $# -ge 1 ]] && shift
 EXTRA=("$@")
 
-D=/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention
-
-# --- conda: activate the `cosmos` env (cu128) ---
-source ~/miniforge3/etc/profile.d/conda.sh
-conda activate cosmos
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=../restored_env.sh
+source "${REPO_ROOT}/restored_env.sh"
+D="${REPO_ROOT}/motion_expert_joint_attention"
 
 # --- env hygiene (load-bearing for the cosmos CUDA stack) ---
 export LD_LIBRARY_PATH=
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export TOKENIZERS_PARALLELISM=false
-export WAN_VAE_PATH="${WAN_VAE_PATH:-/weka/jungbin/wan22_vae/Wan2.2_VAE.pth}"
+export WAN_VAE_PATH
 
 # --- cwd: cosmos-framework root (relative QWEN_JSON / asset paths resolve here) ---
-cd /home/jungbin_cho/cosmos-framework
+cd "${COSMOS_FRAMEWORK_ROOT}"
 
 # --- import paths: framework + both motion-expert repos + nymeria_world (viz/metric reuse) ---
-export PYTHONPATH=/home/jungbin_cho/cosmos-framework:/home/jungbin_cho/cosmos_motion_ft:/home/jungbin_cho/cosmos_motion_ft/motion_expert:/home/jungbin_cho/cosmos_motion_ft/motion_expert_joint_attention:/home/jungbin_cho/cosmos_motion_ft/nymeria_world
+export PYTHONPATH
 
-PY=~/miniforge3/envs/cosmos/bin/python
+PY="${COSMOS_PYTHON}"
 
 # --- "none"/missing ckpt -> smoke on the BASE model (eval_camera.py handles the fallback) ---
 CKPT_ARG=(--ckpt "$CKPT")
@@ -71,7 +70,7 @@ echo "[run_camera_eval] node=$(hostname) ckpt=$CKPT n=$N extra=${EXTRA[*]:-}"
 if [[ -f "$CKPT" ]]; then
   EVAL_DIR="$(dirname "$(readlink -f "$CKPT")")/camera_eval"
 else
-  EVAL_DIR=/weka/jungbin/cosmos_motion_ft_runs/camera_eval_base
+  EVAL_DIR="${RUN_ROOT}/camera_eval_base"
 fi
 
 echo "[run_camera_eval] viz -> $EVAL_DIR/viz"

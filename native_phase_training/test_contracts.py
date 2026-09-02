@@ -35,6 +35,7 @@ from native_phase_training.latent_nymeria_dataset import (
     build_cached_index,
     latent_path,
     load_quality_filter_exclusions,
+    replace_standalone_c_with_camera_wearer,
     replace_standalone_c_with_person,
     rgb_prefix_to_latent_frames,
     validate_training_cache_contract,
@@ -72,7 +73,11 @@ from native_phase_training.run_contract import (
     resolve_eval_contract,
     write_eval_resolution,
 )
-from native_phase_training.sanitize_prefix_inference_inputs import sanitize_record
+from native_phase_training.run_latent_train import _scheduler_compatible_cpu_affinity
+from native_phase_training.sanitize_prefix_inference_inputs import (
+    runtime_mode_matches,
+    sanitize_record,
+)
 from native_phase_training.visualize_checkpoint import (
     _annotated_video_filter,
     _video_frame_provenance,
@@ -100,6 +105,9 @@ def _native_run_config(
     prefix_lengths: tuple[int, ...] = (1, 9, 17, 33, 49),
     model_resolution: str = "256",
     training_shift: float = 3.0,
+    model_family: str = "nano",
+    vision_loss_scale: float = 1.0,
+    image_loss_scale: float | None = 1.0,
 ) -> SimpleNamespace:
     lora_enabled = adaptation_mode != "action_only"
     targets = (
@@ -113,6 +121,7 @@ def _native_run_config(
                 "dataset": {
                     "prefix_lengths": list(prefix_lengths),
                     "num_frames": NUM_FRAMES,
+                    "fps": float(FPS),
                 }
             }
         }
@@ -121,13 +130,18 @@ def _native_run_config(
     return SimpleNamespace(
         job=SimpleNamespace(path_local=str(run_dir)),
         model=SimpleNamespace(
+            model_family=model_family,
             adaptation_mode=adaptation_mode,
             config=SimpleNamespace(
                 lora_enabled=lora_enabled,
                 lora_target_modules=targets,
                 resolution=model_resolution,
+                diffusion_expert_config={"base_fps": 24.0},
                 rectified_flow_training_config={
-                    "shift": {model_resolution: training_shift}
+                    "shift": {model_resolution: training_shift},
+                    "loss_scale": vision_loss_scale,
+                    "image_loss_scale": image_loss_scale,
+                    "action_loss_weight": 10.0,
                 },
             ),
         ),
@@ -136,6 +150,27 @@ def _native_run_config(
 
 
 class NativeRunContractTest(unittest.TestCase):
+    def test_contract_captures_edge_fps_and_released_loss_scales(self) -> None:
+        contract = contract_from_config(
+            _native_run_config(
+                Path("/run"),
+                adaptation_mode="global_lora",
+                active_modes=("forward_dynamics", "inverse_dynamics", "policy", "image2video"),
+                model_family="edge",
+                vision_loss_scale=10.0,
+                image_loss_scale=None,
+            )
+        )
+        self.assertEqual(contract.model_family, "edge")
+        self.assertEqual(contract.conditioning_fps, 20.0)
+        self.assertEqual(contract.base_fps, 24.0)
+        self.assertEqual(contract.training_shift, 3.0)
+        self.assertEqual(contract.inference_shift, 10.0)
+        self.assertEqual(contract.vision_loss_scale, 10.0)
+        self.assertIsNone(contract.image_loss_scale)
+        self.assertEqual(contract.action_loss_weight, 10.0)
+        self.assertEqual(contract.dropped_modes, ())
+
     def test_contract_captures_camera_kv_architecture_and_dropped_i2v(self) -> None:
         config = _native_run_config(
             Path("/run"),
@@ -149,6 +184,7 @@ class NativeRunContractTest(unittest.TestCase):
         self.assertEqual(contract.training_prefix_lengths, (1, 9, 17, 33, 49))
         self.assertEqual(contract.model_resolution, "256")
         self.assertEqual(contract.training_shift, 3.0)
+        self.assertEqual(contract.inference_shift, 3.0)
 
     def test_contract_captures_released_720_shift(self) -> None:
         contract = contract_from_config(
@@ -163,6 +199,7 @@ class NativeRunContractTest(unittest.TestCase):
         self.assertEqual(contract.model_resolution, "720")
         self.assertEqual(contract.num_frames, NUM_FRAMES)
         self.assertEqual(contract.training_shift, 10.0)
+        self.assertEqual(contract.inference_shift, 10.0)
 
     def test_persisted_contract_is_immutable_across_resume(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -223,6 +260,35 @@ class NativeRunContractTest(unittest.TestCase):
                         "NATIVEP1_ADAPTATION_MODE": "camera_kv_lora",
                         "NYMERIA_DROP_MODES": "",
                     },
+                )
+
+    def test_legacy_edge_contract_upgrades_to_official_inference_shift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            run_dir = Path(temporary_dir)
+            config = _native_run_config(
+                run_dir,
+                adaptation_mode="global_lora",
+                active_modes=("forward_dynamics", "inverse_dynamics", "policy", "image2video"),
+                model_family="edge",
+                vision_loss_scale=10.0,
+                image_loss_scale=None,
+            )
+            path = persist_run_contract(config)
+            saved = json.loads(path.read_text())
+            saved["schema_version"] = 3
+            saved.pop("inference_shift")
+            path.write_text(json.dumps(saved))
+            checkpoint = run_dir / "checkpoints" / "iter_000000003"
+            checkpoint.mkdir(parents=True)
+
+            contract, _, _, _ = resolve_eval_contract(checkpoint, environ={})
+            self.assertEqual(contract.training_shift, 3.0)
+            self.assertEqual(contract.inference_shift, 10.0)
+
+            with self.assertRaisesRegex(ValueError, "NATIVEP1_INFERENCE_SHIFT conflicts"):
+                resolve_eval_contract(
+                    checkpoint,
+                    environ={"NATIVEP1_INFERENCE_SHIFT": "3"},
                 )
 
     def test_legacy_config_recovery_does_not_default_to_global_lora(self) -> None:
@@ -308,6 +374,36 @@ class NativeRunContractTest(unittest.TestCase):
             self.assertIn("NYMERIA_RESOLUTION=256", env_path.read_text())
             self.assertIn("NATIVEP1_EFFECTIVE_SHIFT=3.0", env_path.read_text())
 
+    def test_edge_eval_uses_shift_ten_without_changing_training_shift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            run_dir = root / "edge-run"
+            config = _native_run_config(
+                run_dir,
+                adaptation_mode="global_lora",
+                active_modes=("forward_dynamics", "inverse_dynamics", "policy", "image2video"),
+                model_family="edge",
+                vision_loss_scale=10.0,
+                image_loss_scale=None,
+            )
+            persist_run_contract(config)
+            checkpoint = run_dir / "checkpoints" / "iter_000005000"
+            checkpoint.mkdir(parents=True)
+            record_path, env_path = write_eval_resolution(
+                checkpoint_path=checkpoint,
+                output_dir=root / "eval",
+                environ={},
+            )
+
+            record = json.loads(record_path.read_text())
+            environment = env_path.read_text()
+            self.assertEqual(record["training_shift"], 3.0)
+            self.assertEqual(record["inference_shift"], 10.0)
+            self.assertIn("NATIVEP1_SHIFT_OVERRIDE=3.0", environment)
+            self.assertIn("NATIVEP1_TRAINING_SHIFT=3.0", environment)
+            self.assertIn("NATIVEP1_INFERENCE_SHIFT=10.0", environment)
+            self.assertIn("NATIVEP1_EFFECTIVE_SHIFT=10.0", environment)
+
     def test_eval_shell_resolves_contract_before_importing_inference_config(self) -> None:
         script = Path(__file__).with_name("sbatch_checkpoint_eval.sh").read_text()
         self.assertLess(script.index("run_contract.py"), script.index("cosmos_framework.scripts.inference"))
@@ -325,9 +421,28 @@ class NativeRunContractTest(unittest.TestCase):
 
 class PromptContractTest(unittest.TestCase):
     def test_standalone_subject_replacement_does_not_change_words(self) -> None:
-        caption = "C carries a cup. ABC, c, coffee, C2, _C, and (C) stay distinct."
-        expected = "A person carries a cup. ABC, c, coffee, C2, _C, and (A person) stay distinct."
-        self.assertEqual(replace_standalone_c_with_person(caption), expected)
+        caption = "C carries a cup. ABC, c, coffee, C2, _C, and (C) stay distinct. C turns."
+        expected = (
+            "The camera wearer carries a cup. ABC, c, coffee, C2, _C, and "
+            "(the camera wearer) stay distinct. The camera wearer turns."
+        )
+        self.assertEqual(replace_standalone_c_with_camera_wearer(caption), expected)
+
+    def test_historical_person_subject_replacement_remains_available(self) -> None:
+        self.assertEqual(
+            replace_standalone_c_with_person("C walks, then C turns."),
+            "The person walks, then the person turns.",
+        )
+
+    def test_gpu_cpu_affinity_stays_inside_scheduler_allocation(self) -> None:
+        self.assertEqual(
+            _scheduler_compatible_cpu_affinity({64, 65, 96}, {32, 33, 64, 65}),
+            [64, 65],
+        )
+        self.assertEqual(
+            _scheduler_compatible_cpu_affinity({128, 129}, {32, 33}),
+            [32, 33],
+        )
 
     def test_action_prompt_matches_official_inference(self) -> None:
         sample = _prompt_sample()
@@ -595,6 +710,39 @@ class PrefixContractTest(unittest.TestCase):
         self.assertEqual(sanitize_record(record, "forward_dynamics"), record)
         self.assertEqual(_source_name(record), "sample")
         self.assertEqual(_rgb_prefix_length(record), 1)
+
+    def test_edge_policy_is_sanitized_to_official_wam_mode(self) -> None:
+        record = {
+            "model_mode": "policy",
+            "name": "sample_policy",
+            "vision_path": "/input.png",
+        }
+        sanitized = sanitize_record(record, "policy", model_family="edge")
+        self.assertEqual(sanitized["model_mode"], "wam")
+        self.assertTrue(
+            runtime_mode_matches(actual_mode="wam", canonical_mode="policy")
+        )
+        self.assertFalse(
+            runtime_mode_matches(actual_mode="wam", canonical_mode="forward_dynamics")
+        )
+
+    def test_inference_caption_replaces_only_standalone_subject_marker(self) -> None:
+        record = {
+            "model_mode": "forward_dynamics",
+            "name": "sample_forward_dynamics",
+            "prompt": "C carries C2 near ABC, c, _C, and (C).",
+        }
+        sanitized = sanitize_record(
+            record,
+            "forward_dynamics",
+            model_family="edge",
+            replace_standalone_c=True,
+            standalone_c_subject="camera_wearer",
+        )
+        self.assertEqual(
+            sanitized["prompt"],
+            "The camera wearer carries C2 near ABC, c, _C, and (the camera wearer).",
+        )
 
 
 class CameraTokenLoraContractTest(unittest.TestCase):
