@@ -1,6 +1,6 @@
 # Shared Agent Context
 
-This repository is a cluster-oriented research checkout for adapting NVIDIA Cosmos-3 Nano into human-motion and egocentric world-model variants. It is not a standalone Python package. Real runs usually require `/home/jungbin_cho/cosmos-framework`, the `cosmos` conda env, Slurm GPU nodes, and `/weka/jungbin/...` datasets/checkpoints.
+This repository is a cluster-oriented research checkout for adapting NVIDIA Cosmos-3 Nano into human-motion and egocentric world-model variants. It is not a standalone Python package. Real runs require a site-specific Cosmos framework checkout, compatible conda environments, Slurm GPU nodes, and persistent datasets/checkpoints. The physical path contract for the Yonsei datacenter and Grasp lab is `migration/SITE_STORAGE.md`; `/home/jungbin_cho`, `/weka/jungbin`, and `/mnt/shared/jungbin_cho` references are legacy H200/A100 provenance unless a section explicitly says otherwise.
 
 Primary current work areas: `motion_expert_joint_attention/` and the isolated native-Cosmos Phase 1 path in `native_phase_training/`.
 
@@ -956,6 +956,11 @@ Project-specific assessment: the old root 369-d motion finetune structurally mat
 
 Most real commands must run on cluster nodes. This checkout alone cannot import Cosmos unless the external framework/env are available.
 
+The fixed `/home/jungbin_cho` and `/weka/jungbin` commands below describe the
+historical H200 environment. On Yonsei or Grasp, use the explicit site roots in
+`migration/SITE_STORAGE.md`; do not silently fall back to another machine's
+paths.
+
 Invariant `cosmos` preamble:
 
 ```bash
@@ -1255,6 +1260,9 @@ When changing `native_phase_training/`, preserve these invariants:
 Cluster operational rule: before every SSH compute action, first run `squeue -w <node>` from the login node. Only after confirming Slurm ownership may `nvidia-smi` be checked over SSH. Never launch through SSH on a node allocated to another user, even if individual GPUs look idle; Slurm exclusivity does not protect jobs from SSH-launched processes.
 
 ## Server Migration
+
+The physical storage map and readiness ledger for the Yonsei datacenter and
+Grasp lab is `migration/SITE_STORAGE.md`.
 
 The authoritative restore runbook is `migration/SERVER_MIGRATION.md`.
 Machine-readable contracts are `migration/GCS_ARTIFACT_MANIFEST.tsv` and

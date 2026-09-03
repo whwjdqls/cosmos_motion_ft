@@ -4,7 +4,7 @@ This repository uses one shared agent context file because both Codex and Claude
 
 Before non-trivial edits, read:
 
-`/home/jungbin_cho/cosmos_motion_ft/AGENTS_ALL.md`
+`AGENTS_ALL.md` from the current repository checkout.
 
 For current joint-attention work, verify claims against code in:
 
@@ -31,6 +31,6 @@ Key reminders:
 
 - Primary work area is `motion_expert_joint_attention/`.
 - Active isolated native-Cosmos Phase 1 work is in `native_phase_training/`.
-- This is not a standalone package; real runs require `/home/jungbin_cho/cosmos-framework`, the `cosmos` env, Slurm GPU nodes, and `/weka/jungbin/...`.
+- This is not a standalone package; real runs require a site-specific Cosmos framework checkout, compatible environments, Slurm GPU nodes, and persistent artifact storage. See `migration/SITE_STORAGE.md` for the Yonsei and Grasp path map.
 - Do not edit generated logs, Slurm outputs, cached latents, stats, mp4s, or checkpoints unless explicitly requested.
 - Use the smallest relevant verification after edits.
