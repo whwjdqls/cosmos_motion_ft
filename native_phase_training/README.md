@@ -148,17 +148,35 @@ update with loss `1.6550` and gradient norm `1.06733`, and committed a complete
 18-GiB step-5001 smoke DCP. The source production checkpoint remained read-only.
 The gate completed in 3:42 with exit code zero and about 95.8 GiB peak host RAM.
 
-Production continuation job `528782` is pending on `batch`/`normal` for four
-GPUs with feature constraint `l40s|l40`, 64 CPUs, and 512 GiB host RAM. It will
-resume the production run at step 5,000, generate a new W&B continuation ID,
-and enable the 15-minute rolling recovery cadence. The previous W&B ID
-`6l7ok328` is preserved in the run directory as
-`wandb_id.before_liu_6l7ok328.txt`; `wandb_id.txt` remains absent until the new
-job initializes logging. Slurm currently reports the pending reason as
-`Resources` and projected a September 2 evening start; this is dynamic and must
-be checked with `squeue --start -j 528782`. Test-only requests reduced as far as
-32 CPUs/256 GiB received the same projected placement as 48 CPUs/384 GiB, so
-four simultaneous GPUs—not CPU or RAM—are the observed scheduling bottleneck.
+Production job `528782` ran through three automatic preemption/requeue cycles,
+advanced past the permanent step-20,000 checkpoint, and then failed after the
+finite step-22,336 update for an unrelated W&B filesystem error. The W&B
+device-monitor callback tried to stage a table under
+`/home/jungbinc/.local/share/wandb/artifacts/staging` and raised `OSError:
+[Errno 122] Disk quota exceeded`; rank 0 propagated the callback exception and
+Slurm recorded application exit code 1 rather than a preemption. Its peak host
+RSS was about 280.5 GiB against the 512-GiB request, and the training log had no
+CUDA, NCCL, OOM, NaN, or model exception. Because `--requeue` handles scheduler
+preemption but not an arbitrary application exit, this final failure did not
+restart automatically.
+
+`sbatch_phase1_edge_4gpu_bs8_batch.sh` now exports `WANDB_DATA_DIR` and
+`WANDB_CACHE_DIR` beneath
+`/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/.wandb_runtime`; the
+installed W&B 0.27.2 code uses `WANDB_DATA_DIR` for exactly the artifact staging
+path that failed. A real temporary-file write and W&B staging-path resolution
+were validated there before resubmission. Continuation job `529842` started on
+four L40s at `dj-l40-0`, loaded the complete model/EMA, optimizer, scheduler,
+and trainer state from rolling checkpoint step 22,241, reused W&B ID
+`6kwex4fb`, and completed the first finite resumed update at step 22,242. It
+subsequently passed the real step-22,400 device-monitor table callback that had
+previously raised the home-quota error and continued through step 22,401.
+
+Test-only requests reduced as far as 32 CPUs/256 GiB received the same projected
+placement as 48 CPUs/384 GiB, so four simultaneous GPUs—not CPU or RAM—were the
+observed scheduling bottleneck. Keep checking live state with
+`squeue -j 529842`; a future batch preemption should still requeue the job and
+lose at most roughly one 15-minute recovery interval.
 
 The full 256-tier cache build started on 2026-09-01 as four independent L40
 `srun` shards under `tmux 0`; model training was not submitted. The initial

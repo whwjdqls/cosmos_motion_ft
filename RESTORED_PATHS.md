@@ -239,7 +239,9 @@ schema-v3 Nymeria-only gates at
 `smoke_phase2_schema3_nymeria_tmux0_20260901/` and
 `smoke_phase2_schema3_nymeria_T200_tmux0_20260901/`; both passed on one L40S.
 Use `sbatch_l40_smoke.sh`, followed by the single-GPU
-`sbatch_train_1gpu.sh`; a multi-GPU DDP gate is not required. The production
+`sbatch_train_1gpu.sh`; `sbatch_train_1gpu_batch.sh` is the shared-`batch`
+partition wrapper around that same launcher. A multi-GPU DDP gate is not
+required. The production
 launcher writes the instrumented run under
 `edge_7layer_nymeria_t2m_ti2m_v1_wandb_viz/`, logs loss and pre-clip gradient
 norm to `jungbinc-upenn/cosmos-motion-ft`, and persists `wandb_run_id.txt` so a
@@ -257,8 +259,33 @@ checkpoint interval and was superseded while pending. The hardened launcher
 now overwrites an atomic recovery checkpoint every 250 steps, persists RNG/data
 epoch alongside model+optimizer, selects the newest complete recovery/regular
 checkpoint with `--resume auto`, and requests Slurm requeue plus USR1 at 180
-seconds. Clean preemption-safe job `528415` is submitted to `liu-compute` with
-QoS `ll-med`, one `gpu:l40`, and the known ECC-faulted `ll-l40-1` excluded. It
-runs under `edge_7layer_nymeria_t2m_ti2m_v1_wandb_viz_preemptsafe`; at
-submission it is pending for `Priority`. Pending `batch` job `528385` was
-cancelled before it started and produced no output.
+seconds. Job `529512` reached full model/data initialization on `liu-compute`
+but failed before visualization or optimizer step 1 when W&B 0.27.2 did not
+publish its local service port within 30 seconds. It created no checkpoint.
+Because the shared `/home` filesystem is full, the repaired launcher roots
+mutable W&B data/cache at
+`/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/.wandb_runtime`; it also
+uses a 300-second service wait and three bounded initialization attempts with
+the same persisted run ID. All 13 contract tests pass, including a forced
+first-attempt W&B failure/retry.
+
+Active job `529851` uses the shared `batch` partition with QoS `normal`, one
+L40, and the known ECC-faulted `ll-l40-1` excluded. It runs under
+`edge_7layer_nymeria_t2m_ti2m_v1_wandb_viz_preemptsafe` and successfully
+resumed W&B run `isptsmkc`. By optimizer step 20 it had uploaded all ten fixed
+step-0 comparisons and five TI2M condition images, with finite loss `1.089077`,
+gradient norm `49.5103`, and 16.31 GiB peak allocation. The repaired
+`liu-compute` submission `529849` was cancelled before allocation once the
+batch job was running, preventing a shared-output collision. Pending batch job
+`528385` was also cancelled before it started. A live USR1 recovery test wrote
+the 1.41 GB Weka-backed `checkpoints/recovery_latest.pt` atomically at step 75;
+the job continued through logged step 80 afterward. A memory-mapped load check
+confirmed schema 3 plus optimizer, data-epoch, and complete RNG state.
+The first `liu-compute` attempt `528415` received `ll-l40-0`, but its batch step
+was cancelled by signal 53 at zero elapsed time; accounting reports
+`FAILED (0:53)`, not `PREEMPTED`, and no user log, output directory, W&B run, or
+checkpoint was created. Five incumbent jobs on the same node failed at
+22:47:12--14, four other new tasks plus `528415` received zero-runtime `0:53`,
+and unrelated jobs started there at 22:47:15. This is a node/scheduler handoff
+incident rather than Phase-2 code execution; only administrator Slurm logs can
+distinguish the underlying prolog/cgroup/GRES/controller cause.

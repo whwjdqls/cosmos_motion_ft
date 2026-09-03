@@ -113,6 +113,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wandb-run-name", default=os.environ.get("WANDB_RUN_NAME"))
     parser.add_argument("--wandb-group", default=os.environ.get("WANDB_GROUP"))
     parser.add_argument(
+        "--wandb-service-wait",
+        type=float,
+        default=float(os.environ.get("WANDB__SERVICE_WAIT", "300")),
+        help="seconds to wait for the local wandb-core service on each init attempt",
+    )
+    parser.add_argument(
+        "--wandb-init-attempts",
+        type=int,
+        default=int(os.environ.get("WANDB_INIT_ATTEMPTS", "3")),
+        help="bounded wandb.init attempts using the same persisted run id",
+    )
+    parser.add_argument(
+        "--wandb-init-retry-delay",
+        type=float,
+        default=float(os.environ.get("WANDB_INIT_RETRY_DELAY", "10")),
+        help="seconds between failed wandb.init attempts",
+    )
+    parser.add_argument(
         "--wandb-tags",
         default=os.environ.get(
             "WANDB_TAGS", "cosmos3-edge,phase2,nymeria,camera-head-v1"
@@ -210,18 +228,45 @@ def initialize_wandb(
                 default=str,
             )
         )
-        run = wandb.init(
-            project=args.wandb_project,
-            entity=args.wandb_entity or None,
-            name=args.wandb_run_name or out.name,
-            group=args.wandb_group or None,
-            tags=tags,
-            id=run_id,
-            resume="allow",
-            mode=args.wandb_mode,
-            dir=str(out),
-            config=wandb_config,
-        )
+        run = None
+        for attempt in range(1, args.wandb_init_attempts + 1):
+            try:
+                run = wandb.init(
+                    project=args.wandb_project,
+                    entity=args.wandb_entity or None,
+                    name=args.wandb_run_name or out.name,
+                    group=args.wandb_group or None,
+                    tags=tags,
+                    id=run_id,
+                    resume="allow",
+                    mode=args.wandb_mode,
+                    dir=str(out),
+                    config=wandb_config,
+                    settings=wandb.Settings(
+                        x_service_wait=float(args.wandb_service_wait)
+                    ),
+                )
+                break
+            except Exception as error:
+                if attempt >= args.wandb_init_attempts:
+                    raise
+                print(
+                    f"[wandb] init attempt {attempt}/{args.wandb_init_attempts} "
+                    f"failed: {type(error).__name__}: {str(error)[:240]}; "
+                    f"retrying in {args.wandb_init_retry_delay:.1f}s",
+                    flush=True,
+                )
+                try:
+                    wandb.teardown(exit_code=1)
+                except Exception as teardown_error:
+                    print(
+                        f"[wandb] teardown after failed init also failed: "
+                        f"{type(teardown_error).__name__}: {str(teardown_error)[:160]}",
+                        flush=True,
+                    )
+                time.sleep(args.wandb_init_retry_delay)
+        if run is None:
+            raise RuntimeError("wandb.init returned no run without raising an exception")
         run.define_metric("train/step")
         run.define_metric("train/*", step_metric="train/step")
         run.define_metric("visualizations/*", step_metric="train/step")
@@ -290,6 +335,12 @@ def main() -> None:
         raise ValueError("--require-viz requires --viz-samples-per-task > 0")
     if args.require_wandb and args.wandb_mode == "disabled":
         raise ValueError("--require-wandb requires online or offline W&B mode")
+    if args.wandb_service_wait <= 0:
+        raise ValueError("--wandb-service-wait must be positive")
+    if args.wandb_init_attempts <= 0:
+        raise ValueError("--wandb-init-attempts must be positive")
+    if args.wandb_init_retry_delay < 0:
+        raise ValueError("--wandb-init-retry-delay must be non-negative")
     task_weights = normalize_task_weights(args.task_weights)
     args.task_weights = task_weights
 

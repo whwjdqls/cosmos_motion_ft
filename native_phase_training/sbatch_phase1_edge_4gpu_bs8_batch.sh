@@ -25,11 +25,20 @@ export NATIVEP1_SMOKE_RUN_NAME=${NATIVEP1_SMOKE_RUN_NAME:-edge_phase1_T97_20fps_
 export NATIVEP1_RUN_NAME=${NATIVEP1_RUN_NAME:-edge_phase1_T97_20fps_bs32_4gpu_bs8_camera_wearer_global_lora_100k_v1}
 export NATIVEP1_WANDB_MODE=${NATIVEP1_WANDB_MODE:-online}
 
+# W&B defaults artifact staging and caching to the quota-limited home
+# filesystem. Keep both on Weka so an observational callback cannot terminate
+# training when /home is full.
+WANDB_STORAGE_ROOT=${WANDB_STORAGE_ROOT:-/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/.wandb_runtime}
+export WANDB_DATA_DIR=${WANDB_DATA_DIR:-${WANDB_STORAGE_ROOT}/data}
+export WANDB_CACHE_DIR=${WANDB_CACHE_DIR:-${WANDB_STORAGE_ROOT}/cache}
+mkdir -p "${WANDB_DATA_DIR}" "${WANDB_CACHE_DIR}"
+
 # This supplements the permanent 5k checkpoints. The framework keeps the last
 # three wall-clock checkpoints and never prunes a save_iter milestone.
 export COSMOS3_CHECKPOINT_WALL_CLOCK_MINUTES=${COSMOS3_CHECKPOINT_WALL_CLOCK_MINUTES:-15}
 
 echo "[edge-p1-batch] partition=batch qos=normal constraint=l40s|l40 excluded_node=ll-l40-1.grasp.maas"
 echo "[edge-p1-batch] rolling_checkpoint_minutes=${COSMOS3_CHECKPOINT_WALL_CLOCK_MINUTES}"
+echo "[edge-p1-batch] wandb_data_dir=${WANDB_DATA_DIR} wandb_cache_dir=${WANDB_CACHE_DIR}"
 
 exec bash "${REPO_ROOT}/native_phase_training/sbatch_phase1_edge_8gpu.sh"

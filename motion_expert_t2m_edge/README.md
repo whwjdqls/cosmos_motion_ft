@@ -93,7 +93,10 @@ loss, feature/joint/smooth loss components, pre-clip gradient norm, learning
 rate, throughput, effective batch, and peak allocated GPU memory are logged
 every 20 optimizer steps to project `jungbinc-upenn/cosmos-motion-ft`. A
 run-local `wandb_run_id.txt` makes a later Slurm/checkpoint resume continue the
-same W&B run.
+same W&B run. Mutable W&B data/cache are rooted under
+`/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/.wandb_runtime`, not the
+currently full shared `/home` filesystem. Initialization waits up to 300
+seconds per attempt and retries three times with the same persisted run ID.
 
 The one-GPU launcher is preemption-safe. Regular named checkpoints remain every
 5,000 steps, while an atomic rolling `checkpoints/recovery_latest.pt` is
@@ -183,24 +186,56 @@ checkpointed training run.
 
 ## Active preemption-safe submission
 
-Job `528415` was submitted on 2026-09-02 with the hardened launcher and the new
-clean output directory. It supersedes pending `batch`-partition job `528385`,
-which was cancelled before it started so that training could use
-`liu-compute` instead:
+Batch job `529851` is the active replacement as of 2026-09-03. It started
+immediately on the healthy L40 at `dj-l40-0` through
+`sbatch_train_1gpu_batch.sh`, which changes only the Slurm partition/QoS request
+and then executes the canonical hardened launcher. Its clean output directory
+is:
 
 ```text
 /mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/motion_expert_t2m_edge/
   edge_7layer_nymeria_t2m_ti2m_v1_wandb_viz_preemptsafe
 ```
 
-It requests one L40 on `liu-compute` with QoS `ll-med`, batch 128, rolling
-recovery every 250 steps, automatic newest-checkpoint resume, explicit Slurm
-requeue, and the 180-second USR1 recovery signal. Node `ll-l40-1` is excluded
-because its earlier Edge smoke allocation reported an uncorrectable GPU ECC
-error. At submission the job is pending for `Priority`; Slurm accepted the
-request, and it has not failed or started yet. A new W&B run ID will be created
-in that output directory when Slurm grants the first allocation, then reused
-across every preemption/requeue.
+It uses batch 128, rolling recovery every 250 steps, automatic
+newest-checkpoint resume, explicit Slurm requeue, and the 180-second USR1
+recovery signal. Node `ll-l40-1` remains excluded because its earlier Edge
+smoke allocation reported an uncorrectable GPU ECC error. W&B run `isptsmkc`
+successfully reused the ID persisted by the failed predecessor. Job `529851`
+loaded all 120,929 retained training windows, rendered and uploaded the fixed
+five T2M plus five TI2M step-0 comparisons, and completed optimizer step 20
+with finite loss `1.089077`, pre-clip gradient norm `49.5103`, and 16.31 GiB
+peak allocation. Both Nymeria routes were observed. A manual Slurm-equivalent
+USR1 test then wrote a 1.41 GB atomic `recovery_latest.pt` at step 75 on Weka;
+training continued through logged step 80, proving the live signal-save path
+does not terminate the job. A memory-mapped `torch.load` check confirmed schema
+3, step 75, `signal_recovery`, optimizer/data-epoch state, and complete
+Python/NumPy/Torch CPU/CUDA RNG state.
+
+Predecessor `liu-compute` job `529512` reached model/data initialization but
+stopped before visualization or optimizer step 1 because W&B 0.27.2 did not
+publish its local service port within the old 30-second limit. It produced no
+checkpoint. The repaired launcher places mutable W&B data/cache on Weka,
+extends the per-attempt service wait to 300 seconds, and performs three bounded
+attempts using the same run ID. The 13-test contract suite covers the retry
+behavior. Repaired `liu-compute` job `529849` remained pending for `Priority`
+and was cancelled before allocation after batch job `529851` started, avoiding
+two writers to the same output directory. Earlier pending batch job `528385`
+was likewise cancelled before it started.
+
+The first `liu-compute` submission, job `528415`, received `ll-l40-0` at
+2026-09-02 22:47 EDT but its batch step was cancelled by signal 53 at zero
+elapsed time. Top-level accounting records `FAILED (0:53)`, not `PREEMPTED`;
+the user batch script never produced its Slurm log, output directory, W&B run,
+or checkpoint. Node accounting shows a same-second cluster event: five running
+jobs on `ll-l40-0` failed at 22:47:12--14, four newly launched array tasks and
+job `528415` then all died with zero-runtime `0:53`, and unrelated jobs started
+successfully on that node at 22:47:15. This rules out Phase-2 user code and
+supports a transient Slurm/node resource-handoff failure. The exact lower-level
+cause (for example prolog, cgroup, GRES, or controller handoff) is not exposed
+by user accounting and requires the administrator's `slurmd`/`slurmctld` logs
+for that timestamp. It was not a training, model, memory, checkpoint, or
+observed CUDA ECC failure.
 
 ## Production run history
 

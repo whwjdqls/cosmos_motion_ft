@@ -229,19 +229,20 @@ Inference must run from `cosmos-framework`, use `--no-guardrails`, use `.jsonl` 
 
 Read `native_phase_training/README.md` before editing this path. That README is the detailed runbook for the current official-compatible Phase 1 camera/video generator run.
 
-Cosmos3-Edge Phase-1 continuation status on 2026-09-02: complete step-5000
-model/EMA/optimizer/scheduler/trainer DCP is preserved under
-`edge_phase1_T97_20fps_bs32_4gpu_bs8_camera_wearer_global_lora_100k_v1`.
-One-L40 resume gate `528475` passed a real batch-eight step and complete isolated
-step-5001 save on `dj-l40-0`; production job `528782` is pending on
-`batch`/`normal` for four GPUs constrained to validated `l40s|l40`, with
-15-minute rolling recovery checkpoints and permanent 5k checkpoints. Known
-ECC-faulted `ll-l40-1` is excluded. The superseded pending `liu-compute` job
-`528466` was cancelled. Old preemptible job `527987` was cancelled, and its W&B
-ID `6l7ok328` was preserved before the continuation creates a fresh ID. Keep
-the current 64-CPU/512-GiB request unless the four-stream-per-rank loader and
-aggregate checkpoint memory are separately revalidated. Verify dynamic Slurm
-state before reporting progress.
+Cosmos3-Edge Phase-1 continuation status on 2026-09-03: production job `528782`
+survived three batch preemptions, reached permanent checkpoint step 20,000, and
+then failed after step 22,336 because the W&B device-monitor callback exhausted
+the quota of its default home-backed artifact staging directory. This was not a
+GPU, CPU, host-memory, or model failure; its peak host RSS was about 280.5 GiB
+against 512 GiB. `sbatch_phase1_edge_4gpu_bs8_batch.sh` now redirects both W&B
+data/staging and cache to Weka under `.wandb_runtime`. Replacement job `529842`
+is running on four L40s at `dj-l40-0`; it loaded complete rolling checkpoint
+step 22,241, reused W&B ID `6kwex4fb`, and passed its first resumed update at
+22,242. It also passed the formerly failing W&B device-monitor table callback
+at step 22,400 after the relocation. It retains 15-minute rolling recovery checkpoints, permanent 5k
+checkpoints, 64 CPUs, 512 GiB RAM, and the `l40s|l40` constraint. Known
+ECC-faulted `ll-l40-1` remains excluded. Verify dynamic Slurm state before
+reporting progress.
 
 Purpose: train a new Nymeria camera/video generator LoRA that keeps the training and sampling contract close to NVIDIA's native Cosmos-3 Nano action/video setup. This path exists because the older joint-attention Phase 1 and custom sampler showed poorer visual quality than base Cosmos with the official sampler. The new path uses saved Wan-VAE latents for training speed, but it preserves native Cosmos sequence construction, rectified-flow noising, loss masks, losses, action heads, checkpoint format, and official inference compatibility. Batch cardinality is an optimization choice and does not affect sampler compatibility.
 
@@ -1135,6 +1136,8 @@ Root:
   checks with `bash motion_expert_t2m_edge/run.sh -m unittest discover -s
   /home/jungbinc/cosmos_motion_ft/motion_expert_t2m_edge/tests -v`; use
   `sbatch_l40_smoke.sh`, then the canonical one-GPU `sbatch_train_1gpu.sh`.
+  `sbatch_train_1gpu_batch.sh` is a shared-`batch` partition wrapper around the
+  same canonical training command.
 - `SMOKE_RESULTS.md`: the one-L40S schema-v3 Nymeria-only T=16 and
   production-shape T=200/TI2M=97 gates pass finite forward/backward, nonzero
   motion gradients, zero frozen gradients, strict reload, and TI2M sampling at
@@ -1152,11 +1155,31 @@ Root:
   preempted it twice before the old 5k checkpoint interval. The superseding
   launcher atomically overwrites `recovery_latest.pt` every 250 steps, stores
   model/optimizer/RNG/data-epoch state, uses `--resume auto`, and requests
-  Slurm requeue plus USR1 warning. Clean job `528415` is pending for `Priority`
-  on `liu-compute` with QoS `ll-med` and one L40 under
+  Slurm requeue plus USR1 warning. Replacement `liu-compute` job `529512`
+  reached model/data initialization but failed before step 0 when W&B 0.27.2
+  timed out after 30 seconds waiting for its local service port; it produced no
+  checkpoint. The repaired launcher moves mutable W&B data/cache from the full
+  shared `/home` filesystem to Weka, waits up to 300 seconds per attempt, and
+  retries three times with the same persisted ID; all 13 contract tests pass.
+  Repaired `liu-compute` job `529849` remained pending and was cancelled before
+  allocation once shared-`batch` job `529851` began on a healthy L40 at
+  `dj-l40-0`, avoiding duplicate writers. Job `529851` successfully reused W&B
+  run `isptsmkc`, uploaded the fixed five T2M plus five TI2M step-0 comparisons,
+  and reached step 20 with finite loss `1.089077`, gradient norm `49.5103`, and
+  16.31 GiB peak allocation. A manual USR1 test wrote the 1.41 GB atomic Weka
+  recovery checkpoint at step 75, and the job continued through logged step 80;
+  a memory-mapped load confirmed schema 3 plus optimizer/data-epoch/full RNG
+  state.
+  It is the active Phase-2 run under
   `edge_7layer_nymeria_t2m_ti2m_v1_wandb_viz_preemptsafe`; known ECC-faulted
-  node `ll-l40-1` is excluded. Superseded pending `batch` job `528385` was
-  cancelled before it started.
+  node `ll-l40-1` is excluded. First `liu-compute` job `528415` had a zero-runtime
+  launch-level `FAILED (0:53)` event on `ll-l40-0`; no user log, output, W&B
+  run, or checkpoint was created. At the same second, five incumbent jobs on
+  that node failed, four other new tasks also died with zero-runtime `0:53`,
+  and unrelated jobs then started successfully. Treat this as a transient
+  scheduler/node resource-handoff incident, not Phase-2 execution; exact
+  prolog/cgroup/GRES/controller attribution requires administrator logs.
+  Superseded pending `batch` job `528385` was cancelled before it started.
 
 `motion_expert/`:
 

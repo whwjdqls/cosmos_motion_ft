@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import os
 import random
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import torch
@@ -136,6 +139,63 @@ class RecoveryCheckpointContractTest(unittest.TestCase):
         self.assertTrue(restore_rng_state(state))
         actual = (random.random(), float(np.random.rand()), float(torch.rand(())))
         self.assertEqual(expected, actual)
+
+
+class WandbRecoveryContractTest(unittest.TestCase):
+    def test_init_retries_with_same_persisted_id_and_long_service_wait(self):
+        import train as train_module
+
+        class FakeRun:
+            def __init__(self):
+                self.summary = {}
+                self.url = "https://wandb.invalid/test"
+
+            def define_metric(self, *_args, **_kwargs):
+                return None
+
+        calls = []
+        teardowns = []
+
+        def fake_init(**kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                raise RuntimeError("transient wandb-core startup timeout")
+            return FakeRun()
+
+        fake_wandb = types.SimpleNamespace(
+            util=types.SimpleNamespace(generate_id=lambda: "fixed123"),
+            Settings=lambda **kwargs: kwargs,
+            init=fake_init,
+            teardown=lambda **kwargs: teardowns.append(kwargs),
+        )
+        args = types.SimpleNamespace(
+            wandb_mode="online",
+            require_wandb=True,
+            wandb_project="test-project",
+            wandb_entity="test-entity",
+            wandb_run_name="test-run",
+            wandb_group="test-group",
+            wandb_tags="phase2,test",
+            wandb_service_wait=300.0,
+            wandb_init_attempts=3,
+            wandb_init_retry_delay=0.0,
+            viz_samples_per_task=5,
+        )
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(
+            sys.modules, {"wandb": fake_wandb}
+        ), mock.patch.object(train_module.time, "sleep") as sleep:
+            out = Path(directory)
+            run = train_module.initialize_wandb(
+                args, out=out, effective_batch=128, world=1
+            )
+            self.assertEqual((out / "wandb_run_id.txt").read_text(), "fixed123\n")
+
+        self.assertIsInstance(run, FakeRun)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual({call["id"] for call in calls}, {"fixed123"})
+        self.assertTrue(all(call["settings"]["x_service_wait"] == 300.0 for call in calls))
+        self.assertEqual(teardowns, [{"exit_code": 1}])
+        sleep.assert_called_once_with(0.0)
 
 
 if __name__ == "__main__":
