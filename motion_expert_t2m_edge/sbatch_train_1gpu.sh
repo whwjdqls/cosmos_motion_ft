@@ -16,6 +16,7 @@
 #SBATCH --output=/home/jungbinc/cosmos_motion_ft/slurm-edge-phase2-7l-1g-%j.out
 
 set -euo pipefail
+export COSMOS_SITE=${COSMOS_SITE:-grasp}
 REPO_ROOT=${REPO_ROOT:-/home/jungbinc/cosmos_motion_ft}
 OUT=${OUT:-/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/motion_expert_t2m_edge/edge_7layer_nymeria_t2m_ti2m_v1_wandb_viz_preemptsafe}
 BATCH_SIZE=${BATCH_SIZE:-128}

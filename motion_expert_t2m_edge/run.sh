@@ -9,7 +9,9 @@ source "${REPO_ROOT}/restored_env.sh"
 export COSMOS_FRAMEWORK_EDGE_ROOT=${COSMOS_FRAMEWORK_EDGE_ROOT:-/mnt/projects/ll/jungbinc/cosmos-framework-edge}
 export COSMOS_FRAMEWORK_ROOT=${COSMOS_FRAMEWORK_EDGE_ROOT}
 export EDGE_MODEL_ROOT=${EDGE_MODEL_ROOT:-${WEKA_ROOT}/Cosmos3-Edge}
-export BASE_CHECKPOINT_PATH=${BASE_CHECKPOINT_PATH:-${WEKA_ROOT}/cosmos3_edge_dcp}
+# restored_env.sh exposes the historical Nano base as the repository-wide
+# default. This Edge-only wrapper must select the converted Edge DCP instead.
+export BASE_CHECKPOINT_PATH=${EDGE_BASE_CHECKPOINT_PATH:-${COSMOS3_EDGE_DCP_ROOT}}
 
 # shellcheck source=../motion_expert_joint_attention/use_camera_head_v1.sh
 source "${REPO_ROOT}/motion_expert_joint_attention/use_camera_head_v1.sh"
