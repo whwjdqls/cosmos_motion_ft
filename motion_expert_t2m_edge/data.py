@@ -5,10 +5,24 @@ import os
 from collections.abc import Mapping
 
 import config
+from caption_policy import ORIGINAL_POLICY, normalize_bones_caption
 from nymeria_joint_dataset import NymeriaJointDataset, collate_joint
 
 
 PHASE2_TASKS = frozenset(("text2motion", "textimg2motion"))
+
+
+class EdgePhase2Dataset(NymeriaJointDataset):
+    """Keep data/CFG routing intact; opt in to BONES actor wording at read time."""
+
+    def __getitem__(self, index):
+        row = super().__getitem__(index)
+        if (
+            row.get("source") == "bones"
+            and config.BONES_CAPTION_SUBJECT_POLICY != ORIGINAL_POLICY
+        ):
+            row["caption"] = normalize_bones_caption(row["caption"]).caption
+        return row
 
 
 def normalize_task_weights(task_weights: Mapping[str, float] | None = None) -> dict[str, float]:
@@ -62,7 +76,7 @@ def build_phase2_dataset(
     if "textimg2motion" not in weights:
         aligned_frames = int(num_frames)
 
-    dataset = NymeriaJointDataset(
+    dataset = EdgePhase2Dataset(
         split=split,
         num_frames=num_frames,
         aligned_num_frames=aligned_frames,
@@ -100,6 +114,7 @@ def build_t2m_dataset(**kwargs) -> NymeriaJointDataset:
 
 
 __all__ = [
+    "EdgePhase2Dataset",
     "PHASE2_TASKS",
     "build_phase2_dataset",
     "build_t2m_dataset",

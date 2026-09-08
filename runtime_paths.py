@@ -133,7 +133,7 @@ _site_exports = {
     "BASE_CHECKPOINT_PATH": SITE_PATHS.base_checkpoint_path,
 }
 for _site_name, _site_value in _site_exports.items():
-    _site_os.environ[_site_name] = str(_site_value)
+    _site_os.environ.setdefault(_site_name, str(_site_value))
 
 
 def _site_coerce_like_existing(name: str, value: _SitePath):

@@ -20,6 +20,7 @@ REPO_ROOT=${REPO_ROOT:-/home/jungbinc/cosmos_motion_ft}
 OUT=${OUT:-/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/motion_expert_t2m_edge/edge_7layer_nymeria_t2m_ti2m_v1_wandb_viz_preemptsafe}
 BATCH_SIZE=${BATCH_SIZE:-128}
 GRAD_ACCUM=${GRAD_ACCUM:-1}
+BONES_FRAC=${BONES_FRAC:-0}
 WANDB_PROJECT=${WANDB_PROJECT:-cosmos-motion-ft}
 WANDB_ENTITY=${WANDB_ENTITY:-jungbinc-upenn}
 WANDB_RUN_NAME=${WANDB_RUN_NAME:-edge-phase2-7l-nymeria-t2m-ti2m-v1-preemptsafe}
@@ -43,8 +44,11 @@ exec bash "${REPO_ROOT}/motion_expert_t2m_edge/run.sh" \
     "${REPO_ROOT}/motion_expert_t2m_edge/train.py" \
     --out "${OUT}" --T 200 --batch-size "${BATCH_SIZE}" \
     --ti2m-frames 97 --task-weights '{"text2motion":0.75,"textimg2motion":0.25}' \
-    --bones-frac 0 --reasoner-image-size 256 \
+    --bones-frac "${BONES_FRAC}" --reasoner-image-size 256 \
     --grad-accum "${GRAD_ACCUM}" --num-workers 8 --recovery-save-every 250 \
+    --w-feat "${W_FEAT:-1}" --w-joint "${W_JOINT:-10}" --w-smooth "${W_SMOOTH:-50}" \
+    --w-contact "${W_CONTACT:-0}" --w-foot-vel "${W_FOOT_VEL:-0}" \
+    --w-foot-height "${W_FOOT_HEIGHT:-0}" \
     --wandb-mode online --wandb-project "${WANDB_PROJECT}" \
     --wandb-entity "${WANDB_ENTITY}" --wandb-run-name "${WANDB_RUN_NAME}" \
     --wandb-group "${WANDB_GROUP}" \

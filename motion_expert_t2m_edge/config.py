@@ -52,6 +52,9 @@ BONES_TEXT2M_FRAC = 0.0
 BONES_REPRESENTATION = "legacy_uniego283_motion_only"
 BONES_CAMERA_HEAD_EQUIVALENT = False
 CAPTION_SUBJECT_POLICY = "standalone_C_to_sentence_aware_camera_wearer"
+BONES_CAPTION_SUBJECT_POLICY = os.environ.get("EDGE_BONES_CAPTION_POLICY", "original")
+if BONES_CAPTION_SUBJECT_POLICY not in {"original", "main_actor_camera_wearer_v1"}:
+    raise ValueError(f"unsupported EDGE_BONES_CAPTION_POLICY={BONES_CAPTION_SUBJECT_POLICY!r}")
 CONTRACT_SCHEMA_VERSION = 3
 
 MOTION_STATS_MEAN = Path(
@@ -110,6 +113,17 @@ EXPECTED_EDGE_VISION_WEIGHTS_SHA256 = (
     "2180ad739ecc96b5c1e9386892d3c5c08bfa42b9cdab9aabc53b028671db89b3"
 )
 EXPECTED_EDGE_FRAMEWORK_COMMIT = "d4599e2e43fbd06168e9884205b9b66c3902d8f6"
+
+# Yonsei's local conversion has different DCP serialization metadata. On
+# 2026-09-08 all 254 frozen reasoner tensors matched the original pinned Edge
+# safetensors at DCP precision. The stats summary differs only in site paths:
+# replacing Yonsei paths with Grasp paths reproduces the Grasp summary hash.
+# Model/vision weights, framework revision, normalization arrays, and the
+# complete expected statistics population retain the shared pins above.
+EXPECTED_YONSEI_METADATA_SHA256 = {
+    "edge_dcp_metadata": "3b9312f86564fe79b43d2fbda9bba5757f8ff7c82a45eed37b574ced07b983e9",
+    "motion_stats_summary": "98c5aaf5cda21e1f5379706f027d44010c71f1a6f4e719f1fe28201f110ac449",
+}
 
 
 def _load_shared_config() -> Any:
@@ -199,6 +213,8 @@ def validate_artifacts(*, include_bones: bool = False) -> dict[str, str]:
         "motion_stats_summary": EXPECTED_STATS_SUMMARY_SHA256,
         "edge_framework_commit": EXPECTED_EDGE_FRAMEWORK_COMMIT,
     }
+    if os.environ.get("COSMOS_SITE") == "yonsei":
+        expected.update(EXPECTED_YONSEI_METADATA_SHA256)
     drift = {key: (hashes[key], value) for key, value in expected.items() if hashes[key] != value}
     if drift:
         detail = ", ".join(f"{key}: actual={a} expected={e}" for key, (a, e) in drift.items())
@@ -227,6 +243,7 @@ def architecture_contract() -> dict[str, Any]:
         "default_task_weights": dict(TASK_WEIGHTS),
         "default_bones_text2motion_frac": BONES_TEXT2M_FRAC,
         "caption_subject_policy": CAPTION_SUBJECT_POLICY,
+        "bones_caption_subject_policy": BONES_CAPTION_SUBJECT_POLICY,
         "ti2m_valid_frames": TI2M_FRAMES,
         "reasoner_image_size": REASONER_IMAGE_SIZE,
         "reasoner_image_conditioning": "frozen_edge_siglip2_visual_tokens",

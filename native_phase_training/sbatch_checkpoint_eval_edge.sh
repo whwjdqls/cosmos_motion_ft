@@ -30,6 +30,10 @@ for cuda_lib_dir in npp cuda_nvrtc cuda_runtime nvjitlink; do
   }
 done
 export LD_LIBRARY_PATH=${CUDA_PYTHON_LIB_ROOT}/npp/lib:${CUDA_PYTHON_LIB_ROOT}/cuda_nvrtc/lib:${CUDA_PYTHON_LIB_ROOT}/cuda_runtime/lib:${CUDA_PYTHON_LIB_ROOT}/nvjitlink/lib
+# Optional site-specific FFmpeg runtime; leave the Grasp defaults unchanged.
+if [[ -n "${COSMOS_FFMPEG_LIBRARY_PATH:-}" ]]; then
+  export LD_LIBRARY_PATH=${COSMOS_FFMPEG_LIBRARY_PATH}:${LD_LIBRARY_PATH}
+fi
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export TOKENIZERS_PARALLELISM=false
 export HF_HUB_OFFLINE=1

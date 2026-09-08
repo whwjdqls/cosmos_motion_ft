@@ -67,7 +67,11 @@ def _contract_without_validation(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def validate_checkpoint_contract(payload: dict[str, Any]) -> None:
-    saved = _contract_without_validation(payload)
+    saved = dict(_contract_without_validation(payload))
+    # Existing schema-3 Grasp checkpoints predate this optional BONES policy.
+    # They used original BONES wording; reject loading them under the new rule,
+    # while keeping their original-policy reload behavior backward compatible.
+    saved.setdefault("bones_caption_subject_policy", "original")
     live = config.architecture_contract()
     mismatches = {
         key: (saved.get(key), value)

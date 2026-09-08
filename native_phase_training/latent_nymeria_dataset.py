@@ -306,6 +306,15 @@ def validate_training_cache_contract(
     return contract
 
 
+_TRAIN_EXCLUDED_ORIGINAL_VIDEO_NAME_SUBSTRINGS = (
+    "brittney_goodwin",
+    "austin_lopez",
+    "kim_wilkins",
+    "kevin_davis",
+    "devon_norris",
+)
+
+
 @lru_cache(maxsize=16)
 def build_cached_index(
     manifest_path: str,
@@ -329,6 +338,8 @@ def build_cached_index(
     candidate_windows = 0
     quality_filtered_rows = 0
     quality_reason_rows: Counter[str] = Counter()
+    excluded_original_videos = 0
+    excluded_original_video_names: Counter[str] = Counter()
     with open(manifest_path) as f:
         for line in f:
             rec = json.loads(line)
@@ -337,6 +348,19 @@ def build_cached_index(
             if keep_uuids is not None and uuid not in keep_uuids:
                 continue
             if not rec.get("camera_path") or not rec.get("vision_path"):
+                continue
+            original_video_name = str(rec["vision_path"]).rsplit("/", 1)[-1].casefold()
+            excluded_name = next(
+                (
+                    name
+                    for name in _TRAIN_EXCLUDED_ORIGINAL_VIDEO_NAME_SUBSTRINGS
+                    if name in original_video_name
+                ),
+                None,
+            )
+            if split == "train" and excluded_name is not None:
+                excluded_original_videos += 1
+                excluded_original_video_names[excluded_name] += 1
                 continue
             for w in rec.get("t2w_windows", []):
                 if require_usable and not w.get("usable", False):
@@ -368,6 +392,8 @@ def build_cached_index(
                     s += num_frames
     print(
         f"[NymeriaCameraLatentDataset] split={split} T={num_frames} kept={len(index)} "
+        f"excluded_original_videos={excluded_original_videos} "
+        f"excluded_original_video_names={dict(sorted(excluded_original_video_names.items()))} "
         f"quality_filtered={quality_filtered_rows} missing_latents={missing_latents} "
         f"candidates={candidate_windows} quality_reasons={dict(sorted(quality_reason_rows.items()))} "
         f"root={latent_root}",
