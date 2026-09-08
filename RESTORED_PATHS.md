@@ -60,6 +60,7 @@ Located under: `/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/cosmos3_cam
 | **Phase 1 VQ-B** | `.../native_phase1_vq_B_varprefix_global_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person/checkpoints/iter_000100000/` | Full resumable DCP. Variable-prefix training. |
 | **Phase 1 VQ-D** | `.../native_phase1_vq_D_varprefix_camera_kv_lora_aw2_bs4_lr5e5_ema100k_qfilterv1_person/checkpoints/iter_000100000/` | Full resumable DCP. Cross-attention KV LoRA variant. |
 | **Phase 1 Baseline Delta** | `/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/portable/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k_iter100000_ema_gen_delta.pt` | Compact 293-tensor EMA adapter (129 MB) for initializing Phase-3 bridge models. |
+| **Phase 1 Edge Camera-Wearer** | `/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/cosmos3_camera/camera_world_edge/edge_phase1_T97_20fps_bs32_4gpu_bs8_camera_wearer_global_lora_100k_v1/checkpoints/iter_000100000/` | Completed four-rank Edge DCP at 100k; model, optimizer, scheduler, and trainer state. |
 
 ### Phase 2: Motion Expert Models
 Located under: `/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/`
@@ -68,6 +69,7 @@ Located under: `/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/`
 |---|---|---|
 | **Phase 2 Native Schedule** | `/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d/ckpt_step200000.pt` | Production 200k-step Phase-2 motion expert (x₀-prediction, mROPE 3D). |
 | **Phase 2 Contact Loss** | `/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/ja_t2m_ti2m_reasonerimg_x0_native_shift3_T200_ti97_mrope3d_w1_1_5_contact_c0p05_v1_h10_s2_unipc35/ckpt_step200000.pt` | Phase-2 model trained with auxiliary foot-contact loss. |
+| **Phase 2 Edge 7-Layer Recovery** | `/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/motion_expert_t2m_edge/edge_7layer_nymeria_t2m_ti2m_v1_wandb_viz_preemptsafe/checkpoints/recovery_latest.pt` | Rolling schema-3 one-GPU recovery checkpoint; job `541394` resumed from step 92,500 on 2026-09-08. |
 
 ### Phase 3: Bidirectional Joint Attention Bridge Models
 Located under: `/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs/`
@@ -116,10 +118,13 @@ full `/home` filesystem. Source the restored runtime configuration before any ru
 
 ```bash
 cd /home/jungbinc/cosmos_motion_ft
+export COSMOS_SITE=grasp
 source restored_env.sh
 ```
 
-This selects `/mnt/projects/ll/jungbinc/miniconda3/envs/cosmos`, configures the
+The explicit site selection preserves `/mnt/projects/ll/jungbinc/weka` as the
+artifact root. Sourcing the file then selects
+`/mnt/projects/ll/jungbinc/miniconda3/envs/cosmos`, configures the
 framework/repository `PYTHONPATH`, and exports the model, checkpoint, data, and
 cache locations above.
 
@@ -134,6 +139,7 @@ srun --partition=batch --nodes=1 --ntasks=1 --gres=gpu:l40:1 \
   --job-name=cosmos-l40-interactive --pty bash -l
 
 cd /home/jungbinc/cosmos_motion_ft
+export COSMOS_SITE=grasp
 source restored_env.sh
 ```
 
@@ -165,6 +171,7 @@ Activate all three representation-dependent paths together only for a new model:
 
 ```bash
 cd /home/jungbinc/cosmos_motion_ft
+export COSMOS_SITE=grasp
 source restored_env.sh
 source motion_expert_joint_attention/use_camera_head_v1.sh
 ```

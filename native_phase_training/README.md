@@ -178,6 +178,25 @@ observed scheduling bottleneck. Keep checking live state with
 `squeue -j 529842`; a future batch preemption should still requeue the job and
 lose at most roughly one 15-minute recovery interval.
 
+Job `529842` ultimately resumed from the Weka-backed recovery state and
+completed all 100,000 updates on 2026-09-07 with exit code zero. The final
+four-rank DCP is
+`checkpoints/iter_000100000` under the production run directory; the final
+logged update had finite loss `0.0010`, global gradient norm `2.61466`, and
+about 31.42 GiB peak allocated GPU memory per rank. W&B run `6kwex4fb` synced
+and finished normally.
+
+The automatically submitted final evaluation job `537114` failed because a
+later repository site-selector change required `COSMOS_SITE` but the evaluator
+did not export it. Retry `539785` passed that point but exposed a second path
+regression: the Grasp site map omitted `/weka` and therefore requested the
+nonexistent `/mnt/projects/ll/jungbinc/wan22_vae/Wan2.2_VAE.pth`. The shared
+shell/Python map now resolves the artifact root to
+`/mnt/projects/ll/jungbinc/weka`, and the Grasp Edge evaluator exports
+`COSMOS_SITE=grasp`. Final-checkpoint evaluation job `541395` was resubmitted
+against the five-sample camera-wearer suite; its output is
+`checkpoint_evals/iter_000100000` under the production run directory.
+
 The full 256-tier cache build started on 2026-09-01 as four independent L40
 `srun` shards under `tmux 0`; model training was not submitted. The initial
 single-window extractor averaged about 0.8 windows/s/GPU, 24--26% GPU

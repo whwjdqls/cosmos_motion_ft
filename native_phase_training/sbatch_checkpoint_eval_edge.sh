@@ -17,6 +17,7 @@ set -euo pipefail
 : "${EVAL_INPUT_DIR:?EVAL_INPUT_DIR is required}"
 : "${EVAL_OUTPUT_DIR:?EVAL_OUTPUT_DIR is required}"
 
+export COSMOS_SITE=${COSMOS_SITE:-grasp}
 REPO_ROOT=${REPO_ROOT:-/home/jungbinc/cosmos_motion_ft}
 EDGE_FRAMEWORK_ROOT=${COSMOS_FRAMEWORK_EDGE_ROOT:-/mnt/projects/ll/jungbinc/cosmos-framework-edge}
 COSMOS_ENV_ROOT=${COSMOS_ENV_ROOT:-/mnt/projects/ll/jungbinc/miniconda3/envs/cosmos}

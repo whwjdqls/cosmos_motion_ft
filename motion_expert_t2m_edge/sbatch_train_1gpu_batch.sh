@@ -18,5 +18,6 @@
 #SBATCH --output=/home/jungbinc/cosmos_motion_ft/slurm-edge-phase2-7l-1g-%j.out
 
 set -euo pipefail
+export COSMOS_SITE=${COSMOS_SITE:-grasp}
 REPO_ROOT=${REPO_ROOT:-/home/jungbinc/cosmos_motion_ft}
 exec bash "${REPO_ROOT}/motion_expert_t2m_edge/sbatch_train_1gpu.sh"

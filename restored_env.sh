@@ -36,7 +36,7 @@ case "${COSMOS_SITE:-}" in
   grasp)
     _cosmos_repo_root=/home/jungbinc/cosmos_motion_ft
     _cosmos_storage_root=/mnt/projects/ll/jungbinc
-    _cosmos_weka_root=/mnt/projects/ll/jungbinc
+    _cosmos_weka_root=/mnt/projects/ll/jungbinc/weka
     ;;
   "")
     printf '%s\n' 'restored_env.sh: COSMOS_SITE must be set to yonsei or grasp' >&2
@@ -52,6 +52,9 @@ export COSMOS_REPO_ROOT="$_cosmos_repo_root"
 export COSMOS_STORAGE_ROOT="$_cosmos_storage_root"
 export WEKA_ROOT="$_cosmos_weka_root"
 export COSMOS_RUNS_ROOT="$WEKA_ROOT/cosmos_motion_ft_runs"
+export PROJECT_ROOT="$COSMOS_STORAGE_ROOT"
+export REPO_ROOT="$COSMOS_REPO_ROOT"
+export RUN_ROOT="$COSMOS_RUNS_ROOT"
 export HF_HOME="$COSMOS_STORAGE_ROOT/.cache/huggingface"
 export TORCH_HOME="$COSMOS_STORAGE_ROOT/.cache/torch"
 export WAN_VAE_PATH="$WEKA_ROOT/wan22_vae/Wan2.2_VAE.pth"
@@ -59,6 +62,7 @@ export COSMOS3_EDGE_ROOT="$WEKA_ROOT/Cosmos3-Edge"
 export COSMOS3_NANO_ROOT="$WEKA_ROOT/Cosmos3-Nano"
 export COSMOS3_EDGE_DCP_ROOT="$WEKA_ROOT/cosmos3_edge_dcp"
 export BASE_CHECKPOINT_PATH="$WEKA_ROOT/cosmos3_nano_dcp"
+export COSMOS_PHASE1_GEN_INIT="$COSMOS_RUNS_ROOT/portable/native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k_iter100000_ema_gen_delta.pt"
 
 unset _cosmos_repo_root _cosmos_storage_root _cosmos_weka_root
 # END EXPLICIT COSMOS SITE SELECTOR

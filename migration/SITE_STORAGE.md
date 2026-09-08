@@ -15,7 +15,7 @@ explicitly and resolve all active paths from that site's roots.
 | Site | Repository | Persistent storage base | Artifact root |
 | --- | --- | --- | --- |
 | Yonsei datacenter | `/home/whwjdqls99/cosmos_motion_ft` | `/lustre/whwjdqls99/cosmos` | `/lustre/whwjdqls99/cosmos/weka` |
-| Grasp lab | `/home/jungbinc/cosmos_motion_ft` | `/mnt/projects/ll/jungbinc` | `/mnt/projects/ll/jungbinc` |
+| Grasp lab | `/home/jungbinc/cosmos_motion_ft` | `/mnt/projects/ll/jungbinc` | `/mnt/projects/ll/jungbinc/weka` |
 
 The following paths belong to other machines and are not aliases for either
 site above:
@@ -65,7 +65,7 @@ only for model downloads and is not a Cosmos training or inference environment.
 export COSMOS_SITE=grasp
 export COSMOS_REPO_ROOT=/home/jungbinc/cosmos_motion_ft
 export COSMOS_STORAGE_ROOT=/mnt/projects/ll/jungbinc
-export WEKA_ROOT=${COSMOS_STORAGE_ROOT}
+export WEKA_ROOT=${COSMOS_STORAGE_ROOT}/weka
 export COSMOS_RUNS_ROOT=${WEKA_ROOT}/cosmos_motion_ft_runs
 export HF_HOME=${COSMOS_STORAGE_ROOT}/.cache/huggingface
 export TORCH_HOME=${COSMOS_STORAGE_ROOT}/.cache/torch

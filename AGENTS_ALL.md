@@ -236,13 +236,16 @@ the quota of its default home-backed artifact staging directory. This was not a
 GPU, CPU, host-memory, or model failure; its peak host RSS was about 280.5 GiB
 against 512 GiB. `sbatch_phase1_edge_4gpu_bs8_batch.sh` now redirects both W&B
 data/staging and cache to Weka under `.wandb_runtime`. Replacement job `529842`
-is running on four L40s at `dj-l40-0`; it loaded complete rolling checkpoint
-step 22,241, reused W&B ID `6kwex4fb`, and passed its first resumed update at
-22,242. It also passed the formerly failing W&B device-monitor table callback
-at step 22,400 after the relocation. It retains 15-minute rolling recovery checkpoints, permanent 5k
-checkpoints, 64 CPUs, 512 GiB RAM, and the `l40s|l40` constraint. Known
+loaded complete rolling checkpoint step 22,241, reused W&B ID `6kwex4fb`,
+passed the formerly failing W&B callback at step 22,400, and completed all
+100,000 updates with exit code zero on 2026-09-07. Its final DCP is the
+production run's `checkpoints/iter_000100000`; W&B run `6kwex4fb` finished
+normally. Final-eval jobs `537114` and `539785` exposed two regressions in a
+later explicit-site change: an unset `COSMOS_SITE`, then a Grasp artifact root
+missing its `/weka` suffix. Both mappings and the evaluator launcher are fixed,
+and final-checkpoint evaluation was resubmitted as job `541395`. Known
 ECC-faulted `ll-l40-1` remains excluded. Verify dynamic Slurm state before
-reporting progress.
+reporting evaluation progress.
 
 Purpose: train a new Nymeria camera/video generator LoRA that keeps the training and sampling contract close to NVIDIA's native Cosmos-3 Nano action/video setup. This path exists because the older joint-attention Phase 1 and custom sampler showed poorer visual quality than base Cosmos with the official sampler. The new path uses saved Wan-VAE latents for training speed, but it preserves native Cosmos sequence construction, rectified-flow noising, loss masks, losses, action heads, checkpoint format, and official inference compatibility. Batch cardinality is an optimization choice and does not affect sampler compatibility.
 
@@ -1165,7 +1168,7 @@ Root:
   timed out after 30 seconds waiting for its local service port; it produced no
   checkpoint. The repaired launcher moves mutable W&B data/cache from the full
   shared `/home` filesystem to Weka, waits up to 300 seconds per attempt, and
-  retries three times with the same persisted ID; all 13 contract tests pass.
+  retries three times with the same persisted ID; all 14 contract tests pass.
   Repaired `liu-compute` job `529849` remained pending and was cancelled before
   allocation once shared-`batch` job `529851` began on a healthy L40 at
   `dj-l40-0`, avoiding duplicate writers. Job `529851` successfully reused W&B
@@ -1174,7 +1177,15 @@ Root:
   16.31 GiB peak allocation. A manual USR1 test wrote the 1.41 GB atomic Weka
   recovery checkpoint at step 75, and the job continued through logged step 80;
   a memory-mapped load confirmed schema 3 plus optimizer/data-epoch/full RNG
-  state.
+  state. Job `529851` later advanced its rolling recovery checkpoint to step
+  92,500; its final automatic restart failed at zero runtime because the new
+  explicit site selector was not exported by the submitted Grasp launcher.
+  The repaired launchers export `COSMOS_SITE=grasp`, retain the Grasp `/weka`
+  artifact root, and explicitly select the Edge rather than Nano DCP.
+  Replacement batch job `541394` loaded step 92,500 plus
+  optimizer/data-epoch/RNG state, reused W&B run `isptsmkc`, passed RNG
+  restoration, and completed finite step 92,520 (`loss=0.115096`, gradient
+  norm `246.0626`, 16.27 GiB peak allocation).
   It is the active Phase-2 run under
   `edge_7layer_nymeria_t2m_ti2m_v1_wandb_viz_preemptsafe`; known ECC-faulted
   node `ll-l40-1` is excluded. First `liu-compute` job `528415` had a zero-runtime

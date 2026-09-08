@@ -83,7 +83,7 @@ def get_cosmos_site_paths(site: str | None = None) -> CosmosSitePaths:
     elif selected == "grasp":
         repo_root = _SitePath("/home/jungbinc/cosmos_motion_ft")
         storage_root = _SitePath("/mnt/projects/ll/jungbinc")
-        weka_root = storage_root
+        weka_root = storage_root / "weka"
     elif selected is None:
         raise RuntimeError(
             "COSMOS_SITE must be set to 'yonsei' or 'grasp' before importing runtime_paths"
@@ -122,8 +122,11 @@ _site_exports = {
     "COSMOS_SITE": SITE_PATHS.site,
     "COSMOS_REPO_ROOT": SITE_PATHS.repo_root,
     "COSMOS_STORAGE_ROOT": SITE_PATHS.storage_root,
+    "PROJECT_ROOT": SITE_PATHS.storage_root,
+    "REPO_ROOT": SITE_PATHS.repo_root,
     "WEKA_ROOT": SITE_PATHS.weka_root,
     "COSMOS_RUNS_ROOT": SITE_PATHS.runs_root,
+    "RUN_ROOT": SITE_PATHS.runs_root,
     "HF_HOME": SITE_PATHS.hf_home,
     "TORCH_HOME": SITE_PATHS.torch_home,
     "WAN_VAE_PATH": SITE_PATHS.wan_vae_path,
@@ -131,6 +134,9 @@ _site_exports = {
     "COSMOS3_NANO_ROOT": SITE_PATHS.cosmos3_nano_root,
     "COSMOS3_EDGE_DCP_ROOT": SITE_PATHS.cosmos3_edge_dcp_root,
     "BASE_CHECKPOINT_PATH": SITE_PATHS.base_checkpoint_path,
+    "COSMOS_PHASE1_GEN_INIT": SITE_PATHS.runs_root
+    / "portable"
+    / "native_phase1_camera_json_bs4_lora5e5_action4x_ema_100k_iter100000_ema_gen_delta.pt",
 }
 for _site_name, _site_value in _site_exports.items():
     _site_os.environ.setdefault(_site_name, str(_site_value))
@@ -142,12 +148,29 @@ def _site_coerce_like_existing(name: str, value: _SitePath):
 
 
 # Preserve the pre-existing public constant types where possible.
+PROJECT_ROOT = _site_coerce_like_existing("PROJECT_ROOT", SITE_PATHS.storage_root)
+REPO_ROOT = _site_coerce_like_existing("REPO_ROOT", SITE_PATHS.repo_root)
 WEKA_ROOT = _site_coerce_like_existing("WEKA_ROOT", SITE_PATHS.weka_root)
-RUNS_ROOT = _site_coerce_like_existing("RUNS_ROOT", SITE_PATHS.runs_root)
+RUN_ROOT = _site_coerce_like_existing("RUN_ROOT", SITE_PATHS.runs_root)
+RUNS_ROOT = RUN_ROOT
 HF_HOME = _site_coerce_like_existing("HF_HOME", SITE_PATHS.hf_home)
 TORCH_HOME = _site_coerce_like_existing("TORCH_HOME", SITE_PATHS.torch_home)
 WAN_VAE_PATH = _site_coerce_like_existing("WAN_VAE_PATH", SITE_PATHS.wan_vae_path)
 BASE_CHECKPOINT_PATH = _site_coerce_like_existing(
     "BASE_CHECKPOINT_PATH", SITE_PATHS.base_checkpoint_path
+)
+PHASE1_GEN_INIT = _site_coerce_like_existing(
+    "PHASE1_GEN_INIT", _SitePath(_site_exports["COSMOS_PHASE1_GEN_INIT"])
+)
+
+# These mappings must be built from the selected site, not from the historical
+# defaults that were initialized before the explicit selector.
+_LEGACY_PREFIXES = (
+    ("/weka/jungbin/cosmos_motion_ft_runs", RUN_ROOT),
+    ("/weka/jungbin", WEKA_ROOT),
+    ("/mnt/shared/jungbin_cho/cosmos_motion_ft_runs", RUN_ROOT),
+    ("/home/jungbin_cho/cosmos_motion_ft", REPO_ROOT),
+    ("/home/jungbin_cho/cosmos-framework", COSMOS_FRAMEWORK_ROOT),
+    ("/home/jungbin_cho/miniforge3/envs/cosmos", COSMOS_ENV_ROOT),
 )
 # END EXPLICIT COSMOS SITE SELECTOR

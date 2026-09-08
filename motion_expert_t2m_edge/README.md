@@ -184,9 +184,9 @@ superseded while pending by the rolling-recovery/auto-resume launcher above.
 The output and W&B run remain preserved as preemption history, not as a
 checkpointed training run.
 
-## Active preemption-safe submission
+## Preemption-safe production submission
 
-Batch job `529851` is the active replacement as of 2026-09-03. It started
+Batch job `529851` was the production replacement submitted on 2026-09-03. It started
 immediately on the healthy L40 at `dj-l40-0` through
 `sbatch_train_1gpu_batch.sh`, which changes only the Slurm partition/QoS request
 and then executes the canonical hardened launcher. Its clean output directory
@@ -217,11 +217,30 @@ stopped before visualization or optimizer step 1 because W&B 0.27.2 did not
 publish its local service port within the old 30-second limit. It produced no
 checkpoint. The repaired launcher places mutable W&B data/cache on Weka,
 extends the per-attempt service wait to 300 seconds, and performs three bounded
-attempts using the same run ID. The 13-test contract suite covers the retry
+attempts using the same run ID. The 14-test contract suite covers the retry
 behavior. Repaired `liu-compute` job `529849` remained pending for `Priority`
 and was cancelled before allocation after batch job `529851` started, avoiding
 two writers to the same output directory. Earlier pending batch job `528385`
 was likewise cancelled before it started.
+
+By 2026-09-08 job `529851` had advanced the rolling recovery checkpoint to
+step 92,500. Its final automatic restart then exited at zero runtime because
+the newly added explicit site selector required `COSMOS_SITE`, while the
+submitted Grasp launcher did not export it. The same site-map change also
+incorrectly mapped the Grasp artifact root to `/mnt/projects/ll/jungbinc`
+instead of `/mnt/projects/ll/jungbinc/weka`, and exposed the repository-wide
+Nano DCP default inside the Edge-only wrapper. These were launcher/path
+regressions, not training, checkpoint, CUDA, data, or model failures.
+
+The repaired Grasp launchers now export `COSMOS_SITE=grasp`, the shared site map
+preserves the `/weka` artifact root, and `run.sh` explicitly selects
+`cosmos3_edge_dcp`. Regression tests cover Grasp and Yonsei shell/Python paths
+and the Edge launcher contract. Replacement batch job `541394` loaded schema-3
+`recovery_latest.pt` at step 92,500 with optimizer, data epoch 94, and RNG
+state, resumed W&B run `isptsmkc`, restored RNG successfully, and completed
+finite optimizer step 92,520 (`loss=0.115096`, gradient norm `246.0626`, 16.27
+GiB peak allocation). It remains the only Phase-2 writer to the production
+output directory.
 
 The first `liu-compute` submission, job `528415`, received `ll-l40-0` at
 2026-09-02 22:47 EDT but its batch step was cancelled by signal 53 at zero

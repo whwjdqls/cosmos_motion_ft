@@ -66,6 +66,20 @@ class ArchitectureContractTest(unittest.TestCase):
         )
 
 
+class LauncherContractTest(unittest.TestCase):
+    def test_grasp_launchers_select_site_and_edge_dcp(self):
+        root = Path(__file__).resolve().parents[1]
+        canonical = (root / "sbatch_train_1gpu.sh").read_text()
+        batch = (root / "sbatch_train_1gpu_batch.sh").read_text()
+        wrapper = (root / "run.sh").read_text()
+        self.assertIn("export COSMOS_SITE=${COSMOS_SITE:-grasp}", canonical)
+        self.assertIn("export COSMOS_SITE=${COSMOS_SITE:-grasp}", batch)
+        self.assertIn(
+            "BASE_CHECKPOINT_PATH=${EDGE_BASE_CHECKPOINT_PATH:-${COSMOS3_EDGE_DCP_ROOT}}",
+            wrapper,
+        )
+
+
 class FlowAndLossContractTest(unittest.TestCase):
     def test_padding_is_never_noised(self):
         torch.manual_seed(0)
