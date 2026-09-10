@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Iterable, Sequence
 
 import torch
+from conditioning_cache import prefetch_frozen_image_conditions
 import torch.nn as nn
 
 import config
@@ -109,6 +110,7 @@ class EdgePhase2MotionExpert(nn.Module):
     def tokenize_captions(self, captions: Sequence[str | None]) -> list[torch.LongTensor]:
         return [self._edge.tokenize_generation(caption) for caption in captions]
 
+    @prefetch_frozen_image_conditions
     def prepare_conditions(
         self,
         captions: Sequence[str | None],

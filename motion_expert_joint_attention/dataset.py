@@ -57,6 +57,7 @@ import torch
 from torch.utils.data import ConcatDataset, Dataset, WeightedRandomSampler
 
 from uniego_layout import FEAT_DIM, canonicalize_frame0, ground_features
+from motion_array_cache import load_motion_window
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -178,9 +179,7 @@ class UniegoPairsDataset(Dataset):
         # remain immutable.  Resolve their recorded /weka paths at read time on
         # the restored server instead of rewriting a 600k-row provenance file.
         uniego_path = resolve_legacy_path(r["uniego_path"])
-        with np.load(uniego_path) as npz:
-            feats = npz["features"][r["start"]:r["end"]].astype(np.float32)  # [n, 283]
-            nj = npz["neutral_joints"].astype(np.float32)                    # [30, 3]
+        feats, nj = load_motion_window(uniego_path, r["start"], r["end"])
 
         # Ground (Nymeria): feet → room floor (y≈0). BONES is already grounded.
         off = r.get("ground_offset_y", None)

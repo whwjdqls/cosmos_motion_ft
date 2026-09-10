@@ -1268,7 +1268,83 @@ When changing `native_phase_training/`, preserve these invariants:
 - do not reintroduce Torch compile into the production Slurm launcher unless a clean-node multi-GPU smoke proves it fits;
 - do not start production training on a node with leftover GPU memory consumers; use the launcher preflight or inspect `nvidia-smi`.
 
+Yonsei node exclusion: **do not use `cs-gpu-01` for GPU jobs.** Include
+`--exclude=cs-gpu-01` in all new Yonsei GPU `srun` and `sbatch` allocation
+requests, or append it to any existing exclusion list. On 2026-09-09, an
+allocated RTX 4090 was visible to `nvidia-smi`, but both PyTorch CUDA startup
+and a direct driver `cuInit(0)` failed with `CUDA_ERROR_UNKNOWN` (999).
+Opening the NVIDIA UVM devices returned I/O errors, including from fresh
+steps within the allocation. Treat NVML visibility as insufficient evidence
+that CUDA works. Keep this exclusion until the user explicitly authorizes
+retesting after an administrator repair. This rule is Yonsei-only; do not
+replace or change the Grasp cluster's existing node exclusions.
+
 Cluster operational rule: before every SSH compute action, first run `squeue -w <node>` from the login node. Only after confirming Slurm ownership may `nvidia-smi` be checked over SSH. Never launch through SSH on a node allocated to another user, even if individual GPUs look idle; Slurm exclusivity does not protect jobs from SSH-launched processes.
+
+## Optional Raw Motion Array Cache (Yonsei and Grasp)
+
+`motion_expert_joint_attention/motion_array_cache.py` provides an opt-in I/O
+optimization shared by the Nymeria aligned/native loader and the BONES pairs
+loader, including Edge Phase 2. It is disabled unless
+`COSMOS_MOTION_CACHE_ROOT` is set. Existing launchers do not enable it, and
+running trainers must not be restarted merely to adopt this optimization.
+
+The offline builder extracts `features.npy` and `neutral_joints.npy` from each
+source NPZ without changing their bytes, dtype, layout, or precision. Training
+maps these arrays read-only, slices the same source window, and returns the
+same writable float32 copies as before. Grounding, calibrated `off`, frame-zero
+canonicalization, z-score stats, padding, random crops, caption policies,
+bad-window retries, and task/source sampling are unchanged. Native Nymeria T2M
+still uses `_t2m_index`; aligned TI2M still uses `_index`. BONES remains T2M-only.
+The cache does not change image decoding, reasoner inputs, losses, or samplers.
+
+Cache keys include the logical source path relative to the selected site's
+`WEKA_ROOT`, source size and nanosecond mtime, and cache schema version. There
+are no hardcoded Yonsei or Grasp paths in the cache implementation. Logical
+paths are not symlink-resolved, so a WEKA-to-scratch symlink retains its source
+identity. `COSMOS_MOTION_CACHE_SOURCE_ROOT` can explicitly override the logical
+source prefix; use the same override when building and training. Copied data
+whose timestamps differ requires rebuilding its entries on the destination
+site. Source datasets must remain immutable: size/mtime guards are not
+cryptographic content verification and cannot detect a same-size edit with a
+deliberately restored timestamp.
+
+Published entries are immutable and become visible through an atomic directory
+rename. Training never creates or repairs entries. Missing, stale, unreadable,
+or header-invalid entries fall back to the original NPZ path with a bounded
+per-process notice, rather than dropping samples or changing the mixture.
+`COSMOS_MOTION_CACHE_MAX_OPEN` defaults to 64 mapped sequences per process;
+workers lazily maintain separate bounded handle caches. Do not overwrite or
+delete mapped cache files while a trainer is using them.
+
+Build on a compute allocation after checking the destination's quota and free
+space. The builder is CPU-only and resumable, but uncompressed arrays may need
+substantially more disk space than their NPZ sources. Its filesystem free-space
+guard does not account for per-user Lustre soft quotas. A scratch or node-local
+cache is disposable; preserve the original source datasets and follow the
+site's scratch-retention policy. Memory mapping on Lustre still incurs remote
+I/O, so throughput gains require measurement, not assumption.
+
+Example, from the site checkout with the matching `COSMOS_SITE` selected:
+
+```bash
+source ./restored_env.sh
+# Set this explicitly to a cache destination with sufficient space on this site.
+export COSMOS_MOTION_CACHE_ROOT=/absolute/site/cache/uniego_arrays
+"${COSMOS_PYTHON}" -m motion_expert_joint_attention.motion_array_cache \
+  --tree "${WEKA_ROOT}/nymeriaplus_kimodo_proportional/uniego_rep_camhead_v1" \
+  --pairs-jsonl "${RUN_ROOT}/joint_attention/bones_pairs_train.jsonl" \
+  --pairs-jsonl "${RUN_ROOT}/joint_attention/bones_pairs_val.jsonl"
+```
+
+The same commands apply to Yonsei (`COSMOS_SITE=yonsei`) and Grasp
+(`COSMOS_SITE=grasp`); their existing site selector supplies different physical
+roots. Build the representation and manifests used by the intended run, not a
+legacy UniEgo corpus. Enable `COSMOS_MOTION_CACHE_ROOT` only in a future training
+launch after the cache is built. Leave worker count and all training settings
+unchanged for the initial cache comparison. Unset the variable to restore the
+original NPZ path. Implementation does not imply a populated cache or a tested
+speedup; neither a cache build nor a benchmark was run when adding this code.
 
 ## Server Migration
 

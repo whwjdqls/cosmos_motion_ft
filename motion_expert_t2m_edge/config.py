@@ -21,7 +21,15 @@ EDGE_MODEL_ROOT = Path(os.environ.get("EDGE_MODEL_ROOT", WEKA_ROOT / "Cosmos3-Ed
 EDGE_DCP_ROOT = Path(os.environ.get("BASE_CHECKPOINT_PATH", WEKA_ROOT / "cosmos3_edge_dcp"))
 
 MODEL_FAMILY = "cosmos3_edge_nemotron_2b_dense_vl"
-MOTION_REPRESENTATION = "camera_head_recanonicalization_v1"
+MOTION_REPRESENTATION = os.environ.get(
+    "EDGE_MOTION_REPRESENTATION", "camera_head_recanonicalization_v1"
+)
+if MOTION_REPRESENTATION not in {
+    "camera_head_recanonicalization_v1",
+    "legacy_uniego283",
+}:
+    raise ValueError(f"unsupported EDGE_MOTION_REPRESENTATION={MOTION_REPRESENTATION!r}")
+LEGACY_MOTION_REPRESENTATION = MOTION_REPRESENTATION == "legacy_uniego283"
 HIDDEN_SIZE = 2048
 NUM_LAYERS = 28
 NUM_ATTENTION_HEADS = 16
@@ -50,7 +58,7 @@ DEFAULT_GRAD_ACCUM = 1
 TASK_WEIGHTS = {"text2motion": 0.75, "textimg2motion": 0.25}
 BONES_TEXT2M_FRAC = 0.0
 BONES_REPRESENTATION = "legacy_uniego283_motion_only"
-BONES_CAMERA_HEAD_EQUIVALENT = False
+BONES_CAMERA_HEAD_EQUIVALENT = LEGACY_MOTION_REPRESENTATION
 CAPTION_SUBJECT_POLICY = "standalone_C_to_sentence_aware_camera_wearer"
 BONES_CAPTION_SUBJECT_POLICY = os.environ.get("EDGE_BONES_CAPTION_POLICY", "original")
 if BONES_CAPTION_SUBJECT_POLICY not in {"original", "main_actor_camera_wearer_v1"}:
@@ -60,41 +68,58 @@ CONTRACT_SCHEMA_VERSION = 3
 MOTION_STATS_MEAN = Path(
     os.environ.get(
         "MOTION_STATS_MEAN",
-        RUN_ROOT
+        REPO_ROOT / "motion_expert/stats/uniego283_mean.npy"
+        if LEGACY_MOTION_REPRESENTATION
+        else RUN_ROOT
         / "nymeria_camera_head_recanonicalization_v1/stats/clean_calibrated_uniego283_mean.npy",
     )
 )
 MOTION_STATS_STD = Path(
     os.environ.get(
         "MOTION_STATS_STD",
-        RUN_ROOT
+        REPO_ROOT / "motion_expert/stats/uniego283_std.npy"
+        if LEGACY_MOTION_REPRESENTATION
+        else RUN_ROOT
         / "nymeria_camera_head_recanonicalization_v1/stats/clean_calibrated_uniego283_std.npy",
     )
 )
-MOTION_STATS_SUMMARY = Path(
-    os.environ.get(
-        "MOTION_STATS_SUMMARY",
-        RUN_ROOT / "nymeria_camera_head_recanonicalization_v1/stats/summary.json",
-    )
+_motion_stats_summary = os.environ.get("MOTION_STATS_SUMMARY")
+MOTION_STATS_SUMMARY = (
+    Path(_motion_stats_summary)
+    if _motion_stats_summary
+    else None
+    if LEGACY_MOTION_REPRESENTATION
+    else RUN_ROOT / "nymeria_camera_head_recanonicalization_v1/stats/summary.json"
 )
 NYMERIA_UNIEGO_ROOT = Path(
     os.environ.get(
         "NYMERIA_UNIEGO_ROOT",
-        WEKA_ROOT / "nymeriaplus_kimodo_proportional/uniego_rep_camhead_v1",
+        WEKA_ROOT / "nymeriaplus_kimodo_proportional/uniego_rep"
+        if LEGACY_MOTION_REPRESENTATION
+        else WEKA_ROOT / "nymeriaplus_kimodo_proportional/uniego_rep_camhead_v1",
     )
 )
 EDGE_VISION_WEIGHTS = EDGE_MODEL_ROOT / "vision_encoder/model.safetensors"
 BONES_PAIRS_TRAIN = RUN_ROOT / "joint_attention/bones_pairs_train.jsonl"
 BONES_PAIRS_VAL = RUN_ROOT / "joint_attention/bones_pairs_val.jsonl"
 
-EXPECTED_STATS_SHA256 = {
-    "mean": "4043893ec7ba2004f90dbc614a081e2f383b2798cdc4a39dce4d4ea6d47101c5",
-    "std": "684e9b354f60f4cd1f8e251a1f8fcf3541d76887b2bcb9570773ce460dd69439",
-}
-EXPECTED_STATS_SUMMARY_SHA256 = (
-    "d594cb1a1509d8dcec76d9ed085b910bc6e2aff131b6522b2ee13caadda1b587"
+EXPECTED_STATS_SHA256 = (
+    {
+        "mean": "bd1d6bdc9a3b026fe1e5b28899441655ee36672c69c3e6e6389e9baff4b400d3",
+        "std": "ee069e3aa9f3cd1a1e70135cc00bc751030f8045fae6bbfb7b4f5b32fa65f28c",
+    }
+    if LEGACY_MOTION_REPRESENTATION
+    else {
+        "mean": "4043893ec7ba2004f90dbc614a081e2f383b2798cdc4a39dce4d4ea6d47101c5",
+        "std": "684e9b354f60f4cd1f8e251a1f8fcf3541d76887b2bcb9570773ce460dd69439",
+    }
 )
-EXPECTED_STATS_POPULATION = {
+EXPECTED_STATS_SUMMARY_SHA256 = (
+    None
+    if LEGACY_MOTION_REPRESENTATION
+    else "d594cb1a1509d8dcec76d9ed085b910bc6e2aff131b6522b2ee13caadda1b587"
+)
+EXPECTED_STATS_POPULATION = {} if LEGACY_MOTION_REPRESENTATION else {
     "split": "train",
     "raw_usable_captioned_windows": 128_102,
     "dropped_windows": 7_173,
@@ -183,9 +208,10 @@ def validate_artifacts(*, include_bones: bool = False) -> dict[str, str]:
         "edge_dcp_metadata": EDGE_DCP_ROOT / "model/.metadata",
         "motion_mean": Path(globals()["MOTION_STATS_MEAN"]),
         "motion_std": Path(globals()["MOTION_STATS_STD"]),
-        "motion_stats_summary": MOTION_STATS_SUMMARY,
         "uniego_root": Path(globals()["NYMERIA_UNIEGO_ROOT"]),
     }
+    if MOTION_STATS_SUMMARY is not None:
+        required["motion_stats_summary"] = MOTION_STATS_SUMMARY
     if include_bones:
         required.update(
             bones_pairs_train=BONES_PAIRS_TRAIN,
@@ -201,36 +227,45 @@ def validate_artifacts(*, include_bones: bool = False) -> dict[str, str]:
         "edge_vision_weights": sha256_file(required["edge_vision_weights"]),
         "motion_mean": sha256_file(required["motion_mean"]),
         "motion_std": sha256_file(required["motion_std"]),
-        "motion_stats_summary": sha256_file(required["motion_stats_summary"]),
         "edge_framework_commit": framework_commit(),
     }
+    if "motion_stats_summary" in required:
+        hashes["motion_stats_summary"] = sha256_file(required["motion_stats_summary"])
+    else:
+        hashes["motion_stats_summary"] = None
     expected = {
         "edge_model_index": EXPECTED_EDGE_MODEL_INDEX_SHA256,
         "edge_dcp_metadata": EXPECTED_EDGE_DCP_METADATA_SHA256,
         "edge_vision_weights": EXPECTED_EDGE_VISION_WEIGHTS_SHA256,
         "motion_mean": EXPECTED_STATS_SHA256["mean"],
         "motion_std": EXPECTED_STATS_SHA256["std"],
-        "motion_stats_summary": EXPECTED_STATS_SUMMARY_SHA256,
         "edge_framework_commit": EXPECTED_EDGE_FRAMEWORK_COMMIT,
     }
+    if EXPECTED_STATS_SUMMARY_SHA256 is not None:
+        expected["motion_stats_summary"] = EXPECTED_STATS_SUMMARY_SHA256
     if os.environ.get("COSMOS_SITE") == "yonsei":
-        expected.update(EXPECTED_YONSEI_METADATA_SHA256)
+        expected.update(
+            (key, value)
+            for key, value in EXPECTED_YONSEI_METADATA_SHA256.items()
+            if key in expected
+        )
     drift = {key: (hashes[key], value) for key, value in expected.items() if hashes[key] != value}
     if drift:
         detail = ", ".join(f"{key}: actual={a} expected={e}" for key, (a, e) in drift.items())
         raise RuntimeError(f"Edge Phase-2 artifact drift: {detail}")
-    summary = json.loads(MOTION_STATS_SUMMARY.read_text())
-    population_drift = {
-        key: (summary.get(key), expected_value)
-        for key, expected_value in EXPECTED_STATS_POPULATION.items()
-        if summary.get(key) != expected_value
-    }
-    if population_drift:
-        detail = ", ".join(
-            f"{key}: actual={actual!r} expected={expected!r}"
-            for key, (actual, expected) in population_drift.items()
-        )
-        raise RuntimeError(f"Nymeria motion-stat population drift: {detail}")
+    if MOTION_STATS_SUMMARY is not None:
+        summary = json.loads(MOTION_STATS_SUMMARY.read_text())
+        population_drift = {
+            key: (summary.get(key), expected_value)
+            for key, expected_value in EXPECTED_STATS_POPULATION.items()
+            if summary.get(key) != expected_value
+        }
+        if population_drift:
+            detail = ", ".join(
+                f"{key}: actual={actual!r} expected={expected!r}"
+                for key, (actual, expected) in population_drift.items()
+            )
+            raise RuntimeError(f"Nymeria motion-stat population drift: {detail}")
     return hashes
 
 
@@ -270,7 +305,9 @@ def architecture_contract() -> dict[str, Any]:
         "nymeria_uniego_root": str(globals()["NYMERIA_UNIEGO_ROOT"]),
         "motion_stats_mean": str(globals()["MOTION_STATS_MEAN"]),
         "motion_stats_std": str(globals()["MOTION_STATS_STD"]),
-        "motion_stats_summary": str(MOTION_STATS_SUMMARY),
+        "motion_stats_summary": (
+            str(MOTION_STATS_SUMMARY) if MOTION_STATS_SUMMARY is not None else None
+        ),
         "motion_stats_population": dict(EXPECTED_STATS_POPULATION),
         "base_dcp_root": str(EDGE_DCP_ROOT),
         "edge_model_root": str(EDGE_MODEL_ROOT),

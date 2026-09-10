@@ -665,6 +665,8 @@ def main() -> None:
     data_iterator = iter(loader)
     epoch = resume_epoch
     wall_start = time.time()
+    last_rate_wall = wall_start
+    last_rate_step = start_step
     seen_conditions: set[tuple[str, str]] = set()
 
     def save_training_checkpoint(path: Path, *, step: int, kind: str) -> None:
@@ -752,6 +754,15 @@ def main() -> None:
             elapsed = max(time.time() - wall_start, 1e-6)
             peak = torch.cuda.max_memory_allocated(device) / (1024**3)
             steps_per_second = (step - start_step) / elapsed
+            rate_now = time.time()
+            recent_steps_per_second = (step - last_rate_step) / max(rate_now - last_rate_wall, 1e-9)
+            last_rate_step = step
+            last_rate_wall = rate_now
+            print(
+                f"[speed] recent_steps/s={recent_steps_per_second:.4f} "
+                f"overall_steps/s={steps_per_second:.4f}",
+                flush=True,
+            )
             print(
                 f"[step {step}/{args.steps}] loss={accumulated['loss']:.6f} "
                 f"feat={accumulated['feature']:.6f} joint={accumulated['joint']:.6f} "

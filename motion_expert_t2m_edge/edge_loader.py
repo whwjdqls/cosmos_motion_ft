@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import torch
+from conditioning_cache import cache_frozen_image_condition
 
 import config
 
@@ -256,6 +257,7 @@ class FrozenEdgeReasoner:
         }
 
     @torch.no_grad()
+    @cache_frozen_image_condition
     def encode_reasoner_image_text(
         self,
         text: str | None,

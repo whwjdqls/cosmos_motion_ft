@@ -100,12 +100,14 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import torch
+from conditioning_cache import cache_reasoner_image
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
 import config
 import task_plan
 from uniego_layout import FEAT_DIM, canonicalize_frame0, ground_features
+from motion_array_cache import load_motion_window
 
 # Pull the verified NymeriaPlus video+camera loaders from nymeria_world (source of truth). We add
 # its dir to sys.path so this repo can import the camera dataset / decode helpers verbatim.
@@ -535,9 +537,7 @@ class NymeriaJointDataset(Dataset):
         the previous full-T behavior (all valid). We NEVER raise on a short window -- pad instead."""
         T = self._num_frames
         want = T if avail is None else min(T, int(avail))
-        with np.load(uni_path) as npz:
-            feats = npz["features"][s:s + want].astype(np.float32)   # [k, 283], k <= T
-            nj = npz["neutral_joints"].astype(np.float32)            # [30, 3]
+        feats, nj = load_motion_window(uni_path, s, s + want)        # [k, 283], [30, 3]
         k = int(feats.shape[0])                                       # frames actually present
         if k == 0:
             raise ValueError(f"motion window empty: 0 frames at {uni_path}@{s}")
@@ -608,6 +608,7 @@ class NymeriaJointDataset(Dataset):
         )
         return video, None, reasoner_image
 
+    @cache_reasoner_image
     def _load_reasoner_image(self, vis: str, s: int) -> torch.Tensor:
         """Decode only frame 0 for reasoner-image textimg2motion.
 
