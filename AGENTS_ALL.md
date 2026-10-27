@@ -1,5 +1,50 @@
 # Shared Agent Context
 
+## Phase-1 action-only two-task ablation (2026-10-27)
+
+- `native_phase_training/train_phase1_edge_two_tasks_action_only.sh` reuses the
+  prefix1/no-caption two-task baseline with the existing `action_only` mode.
+  Only action input/output projections and the action modality embedding train
+  (8,458,240 parameters); no LoRA. Default existing launchers retain global LoRA.
+- Preserve exclude5, T97/20fps/256, forward:inverse40:25, global32=2x16/accum1,
+  FP32 EMA, losses and200k LR schedule. Initialize from the official Edge base,
+  with a fresh optimizer and a distinct run; explicit same-run resume is supported.
+- The A6000 probe's resolved model, optimizer, scheduler and data configurations
+  match the current no-caption baseline except adaptation mode, LoRA enablement
+  and optimizer parameter selection. The final gradient audit combines ranks;
+  the older sharded4090 probe's rank-local assertion was not a valid full pass.
+- Yonsei retained job2616216/node25 uses two48GB A6000s. Operation evidence is
+  Scratch2 Cosmos `operations/phase1_action_only_a6000_20261027`; its successful
+  probe and recipe gate precede production. Logs establish actual progress.
+  W&B uses `jungbinc-upenn/cosmos3_camera`; existing trainers stay untouched.
+- The24-update replicated A6000 gate passed:34.40GiB peak allocated and35.84GiB
+  reported device memory per GPU, finite losses/gradients and both action heads
+  receiving gradients. Production starts fresh from base, not from probe weights.
+- Production launched on2026-10-27 and advanced through its first six updates
+  at about7.8s/update, with35.8GiB device memory and both GPUs busy. W&B run
+  `jungbinc-upenn/cosmos3_camera/6p03fz3d`; the run name is
+  `edge_phase1_T97_20fps_2gpu_bs16_action_only_exclude5_fd_invdyn_no_text_p1_200k_yonsei_20261027`.
+  `operations/phase1_action_only_a6000_20261027/STATUS.json` records the launch
+  and resolved production/probe recipe match; live logs supersede this snapshot.
+- User requested EgoControl-style **in-process** W&B previews. The action-only
+  launcher now enables `NATIVEP1_WANDB_PREVIEWS=1`; four fixed held-out test71
+  cases are sampled with native EMA UniPC30 after the first resumed update and
+  every5k. The first full pass at step117 completed in73s (four97-frame videos
+  plus inverse-camera plots), then training returned to about7.8s/update.
+  Outputs are under `<run>/validation/`; `production_previews.log` is the live
+  operation log. Model/data/optimizer/scheduler configs remain unchanged.
+  The node25 resume worker sets `NCCL_P2P_DISABLE=1` after an initial NCCL stall;
+  a64-cycle two-rank all-reduce/barrier test passed with this workaround. This
+  is an operation-specific setting, not a change to other launchers or Grasp.
+- W&B API verification confirmed all four comparison MP4s and four camera PNGs
+  uploaded to `6p03fz3d`, with model, VAE-GT and GT-self metrics at validation
+  step117. `wandb_previews_verified.json` records remote file sizes. Training
+  continued through step163 after the preview pass (15:04KST snapshot).
+- The regular step5000 preview also completed on2026-10-28, followed by
+  continuing training. W&B API verification confirmed all eight new media files
+  and model/VAE-GT/GT-self metrics at validation step5000. The memory-probe
+  launcher explicitly disables these previews to isolate training memory.
+
 ## Single-repository source restore (2026-10-27)
 
 - `migration/SINGLE_REPO.md` documents the current code transfer. Dependencies
@@ -1770,7 +1815,7 @@ When changing `native_phase_training/`, preserve these invariants:
 - action prompts must match official `ActionPromptJsonFormatter`, inverse text must remain exactly empty, and image-to-video must stay on the official generic prompt template;
 - cached-latent batches must use the active fixed-four contract (`max_samples_per_batch=4`, `max_sequence_length=None`); any optional 45,056-token run must use `LatentAwareIterativeJointDataLoader`, never stock counting of the 1x1 dummy pixels;
 - native Phase 1 evaluations must resolve the saved run contract before model import and use its exact resolution/shift/T; historical 256 runs are 256/shift 3/T97/action96/20 FPS, while the controlled high-tier run is 720/shift 10/T97/action96/20 FPS and decodes at 640x640;
-- production checkpoint visualization must stay out of the training process and use the post-save official-inference Slurm job; smoke runs must disable auto-eval;
+- production checkpoint visualization defaults to a post-save official-inference Slurm job; smoke runs must disable auto-eval. Explicit user exception (2026-10-27): the two-task prefix1 **action-only** run uses `native_phase_training/validation.py` inside the trainer, like EgoControl. Its launcher enables `NATIVEP1_WANDB_PREVIEWS=1`: four fixed test71 cases after the first update following launch/resume and every5k, native EMA sampling on all ranks, rank0 media/GT-reference metrics in the same UPenn W&B run, with training RNG/modes restored. No separate preview worker. See the native README for paths and sampling details;
 - do not reintroduce Torch compile into the production Slurm launcher unless a clean-node multi-GPU smoke proves it fits;
 - do not start production training on a node with leftover GPU memory consumers; use the launcher preflight or inspect `nvidia-smi`.
 

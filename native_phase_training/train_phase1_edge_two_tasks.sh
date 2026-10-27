@@ -68,7 +68,17 @@ export NYMERIA_DROP_MODES=policy,image2video
 export NYMERIA_REPLACE_STANDALONE_C=1 NYMERIA_STANDALONE_C_SUBJECT=camera_wearer
 export NYMERIA_EXCLUDE_ORIGINAL_VIDEO_NAMES=brittney_goodwin,austin_lopez,kim_wilkins,kevin_davis,devon_norris
 export NYMERIA_QUALITY_FILTER=
-export NATIVEP1_ADAPTATION_MODE=global_lora
+export NATIVEP1_ADAPTATION_MODE=${NATIVEP1_ADAPTATION_MODE:-global_lora}
+case "$NATIVEP1_ADAPTATION_MODE" in
+  global_lora) ;;
+  action_only)
+    case "${NATIVEP1_RUN_NAME:-}" in
+      *_action_only_*) ;;
+      *) printf 'action_only requires a distinct action_only run name\n' >&2; exit 2 ;;
+    esac
+    ;;
+  *) printf 'Unsupported two-task adaptation: %s\n' "$NATIVEP1_ADAPTATION_MODE" >&2; exit 2 ;;
+esac
 export NATIVEP1_PREFIX_LENGTHS=${NATIVEP1_PREFIX_LENGTHS:-1}
 if [[ "${NATIVEP1_PREFIX_LENGTHS}" != 1 && -z "${NATIVEP1_RUN_NAME:-}" ]]; then
   printf '%s\n' 'A non-default prefix requires a distinct NATIVEP1_RUN_NAME.' >&2
@@ -113,10 +123,10 @@ done
 
 printf '[phase1-two-task] job=%s node=%s output=%s\n' "${SLURM_JOB_ID}" "${HOST}" "${RUN_DIR}"
 printf '[phase1-two-task] initialize=%s resume=%s global_batch=32 (2x16), accum=1\n' "${LOAD_PATH}" "${RESUME}"
-printf '%s\n' '[phase1-two-task] forward:inverse=40:25, drop policy/image2video; original captions/exclude5 retained.'
+printf '[phase1-two-task] adaptation=%s; forward:inverse=40:25; exclude5; captions_disabled=%s.\n' "$NATIVEP1_ADAPTATION_MODE" "${NATIVEP1_DISABLE_CAPTIONS:-0}"
 printf '[phase1-two-task] forward RGB conditioning prefix=%s; inverse still observes all97 frames.\n' "${NATIVEP1_PREFIX_LENGTHS}"
-printf '%s\n' '[phase1-two-task] 200k steps; effective LoRA LR 2e-5 and camera LR 8e-5, 500-step plateau then linear decay to zero.'
-printf '%s\n' '[phase1-two-task] checkpoint every5k plus rolling15min; no automatic evaluation/visualization.'
+printf '%s\n' '[phase1-two-task] 200k steps; effective camera LR 8e-5 (LoRA LR 2e-5 when enabled), 500-step plateau then linear decay to zero.'
+printf '[phase1-two-task] checkpoint every5k plus rolling15min; in-process fixed W&B previews=%s.\n' "${NATIVEP1_WANDB_PREVIEWS:-0}"
 cd "${COSMOS_FRAMEWORK_EDGE_ROOT}"
 exec "${COSMOS_ENV_ROOT}/bin/torchrun" --standalone --nproc_per_node=2 \
   "${REPO_ROOT}/native_phase_training/run_latent_train.py" \

@@ -12,6 +12,71 @@ This is not the motion-expert path. There is no motion expert and no modality br
 
 ## Cosmos3-Edge Phase 1
 
+### Two-task, one-frame action-only ablation
+
+`COSMOS_SITE=yonsei bash native_phase_training/train_phase1_edge_two_tasks_action_only.sh`
+starts a separate run from the official Edge base checkpoint inside an owned
+two-GPU allocation. `COSMOS_SITE=grasp` and the existing custom-site path setup
+are also supported. It reuses the no-caption, prefix-one two-task launcher:
+forward dynamics (first image + camera trajectory -> video) and inverse
+dynamics (video -> camera trajectory), in the original40:25 ratio.
+
+The only adaptation change is `NATIVEP1_ADAPTATION_MODE=action_only`: train
+`action2llm`, `llm2action`, and `action_modality_embed` (8,458,240 parameters),
+with no LoRA tensors and a frozen backbone. Keep the same excluded recordings,
+T97/20fps/256 cache, two replicated ranks with16 clips each, global32 and
+accumulation1, native losses, FP32 EMA, effective camera LR8e-5 and200k schedule.
+The default global-LoRA launcher remains unchanged unless the new mode is
+explicitly selected with a distinct `action_only` run name.
+
+Outputs use the site's existing run root (Scratch2 on Yonsei), W&B and
+TensorBoard. Yonsei defaults to `jungbinc-upenn/cosmos3_camera`. Checkpoints
+retain the existing every5k plus rolling15-minute policy. Resume requires an explicit
+`RESUME_CHECKPOINT` from this same new run.
+
+At the user's request on2026-10-27, this action-only launcher enables
+`NATIVEP1_WANDB_PREVIEWS=1`: previews run **inside the training process**, following
+EgoControl's working EMA validation flow. `validation.py` pauses training after
+the first update following launch/resume and every5k updates. All ranks enter
+native EMA UniPC30/shift10/CFG1 sampling; only rank0 decodes/renders/logs. Four
+fixed test71 cases (indices0,23,46,70) show image+camera forward videos beside GT,
+with green observed frames and red generated frames, plus inverse-camera plots.
+PSNR/SSIM/LPIPS include GT-self and VAE-reconstruction references; camera errors
+use the existing Sim3 alignment and include GT-self results. These are **held-out
+test monitoring**, not validation-set model selection or full71 metrics.
+
+The callback restores Python/NumPy/Torch RNG and module training modes and stores
+temporary training weights on CPU during the native EMA scope. No separate GPU
+process/allocation is required. Media share the existing training W&B run under
+`validation_preview/*`; metrics use `validation/*` with the sampling iteration
+axis `validation/step`. Local artifacts live under `<run>/validation/`.
+`NATIVEP1_PREVIEW_INPUT_DIR` overrides the prepared fixed71 input root. Other
+Phase1 launchers retain offline evaluation unless explicitly opted in; set
+`NATIVEP1_WANDB_PREVIEWS=0` to disable this callback. Sampling briefly pauses
+training and contributes to wall-clock iteration time on preview iterations.
+
+`probe_action_memory.sh NEW_DIRECTORY 16 1` measures24 disposable updates
+with that batch and replicated layout. The final gradient audit combines
+observations across ranks, including when explicitly probing sharded layouts.
+It saves measurements rather than training checkpoints. A previous4090
+replicated probe exhausted24GB while constructing the FP32 EMA; a sharded
+4090 probe completed24 updates but its old rank-local final assertion failed.
+Do not describe that older probe as a complete acceptance pass.
+
+Yonsei A6000 operation logs and the comparison against the baseline's resolved
+model/data/optimizer/scheduler configuration live under Scratch2 Cosmos
+`operations/phase1_action_only_a6000_20261027`. Runtime measurements determine
+memory fit and launch status; this section alone does not establish success.
+
+The24-update replicated A6000 check passed on2026-10-27 with finite losses,
+nonzero action input/output gradients, and frozen-backbone gradient checks.
+It measured34.40GiB peak PyTorch allocation and35.84GiB reported device use
+per GPU, about7.8seconds per steady update. The production launcher starts
+fresh after this disposable check; `acceptance.json` records configuration
+parity, and `production.log` establishes actual production progress.
+
+### Standard Edge configuration
+
 The Edge port is isolated behind `NATIVEP1_MODEL_FAMILY=edge` and the Hydra
 experiment `world_camera_nymeria_latent_edge`; the historical Nano experiment
 remains the default.  It uses T97 at the source 20 FPS, 256-tier cached Wan2.2

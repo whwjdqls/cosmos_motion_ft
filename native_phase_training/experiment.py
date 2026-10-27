@@ -29,6 +29,7 @@ from native_phase_training.latent_nymeria_dataset import (  # noqa: E402
     get_nymeria_camera_latent_sft_dataset,
 )
 from native_phase_training.checkpoint_eval_callback import NativeCheckpointEvalSubmitter  # noqa: E402
+from native_phase_training.validation import FixedPhase1Validation  # noqa: E402
 from native_phase_training.caption_control import get_dataset_with_caption_policy  # noqa: E402
 
 _MODEL_FAMILY = os.environ.get("NATIVEP1_MODEL_FAMILY", "nano").strip().lower()
@@ -384,6 +385,11 @@ world_camera_nymeria_latent = LazyDict(
             ddp=dict(broadcast_buffers=True, find_unused_parameters=False, static_graph=True),
             grad_scaler_args=dict(enabled=False),
             callbacks=dict(
+                **({"fixed_validation": L(FixedPhase1Validation)(
+                    source=os.environ.get("NATIVEP1_PREVIEW_INPUT_DIR", str(RUN_ROOT / "native_phase1_eval_inputs_full71_256_T97_v2")),
+                    split_file=str(WEKA_ROOT / "nymeriaplus_kimodo_proportional" / "train_test_split.json"),
+                )}
+                   if os.environ.get("NATIVEP1_WANDB_PREVIEWS", "0") == "1" else {}),
                 dataloader_speed=dict(every_n=100, save_s3=False, step_size=1),
                 device_monitor=dict(every_n=200, log_memory_detail=True, save_s3=False, step_size=1, upload_every_n_mul=5),
                 grad_clip=dict(clip_norm=1.0, force_finite=True),
