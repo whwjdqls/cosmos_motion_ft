@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Runtime paths for the restored server. Source this file before training or sampling.
 
+# Opt-in portable configuration. Existing Yonsei/Grasp resolution is unchanged.
+if [[ "${COSMOS_SITE:-}" == custom ]]; then
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/migration/custom_env.sh"
+    return "$?" 2>/dev/null || exit "$?"
+fi
+
 _cosmos_motion_repo=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 export PROJECT_ROOT="${PROJECT_ROOT:-/mnt/projects/ll/jungbinc}"

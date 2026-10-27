@@ -72,17 +72,7 @@ def text_motion_attention(
     plus motion K. Keeping these tensors distinct is required by Edge Nemotron.
     """
 
-    text_out = attention_kernel(
-        q_text[None],
-        k_text_causal[None],
-        v_text[None],
-        cumulative_seqlen_Q=layout.text_offsets,
-        cumulative_seqlen_KV=layout.text_offsets,
-        max_seqlen_Q=layout.max_text_len,
-        max_seqlen_KV=layout.max_text_len,
-        is_causal=True,
-        causal_type=CausalType.DontCare,
-    ).squeeze(0)
+    text_out = reasoner_causal_attention(q_text, k_text_causal, v_text, layout)
     motion_out = attention_kernel(
         q_motion[None],
         k_full_for_motion[None],
@@ -92,10 +82,34 @@ def text_motion_attention(
         max_seqlen_Q=layout.max_motion_len,
         max_seqlen_KV=layout.max_sample_len,
     ).squeeze(0)
-    return text_out.flatten(-2, -1), motion_out.flatten(-2, -1)
+    return text_out, motion_out.flatten(-2, -1)
+
+
+def motion_self_attention(q: Tensor, k: Tensor, v: Tensor, layout: PackedLayout) -> Tensor:
+    """Bidirectional attention over shape + valid motion tokens, never text."""
+    return attention_kernel(
+        q[None],
+        k[None],
+        v[None],
+        cumulative_seqlen_Q=layout.motion_offsets,
+        cumulative_seqlen_KV=layout.motion_offsets,
+        max_seqlen_Q=layout.max_motion_len,
+        max_seqlen_KV=layout.max_motion_len,
+        is_causal=False,
+    ).squeeze(0).flatten(-2, -1)
 
 
 def reasoner_causal_attention(q: Tensor, k: Tensor, v: Tensor, layout: PackedLayout) -> Tensor:
+    if layout.max_text_len == 1:
+        # Every packed reasoner sequence contains exactly one token. Its
+        # causal softmax is [1], so attention is V with the normal GQA head
+        # repetition. NATTEN's CUTLASS configuration rejects max_seqlen=1,
+        # even in inference; do not change the caption-only CFG prompt to
+        # work around that backend restriction.
+        query_heads, value_heads = q.shape[-2], v.shape[-2]
+        if query_heads % value_heads:
+            raise ValueError("reasoner query heads must be divisible by value heads")
+        return v.repeat_interleave(query_heads // value_heads, dim=-2).flatten(-2, -1)
     return attention_kernel(
         q[None],
         k[None],
@@ -109,4 +123,7 @@ def reasoner_causal_attention(q: Tensor, k: Tensor, v: Tensor, layout: PackedLay
     ).squeeze(0).flatten(-2, -1)
 
 
-__all__ = ["PackedLayout", "build_layout", "reasoner_causal_attention", "text_motion_attention"]
+__all__ = [
+    "PackedLayout", "build_layout", "motion_self_attention",
+    "reasoner_causal_attention", "text_motion_attention",
+]

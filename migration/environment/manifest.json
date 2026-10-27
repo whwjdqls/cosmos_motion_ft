@@ -1,0 +1,26 @@
+{
+  "cosmos-cu128": {
+    "python": "3.13",
+    "packages": 425,
+    "editable_sources": [
+      "cosmos-framework"
+    ],
+    "local_wheels_recorded_by_version": [
+      "pip"
+    ]
+  },
+  "uniegomotion-cu118": {
+    "python": "3.10",
+    "packages": 79,
+    "editable_sources": [],
+    "local_wheels_recorded_by_version": []
+  },
+  "egoallo-cu126": {
+    "python": "3.12",
+    "packages": 181,
+    "editable_sources": [
+      "egoallo"
+    ],
+    "local_wheels_recorded_by_version": []
+  }
+}

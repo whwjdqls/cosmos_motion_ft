@@ -1,18 +1,524 @@
 # Shared Agent Context
 
+## Single-repository source restore (2026-10-27)
+
+- `migration/SINGLE_REPO.md` documents the current code transfer. Dependencies
+  are locked in `migration/dependencies.lock.json`; bootstrap restores separate
+  Git checkouts under ignored `.deps/`, preserving native revision guards.
+- Four UniEgoMotion and six EgoAllo source changes formerly only in Scratch2
+  are preserved as checked patches. Cosmos Edge/Nano and Kimodo were clean
+  at the recorded revisions. Keep third-party weights/data out of Git.
+- `COSMOS_SITE=custom` adds explicit new-server roots without changing Yonsei
+  or Grasp selection. Shell/Python share `migration/custom_paths.py`. Six
+  focused path tests and all five dependency source restores passed.
+- Installed-version snapshots cover Cosmos/cu128, UEM/cu118 and EgoAllo/cu126;
+  they do not prove a fresh environment or GPU run works on an unknown server.
+  Preserve strict checkpoint/cache fingerprints during artifact migration.
+- The 2026-10-27 consolidation includes the recent experiment packages and
+  migration setup in Git. The code-bundle exporter can additionally capture
+  subsequent unpublished working-tree changes for an explicit source snapshot.
+
+## Phase-3 runtime profile and mask cache (2026-10-27)
+
+- Measured on Yonsei RTX4090, current global32 / two ranks / microbatch16.
+  Steady loader wait was below1ms, model forward about1.2s and backward with
+  recomputation about2.6s. Adding loader workers does not address this profile.
+  Evidence: Scratch2 Cosmos `operations/phase3_speed_20261027`.
+- `scripts/train_phase3_performance.py --training-module MODULE ...` is an
+  opt-in wrapper around the unchanged trainer. It reuses per-forward FP32
+  bridge masks across layers/recomputation, preserving the attention edges,
+  original dtype/TF32 settings, activation checkpointing, optimizer and recipe.
+  A fixed-batch test gave identical predictions/loss and only about1.2% lower
+  runtime; do not describe this as a substantial real-run speedup. Repeated
+  original backward passes themselves have non-bitwise-identical gradients.
+- Original source/data/recipe fingerprint checks remain enforced. The separate
+  execution manifest lives in `performance_runtime/` and subsequent saves
+  include `runtime_performance` with implementation hashes. Old samplers and
+  checkpoint readers remain compatible. The wrapper is site independent.
+- Fused FP32 SDPA and disabling motion-block checkpointing gave no useful
+  speedup. TF32 saved roughly6-7% but changed predictions/gradients enough to
+  reject for this continuation; it was not enabled in production.
+- Control was checkpointed at45370 and resumed on retained2608758 using the
+  mask cache. The other active trainers were not interrupted. Yonsei's existing
+  resume worker applies the cache to the three Phase3 variants on their next
+  launch via `resume_20261026/performance_policy.json`; live logs, not this
+  dated note, establish current progress.
+
+## EgoControl adapted to Edge, M2V baseline (2026-10-26)
+
+- Isolated implementation and comparison contract: `egocontrol_edge/README.md`.
+  User requested EgoControl conditioning on Cosmos3-Edge, the exact Phase3
+  Nymeria/SOMA training windows, first observed RGB frame, M2V only, and the
+  current Phase1 optimizer/schedule/loss/global32 recipe. Warm-start the same
+  Phase1 EMA200k generator as original Phase3; use a fresh optimizer.
+- Uses the immutable112503-window Phase3 cache and its saved camera/head
+  normalization. Converts SOMA Body23 to EgoControl's96x138 controls; both
+  global pose modulation and per-block pose cross-attention are implemented.
+  Follow-up: default conditions only layers3,7,11,15,19,23,27 (matching Phase3);
+  no extra final-output modulation. Earlier28-block weights are legacy history,
+  not initialization for the fresh seven-block run. See `conditioning_layout`
+  in resolved config and the comparison contract.
+  Fixed held-out monitoring samples and model/GT/VAE_GT video metrics go to
+  UPenn W&B after step1/every5k; see `egocontrol_edge/README.md` for protocol.
+  This is an adapted-method benchmark, not a parameter-matched ablation or
+  exact reproduction of the original Cosmos-Predict2 checkpoint.
+- Match caption-free first-frame+motion inference, held-out windows, native
+  sampler/seeds and generated-frame metrics. Disclose our Phase2 pretraining,
+  historical Phase3 caption training, Body23 versus30, parameter counts and
+  M2V exposure. Retain100k and200k for equal-exposure/equal-update reporting.
+- Owned GPU acceptance checks precede replacing the prefix17 trainer on
+  retained job2608784. Keep the allocation and unrelated prefix1 training.
+  Operation logs in Scratch2 `cosmos/operations/egocontrol_edge_20261026`
+  establish actual acceptance/launch status; this entry is not a claim that
+  production has started. Run artifacts go to Scratch2
+  `cosmos/cosmos_motion_ft_runs/cosmos3_camera/egocontrol_edge`.
+- Native dataset now exposes `_build_cached_index` as a protected hook; its
+  default remains the original builder. This baseline supplies its already
+  validated Phase3 index, avoiding a redundant full filesystem scan.
+
+## Phase-1 no-caption PRO6000 resumes (2026-10-22)
+
+- User requested resume, not fresh initialization: prefix1 on retained two-GPU
+  job2490075; prefix17 automatically on pending two-GPU job2490076. Their latest
+  observed checkpoints were87120 and95353 respectively; select the latest
+  complete checkpoint from each original run's pointer at actual launch.
+- Coordinator and plan: Scratch2 Cosmos `operations/phase1_resume_pro6000_20261022`.
+  `dispatch.sh PREFIX JOB` polls the named allocation every30seconds, then uses
+  an owned compute step and the existing no-text launcher with strict training
+  state resume. It never initializes fresh, changes the recipe, or cancels jobs.
+- Preserve T97/20fps/256, prefix1 versus17, no captions, exclude5, forward:inverse
+  40:25, global32=2x16/accum1, original losses/LR/EMA and200k horizon.
+- Both resumed trainers use `jungbinc-upenn/cosmos3_camera` and saved CLI login,
+  not stale allocation API keys. This note records the launch configuration;
+  operation logs establish actual allocation, checkpoint loading and progress.
+
+## Phase-3 live W&B metric sidecars (2026-10-22)
+
+- `scripts/stream_phase3_wandb.py` backfills and follows existing Phase-3
+  `metrics.jsonl` files without modifying/restarting trainers or checkpoints.
+  Run on an owned compute node, never login/cs-gpu-01/node37; no GPU is used.
+- W&B destination: `jungbinc-upenn/cosmos-motion-ft`, comparison group
+  `edge-phase3-fourtask-camfilm-20261021`. The four-task control and context
+  camera-FiLM run have separate deterministic IDs derived from output paths.
+- The user selected their current UPenn login. The launcher unsets inherited
+  `WANDB_API_KEY` and uses the saved login; older allocations carried a different
+  account's key. Earlier `scene_motion` copies are historical, not live targets.
+- Charts use `train/step` (optimizer updates). W&B history steps are source
+  record indices, preserving appended resume histories. Restart resumes from
+  remote history; partial final JSONL records wait for their terminating newline.
+- Only existing scalar metrics and the saved training contract are uploaded.
+  This does not add validation, videos, or per-task losses that were not logged.
+  System telemetry is disabled to avoid attributing the logger's host to training.
+- Yonsei launcher/state/logs: `operations/phase3_wandb_20261022` under the
+  Scratch2 Cosmos root; `launch.sh control` or `launch.sh camfilm` first flushes
+  historical metrics, then follows new records. A sidecar must be relaunched
+  on a retained allocation after its host allocation expires; existing JSONL
+  records allow backfilling any gap. Runtime logs establish actual sync status.
+
+## Edge phase-3 bridge implementation (2026-09-24)
+
+- New isolated package: `motion_expert_phase3_edge/README.md`. Frozen Edge
+  phase1 EMA200k plus self-cross-final-hidden/K-norm/caption-only B256 motion
+  phase2 200k, seven zero-gated bridges at layers3,7,11,15,19,23,27.
+- Nymeria only, all valid train recordings, T97/20fps/256, camera/head-aligned
+  statistics. Preserve original losses: video10; motion1/1/5 and contact0.05/1/10.
+  Native video reduction includes masked conditioning elements in its denominator.
+- Cache preparation and model checks must run on allocated compute nodes, never
+  login/cs-gpu-01/node37. Yonsei outputs/cache default to Scratch2; Grasp paths
+  are explicit. Existing trainers and source checkpoints are untouched.
+- Production is gated by GPU/DDP parity, gradient, overfit and resume checks.
+  Only bridges train; global batch32, LR2e-4, warmup1k, cosine0, target200k.
+  Keep latest plus100k bridge checkpoints; do not cancel retained allocations.
+- This entry records implementation, not successful validation or observed
+  training. Report actual stage/optimizer logs from the operations directory.
+
+## Projection A K/V norm capacity ablations (2026-09-20)
+
+- See motion_expert_t2m_edge/KV_CAPACITY_ABLATIONS_20260920.md and the
+  site-portable train_kv_capacity_ablation.sh launcher. Three separate mixed
+  runs: lr10 B128/2e-3/200k, long300k B128/2e-4/300k, and self_joint
+  B256/2e-4/200k on two GPUs. Existing trainers and checkpoints are unchanged.
+- User's follow-up changed long300k to a separate continuation from the finished
+  B128 200k checkpoint, including optimizer/RNG. Extending the cosine horizon
+  restarts LR around5e-5 at200k and decays tozero at300k. The other two start
+  fresh. All preserve the baseline data, statistics,
+  prompt, losses, warmup, seed, visualization cohorts and 10k checkpoint policy.
+- EDGE_MOTION_SELF_ATTENTION_BEFORE_JOINT=1 adds an attention-only motion
+  residual before every joint block: SA -> JA -> ONE FFN, not legacy gap
+  Transformer blocks. Reasoner K/V projection plus learned K/V norms remain;
+  the frozen reasoner never sees motion. Default false and checkpoint contract
+  resolution preserve existing architectures on Yonsei and Grasp.
+- Yonsei new outputs stay on Scratch2. User approved canceling idle2291683
+  for replacement two-4090 request2294892. Active2291900 is not canceled;
+  its existing successor2293349 resumes its own run after allocation.
+- No standalone tests were requested. Actual startup/optimizer progress must
+  be established from runtime logs, not inferred from this implementation note.
+
+## Nymeria evaluator adaptation and GT32 gate (2026-09-19)
+
+- Baseline GT-only scoring with 32 candidates and seeds 0,1,2: BONES R@3
+  99.90 +/-0.02%; Nymeria 69.80 +/-0.25%. These are paired-only scores,
+  not the existing full-pool similar-caption-positive scores. User target
+  is at least85% Nymeria GT R@3 with this unchanged three-seed protocol.
+- Baseline training loss fell while full-pool paired validation R@3
+  plateaued near2.6% after5k. Text embedding dispersion stayed nonzero.
+  Frozen text geometry and stale queue negatives are hypotheses, not
+  established causes. Do not claim the test threshold has been achieved.
+- New pipeline: shape_aware_TMR/train_nymeria_adapt32.py, invoked through
+  nymeria_run.sh on an owned GPU, with explicit --baseline-run and --out.
+  It initializes from the old validation-selected5k weights, trains the
+  small C45 text encoder at0.2x motion LR (LLM2Vec remains frozen/cached),
+  uses batch256, queue0, and40k new steps. Same data, statistics, shape
+  model and loss weights; no changes to existing Phase2 generators.
+- Nymeria evaluation additionally logs paired R32 R@1/2/3 for seeds0,1,2.
+  New run selection uses validation/R32_R03_mean; full-pool selection
+  remains the default for old recipes. Test is evaluated only after
+  selecting best by validation, not used to pick a checkpoint.
+- Baseline curves are under Yonsei operations/nymeria_evaluator_retrain_20260919.
+  New output is shape_tmr/nymeria_c45_camhead_adapt32_jointtext_b256_q0_20260919.
+  Job2281723/node35 is the planned retained allocation. Launcher/status
+  and live logs, not this entry, determine actual training progress.
+
+## Final-hidden cross-attention K/V norm, no added key RoPE (2026-09-19)
+
+- New opt-in mixed batch128 experiment: run
+  `bash motion_expert_t2m_edge/train_norm_ablation.sh self_cross_final_hidden_knorm_vnorm_nokrope mixed`
+  with `COSMOS_SITE=yonsei` or `grasp` on an owned GPU allocation.
+- Preserve final post-norm frozen reasoner memory, seven independent learned
+  K/V projections, motion self-attention, cross-query RoPE and the FFN. Apply
+  independent trainable per-128-D-head RMSNorm to projected K and V. Disable
+  only added cross-key RoPE; V was already unrotated. The frozen reasoner's
+  native positional computation remains intact, so its memory is not
+  position-free. Cross norm gains follow motion norm storage dtype (BF16).
+- New settings `EDGE_CROSS_ATTENTION_V_NORM=rmsnorm` and
+  `EDGE_CROSS_ATTENTION_REASONER_ROPE=0` default to none and 1 respectively.
+  Checkpoint contracts and inference resolution retain both; older checkpoints
+  retain their original V/no-norm and cross-key/native-RoPE behavior.
+- The launcher also retains cross-K RMSNorm. Same mixed data, camera/head
+  statistics, parity losses, LR schedule and visualization recipe, batch128,
+  seed0, 200k target, positive 10k checkpoint multiples only. Yonsei output
+  stays on Scratch2; Grasp uses RUN_ROOT. Existing trainers are not restarted.
+- Initial launch allocation: retained idle job2263514/node34, about 6h40m
+  remaining when selected. This entry documents configuration, not observed
+  training progress or test success. Resume later only this distinct output.
+
+## Edge Phase-2 separate self/cross-attention experiments (2026-09-16)
+
+Two fresh mixed-data runs replace each of the seven joint-attention blocks
+with pre-norm motion SA, pre-norm reasoner CA, then one SwiGLU FFN, each with
+its own residual. They keep width2048, GQA16/8 x128 and FFN3072. Motion SA
+includes only shape plus valid frames; CA includes only the same sample's
+reasoner tokens. The frozen reasoner never reads motion.
+
+- EDGE_MOTION_ATTENTION_MODE=self_cross_final_hidden: all seven blocks use
+  the final reasoner token sequence after backbone final norm. Each owns new
+  2048-to-1024 K/V projections, with no extra K/V norm. New CA queries and
+  projected keys receive native mRoPE once. TI2M includes image tokens.
+- EDGE_MOTION_ATTENTION_MODE=self_cross_layer_kv: blocks use native K/V from
+  reasoner layers[3,7,11,15,19,23,27]. Native K already has its own frozen
+  normalization and RoPE; V is unchanged. No interface K norm, K/V adapter,
+  or repeated K rotation. Motion CA Q uses its own norm/projection/RoPE.
+- Defaults remain joint. Contracts record mode, memory and position policy;
+  old contracts imply joint. Inference resolves architecture from checkpoints
+  before model creation and rejects conflicting explicit environment settings.
+- Launch bash motion_expert_t2m_edge/train_norm_ablation.sh MODE mixed,
+  selecting COSMOS_SITE=yonsei or grasp. Same loss/data policy as the
+  reasoner_k_fp32 mixed baseline: batch128, accum1, workers8, seed0, 200k,
+  LR2e-4/warmup1k/cosine floor0, centered1/1/5 plus contact0.05/1/10,
+  75%T2M/25%TI2M, BONES50% within T2M, camhead statistics, variable lengths
+  capped at200, TI2M97, same caption policy and fixed visualizations every5k.
+  Save only positive10k checkpoint multiples. Outputs stay on Scratch2 at
+  Yonsei; Grasp uses the existing RUN_ROOT mapping.
+- These are not parameter-matched experiments. Extra SA/CA projections add
+  capacity, and removal of the learned interface norm is an additional
+  difference from the named reference. Do not claim a unique causal result.
+- Requested GPU acceptance checks are in validate_self_cross.py. Operations
+  are under /scratch2/whwjdqls99/cosmos/operations/phase2_self_cross_yonsei_20260916.
+  The staged launcher checks actual batch128 before production. Initial
+  allocations2231899(node38) and2263514(node34) were idle before reuse.
+  This entry describes implementation and intent, not observed test success
+  or verified production progress. Never cancel retained allocations on exit.
+
 This repository is a cluster-oriented research checkout for adapting NVIDIA Cosmos-3 Nano into human-motion and egocentric world-model variants. It is not a standalone Python package. Real runs require a site-specific Cosmos framework checkout, compatible conda environments, Slurm GPU nodes, and persistent datasets/checkpoints. The physical path contract for the Yonsei datacenter and Grasp lab is `migration/SITE_STORAGE.md`; `/home/jungbin_cho`, `/weka/jungbin`, and `/mnt/shared/jungbin_cho` references are legacy H200/A100 provenance unless a section explicitly says otherwise.
 
 Primary current work areas: `motion_expert_joint_attention/` and the isolated native-Cosmos Phase 1 path in `native_phase_training/`.
 
 This file is the shared source of context for both Claude and Codex. Agent-specific bootstrap files such as `AGENTS.md` and `CLAUDE.md` intentionally point here and should stay small.
 
+## Motion renderer: floor layers and initial Head orientation (2026-09-17)
+
+- User-approved default style on Yonsei and Grasp: XZ view half-extent 1.6 m,
+  skeleton bone linewidth 1.35 and joint marker area 8.0. Keep the initial
+  Head-axis arrows and color legend, omit the top numeric orientation overlay,
+  and retain correct above/below-floor layering. These are shared renderer
+  defaults for new visualization processes, not per-run display overrides.
+- Shared `motion_expert_joint_attention/render_motion.py` splits every bone at
+  world Y=0 and disables mplot3d's collection-level automatic z-order.
+  Above-floor fragments stay opaque; below-floor fragments are rendered behind
+  the translucent floor. Negative heights remain visible, with no grounding,
+  recanonicalization, or changes to stored joints/features.
+- Optional `gen_head_rotation0` / `gt_head_rotation0` show a fixed frame-0
+  RGB local-axis triad plus world +Z reference, without a numeric plot overlay.
+  Offline manifests retain yaw/pitch/roll and initial Head XZ for diagnostics.
+  The rotation is decoded from raw 283-D features
+  including the first canonical delta; it is never inferred from positions.
+  Canonicalization is yaw-only: nonzero pitch/roll are not inherently errors.
+- Edge training visualization, Edge sampling and Nano joint-training
+  visualization supply the real head rotations. Already-running Python
+  trainers retain previously imported code until restarted; do not restart
+  them just to update rendering.
+- `motion_expert_t2m_edge/rerender_saved.py` re-renders immutable saved Edge
+  visualization NPZs, emits first-frame PNGs and a provenance manifest, and
+  uses explicitly supplied generator mean/std for older GT-normalized arrays.
+  Run rendering on a compute node, never a login node. Paths are CLI inputs
+  so the workflow works on both Yonsei and Grasp.
+
 ## Documentation Policy
 
+### Scheduled five-hour Phase-2 evaluation follow-up (2026-09-18 evening)
+
+- YONSEI_PHASE2_EVAL_20260918_2045.md records the completed sweep started
+  at20:45:20 KST on retained job2281723/node35. Five new checkpoints were
+  evaluated, sixteen exact prior results reused, and no results were missing.
+  The snapshot was pinned at20:46:48 and completed21:16:33, exit0.
+- New BONES R@3: Projection A mixed256/150k61.50; final-hidden128/180k57.29;
+  projected-K/V-norm128/110k45.49; final-hidden cross-Knorm256/70k44.99;
+  layer-K/V128/200k38.04. GT93.93 and Nano200k82.31 remain references.
+  Full FID/skating/penetration/airborne metrics and GT are in the report.
+- Layer-K/V training finished200k, completed final visualization, returned
+  to the retained shell, and its GPU was observed idle. Do not resume it.
+- Separate Nymeria evaluator training has NOT started: preparation stopped
+  on identical duplicate source windows; fixing that new-code assumption
+  is awaiting explicit user approval. No Nymeria test result exists yet.
+- These reports are BONES/C45 metrics, not proof of Nymeria evaluator
+  progress or resolution of floating. Existing unfinished trainers were
+  not stopped, resumed, or modified by this follow-up.
+
+### Nymeria-specific C45 evaluator implementation (2026-09-18)
+
+- Separate Nymeria evaluator pipeline: shape_aware_TMR/NYMERIA_EVALUATOR.md.
+  Use train_nymeria_c45.sh on an owned GPU node, COSMOS_SITE=yonsei or grasp.
+  Yonsei caches and outputs default to Scratch2; BONES C45 is not overwritten.
+- Keep the official C45 model/loss/initialization: batch128, LR5e-5,
+  warmup1k, 10k steps, frozen text encoder, official30fps TMR186 statistics.
+  Generator UniEgo283 statistics are never evaluator statistics.
+- Preserve recording-level test holdout; select on separate validation,
+  not the test set. Default camera/head Nymeria native windows are cached;
+  known quality drops and all additional exclusions are recorded.
+- Nymeria snapshots bind data/statistics/text/recipe fingerprints and save
+  optimizer, contrastive queue and RNG state. Pretrained initialization no
+  longer overwrites checkpoint-restored weights in st_train.py.
+- Report GT, case counts, duplicate-aware and plain/tie-aware retrieval.
+  Physical metrics are independent; no claim that evaluator training fixes
+  floating. See the detailed document for explicit dataset adaptations.
+- This entry records implementation, not validated behavior, observed
+  training progress, or achieved retrieval. Current jobs/results belong
+  in timestamped operational reports; no existing trainer was restarted.
+
+### Current Yonsei Phase 2 handover and evaluations (2026-09-18)
+
+- Read YONSEI_PHASE2_STATUS_20260918.md for the repository-local run map,
+  launcher recipes, complete evaluated-result table, GT/Nano references,
+  normalization contract, allocation history, and Yonsei/Grasp scope.
+- Snapshot at 2026-09-18 15:19 KST: final-hidden128 job2275411/node36,
+  layer-KV128 job2263514/node34, Projection A mixed256 job2270088/node36,
+  final-hidden+cross-K-norm256 job2279743/node34, and projected-K/V-norm
+  mixed128 job2278800/node40 are training. Both original Projection A
+  batch128 runs finished200k and were evaluated. Live Slurm/logs supersede
+  this dated snapshot; none of these tables is a live dashboard.
+- The requested projected-V-norm variant HAS started. It resumed from40000
+  on replacement2278800 after2248640 expired. Do not launch a duplicate.
+- The final-hidden DDP run moved from node37/job2270089 to node34/job2279743
+  at the user's request, resuming10000. Its new20000 checkpoint and all12
+  visualizations completed, and later training advanced past50000 without
+  an observed timeout recurrence. Keep node37 excluded for this replacement.
+  The600-second timeout remains unchanged; no timeout fix was applied.
+- Full evaluation details remain on Yonsei Scratch2. The repository-local
+  summary makes results readable from Grasp without implying shared storage.
+  The two generators' mean/std and the C45 evaluator's mean/std are distinct.
+- The operations registry is historical, and runtime_state.json is timestamped.
+  Do not use the unused run_eval.sh wrapper with its stale followup.py target;
+  invoke evaluate_idle.py with the established evaluation environment instead.
+- The September17 preparation section below is historical and is superseded
+  for current job IDs and launch/completion status by this September18 handover.
+
+
+### Active 30-minute operations goal and projected-V norm variant (2026-09-17)
+
+- User authorized monitoring current runs every30min, obtaining replacement
+  allocations after confirmed termination, and resuming the same unfinished
+  runs. A completed trainer's idle GPU first evaluates missing latest Edge
+  checkpoints across both run roots, using the established BONES protocol and
+  documenting Nano/GT/model retrieval and physical metrics. Preserve retained
+  allocations; an expired observation timeout is not allocation termination.
+- Operation registry and prepared replacement/evaluation launchers:
+  /scratch2/whwjdqls99/cosmos/operations/phase2_autopilot_20260917
+  The active Codex goal performs the 30-minute checks and decisions; these
+  helper files alone are not a running automatic scheduler.
+- Initially tracked: final-hidden128 job2231899, layer-KV128 job2263514,
+  Projection A mixed128 job2248639, Projection A BONES128 job2248640,
+  Projection A mixed256 job2270088, final-hidden+cross-K-norm256 job2270089.
+  Do not resurrect intentionally canceled native/as-is job2250537. Do not
+  automatically resume stopped Phase1 runs from their pending legacy requests.
+- Existing Projection A has projected K -> learned norm -> native RoPE and
+  projected V without a norm. The requested NEW variant adds a separate
+  fresh trainable native RMSNorm to each projected 128-D V head, with FP32
+  affine gains; seven blocks add896 parameters. K's existing learned norm
+  is unchanged, V is not rotated, and frozen reasoner K/V are untouched.
+- Opt in with EDGE_REASONER_V_NORM_TRAINABLE=1 together with Projection A.
+  Default0 leaves all existing models unchanged. Checkpoint contracts record
+  reasoner_v_norm_trainable, old checkpoints imply false, and inference
+  resolves the flag before construction. Strict loading rejects mismatches.
+- Prepared command: bash motion_expert_t2m_edge/train_norm_ablation.sh
+  reasoner_kv_project_vnorm mixed. This is a fresh mixed BONES50-within-T2M,
+  batch128, 200k, camera/head-stat, parity-loss/LR experiment dated20260917,
+  with the original A recipe and10k checkpoint interval. It runs only AFTER
+  a completed-run GPU has finished the missing-latest evaluation sweep.
+  No GPU is currently reassigned merely to start this additional variant.
+- No standalone tests were requested. This records preparation, not a claim
+  that the pending V-norm run has started or completed validation.
+
+
+### Final-hidden self/cross with cross-key RMSNorm, DDP256 (2026-09-17)
+
+- User requested starting a fresh final-hidden self/cross mixed run on the
+  pending two-4090 job2270089 as soon as it allocates, with global batch256
+  and the discussed projected-cross-key RMSNorm. Do not change the existing
+  batch128 final-hidden run or the Projection A DDP run on job2270088.
+- Opt in with EDGE_MOTION_ATTENTION_MODE=self_cross_final_hidden and
+  EDGE_CROSS_ATTENTION_K_NORM=rmsnorm. The default remains none, preserving
+  earlier models. Each of seven motion blocks applies its own trainable
+  native-class RMSNorm over each 128-D projected cross-key head, before
+  native RoPE exactly once. Cross V, motion self-attention, and the frozen
+  reasoner's entire computation remain unchanged.
+- This is not the old joint-attention reasoner-interface K norm. Final-hidden
+  memory is still the frozen post-final-norm token sequence, followed by
+  independent learned K/V projections per motion block. Norm gains follow
+  the configured motion-norm storage dtype, BF16 for this run; the native
+  RMSNorm reduction is FP32. The seven norms add 896 affine parameters.
+- The existing cross_attention_key_normalization contract field records
+  rmsnorm versus none. Inference resolves this before model construction;
+  strict checkpoint contracts reject mixing normalized and unnormalized
+  architectures. Old joint/layer-KV/final-hidden defaults remain unchanged.
+- Launcher: bash motion_expert_t2m_edge/train_self_cross_knorm_ddp.sh inside
+  an owned two-GPU allocation, COSMOS_SITE=yonsei or grasp. Use batch128/rank,
+  accumulation1, workers8/rank, 200k target, LR2e-4, warmup1000, cosine floor0,
+  centered losses1/1/5 plus contact0.05/1/10, camera/head stats, BONES50 within
+  T2M and existing T2M/TI2M task weights. Save only positive 10k checkpoints.
+- Separate output: edge_7layer_self_cross_final_hidden_knorm_..._gbs256_...
+  dated20260917. Yonsei outputs use Scratch2; Grasp uses RUN_ROOT.
+  SELF_CROSS_OUTPUT_ROOT and FIXED_VIZ_SOURCE are optional path overrides.
+  Copy the existing final-hidden Nymeria fixed cases; append two BONES T2M
+  examples, visualize at start and every5k using the updated shared renderer.
+- Durable watcher tmux: phase2_finalhidden_knorm_ddp256_watch_20260917.
+  Operation directory:
+  /scratch2/whwjdqls99/cosmos/operations/phase2_finalhidden_knorm_ddp256_20260917_job2270089
+  Its watch_and_run.sh polls Slurm every30s, launches an owned overlapping
+  compute step after job2270089 is RUNNING, and preserves the allocation
+  when training exits. Logs and trainer.exit stay in that operation directory.
+  Only scheduler polling runs on the login host, never model/data work.
+- No tests or smoke runs were requested. This records configuration and
+  automatic-launch intent, not observed training progress.
+
+
+### Projection A mixed-data DDP batch256 launch (2026-09-17)
+
+- User requested canceling native/as-is K/V mixed allocation2250537 and a
+  separate Projection A mixed experiment on retained two-4090 allocation2270088
+  (node36, 16 CPUs, 128G RAM). The existing Projection A batch128 run is untouched.
+- Launch with `bash motion_expert_t2m_edge/train_kv_projection_ddp.sh` on an
+  owned two-GPU compute allocation with `COSMOS_SITE=yonsei` or `grasp`.
+  Torchrun uses two ranks, batch128/rank, accumulation1, global batch256.
+- Preserve the batch128 Projection A recipe: seven joint blocks, identity-
+  initialized K/V projections plus learned K norm, mixed T2M/TI2M, BONES50
+  within T2M, camera/head statistics, seed0, 200k target, LR2e-4, warmup1000,
+  cosine floor0, per-task centered losses1/1/5 and contact0.05/1/10.
+  Workers8/rank; save only positive 10k multiples, no rolling checkpoints.
+- A distinct `edge_7layer_reasoner_kv_project_..._nanoparity_gbs256_...`
+  output dated20260917 starts fresh; `--resume auto` subsequently resumes only
+  this new output, never the batch128 checkpoint. Yonsei writes to Scratch2;
+  Grasp uses RUN_ROOT. `PROJECTION_A_OUTPUT_ROOT` can override the output root.
+- Reuse the existing Projection A Nymeria fixed suite. `FIXED_VIZ_SOURCE` can
+  override its location. Visualize every5k and initially, using five Nymeria
+  samples per task plus two fixed BONES T2M examples and the updated renderer.
+- Retained tmux session: `phase2_ddp256_2x4090_a_20260917`. Do not cancel this
+  allocation when its trainer exits. This entry records launch intent, not
+  observed training progress or a completed acceptance test.
+
+
+### Fixed BONES examples in Edge training visualizations (2026-09-17)
+
+- When training visualization is enabled with Nymeria as its primary source,
+  mixed runs with BONES T2M training mass append two held-out BONES-SEED T2M
+  examples by default. `--viz-bones-samples` controls this count; zero disables
+  the extra suite. BONES-only visualization already uses BONES and does not
+  append duplicates. There are no BONES TI2M examples.
+- The additional frozen inputs live in
+  `<run>/visualizations/fixed_samples_bones/manifest.json`; the original
+  `fixed_samples` manifest, Nymeria cases, seeds and sampling batches remain
+  unchanged. BONES-suite setup restores training RNG state afterward.
+- Each visualization step saves generated-versus-GT BONES videos and arrays
+  with a `bones_` prefix for mixed suites. W&B uses
+  `visualizations/bones/text2motion/sample_XX`, and step manifests retain both
+  input-manifest paths and source labels. The shared default renderer applies.
+- This is visualization only: do not change training data mixture, losses or
+  checkpoints. It is site-independent and takes effect in new or resumed
+  Python trainers; existing live processes are not restarted for this change.
+
+
 `AGENTS_ALL.md` is the only canonical high-level context document for this repo. Keep detailed project context here, then verify behavior against code before editing.
+
+### Nano-style caption-only Projection A + V norm ablation (2026-09-19)
+
+- New opt-in `EDGE_TEXT_PACKING=nano_caption_only` removes only the T2M
+  BOS/EOS/start-of-generation wrapper. Empty CFG text uses one Edge EOS,
+  matching Nano's historical raw-caption motion path with Edge's tokenizer.
+- TI2M retains its original multimodal chat template, as Nano does. Caption
+  rewriting, data/statistics, losses, architecture, and optimizer are unchanged.
+- Portable launcher: `bash motion_expert_t2m_edge/train_norm_ablation.sh
+  reasoner_kv_project_vnorm_captiononly mixed`, with `COSMOS_SITE=yonsei`
+  or `grasp` inside an owned GPU allocation. Fresh B128, 200k, 10k saves.
+- Planned Yonsei launch uses idle job2281723/node35, tmux
+  `phase2_projA_vnorm_captiononly_b128_20260919`, with a separate scratch2
+  output. Runtime logs, not this launch note, determine current status.
+- The checkpoint `text_packing` contract preserves inference/resume behavior;
+  default native-prefix runs remain unchanged. Details and exact run name:
+  `motion_expert_t2m_edge/CAPTION_ONLY_ABLATION.md`.
 
 Root `README.md`, `AGENTS.md`, `CLAUDE.md`, `motion_expert_joint_attention/README.md`, and `motion_expert_joint_attention/DESIGN_7TASK.md` are now short pointers/stubs. Do not re-expand them into parallel sources of truth.
 
 Stale large docs were removed on 2026-07-06: root `COSMOS.md`, `DESIGN.md`, `SAMPLING_NOTES.md`, and `PLAN_ego_video_camera_world_model.md`. Their still-relevant content was consolidated here. `nymeria_world/` remains on disk but is older work and not the source of truth for current joint-attention training.
+
+## Yonsei fresh unfiltered Phase 1 (2026-09-14)
+
+The user requested a fresh Cosmos3-Edge Phase-1 run to 300k, not a continuation
+of the filtered 200k model. Launch configuration lives in
+`/scratch2/whwjdqls99/cosmos/operations/phase1_edge_unfiltered300k_yonsei_20260914`.
+The initial source is the pretrained Edge DCP; later allocations may resume
+only this new run's complete model/optim/scheduler/trainer checkpoints.
+
+- Run name: `edge_phase1_T97_20fps_2gpu_bs16_camera_wearer_lora_unfiltered_300k_yonsei_20260914`.
+- Outputs: `/scratch2/whwjdqls99/cosmos/cosmos_motion_ft_runs/cosmos3_camera/camera_world_edge/`
+  followed by the run name. Checkpoints, training logs, TensorBoard and W&B
+  staging stay on Scratch2; existing datasets and pretrained models stay on Lustre.
+- Native Phase-1 dataset selection now accepts comma-separated
+  `NYMERIA_EXCLUDE_ORIGINAL_VIDEO_NAMES`. An explicit empty value removes the
+  five-person name exclusion; an unset variable preserves the historical five
+  exclusions on both Yonsei and Grasp. Test splits and standard usable-caption,
+  camera, train-split and available-latent checks are unchanged.
+- This launcher explicitly empties the name and optional quality filters.
+  It preserves T97, 256 resolution, 20FPS, four tasks, camera-wearer wording,
+  global LoRA, action loss10 and 2 GPUs x16 clips = global batch32.
+- LambdaLinear keeps base LoRA LR5e-5 and action multiplier4, with factors
+  f_start=f_max=.4, warmup500, cycle300000, f_min=0. Initial effective learning
+  rates are2e-5 and8e-5. Save every5k. This is a fresh 300k schedule.
+- Both automatic checkpoint-evaluation callbacks and trainer validation are
+  disabled; no visualizations are submitted. W&B scalar logging remains online.
+- Initial retained allocation2215401 has two PRO6000s. A dependent two-GPU
+  replacement may resume this new run; keep four-GPU requests2194983/2194977 held.
+  Never cancel the retained allocation merely because its trainer exits.
+- Scratch2 is temporary storage; preserve selected checkpoints before the site's
+  purge deadlines. This entry records configuration, not observed training progress.
 
 ## High-Level Thesis
 
@@ -1370,3 +1876,480 @@ Standalone training visualizations and intermediate checkpoints are not
 required; selected checkpoints, exact splits, mean/std arrays, calibrations,
 evaluator models, and regenerable-cache contracts are enumerated in the
 migration runbook.
+
+## Edge Phase-2 Absolute Decoded-Joint Ablation (2026-09-11)
+
+`motion_expert_t2m_edge/train.py --joint-loss-mode absolute` replaces the
+centroid-relative decoded-joint term with valid-frame MSE between the directly
+decoded prediction and target. Both are unnormalized with the selected motion
+mean/std before decoding. There is no centroid, root, or Procrustes alignment
+in this joint term; "absolute" refers to the representation's decoded canonical
+coordinate frame, not external GPS/world coordinates. Padding remains masked.
+Feature reconstruction, decoded joint-difference smoothness, and all three
+contact-aware terms are unchanged. The historical default is `centered`.
+The selected mode is stored in args.json, W&B config, and checkpoint args;
+resuming across joint-loss modes is rejected. Older checkpoints without this
+field are treated as `centered`.
+
+The shared `sbatch_train_1gpu.sh` accepts `JOINT_LOSS_MODE=absolute` on either
+Grasp or Yonsei. Site selection and cache locations remain independent of this
+loss option. Do not switch a running centered-loss experiment to absolute loss
+in place; use a separate output directory.
+
+Yonsei's new launcher is
+`motion_expert_t2m_edge/train_contact_absolute_yonsei.sh`. It starts a fresh
+200k-step experiment in
+`$RUN_ROOT/motion_expert_t2m_edge/edge_7layer_nymeria_bones50_t2m_ti2m_camhead_v1_subjectv1_absjoint_w1_1_5_contact_c0p05_v1_h10_yonsei_20260911`.
+It uses recanonicalized `uniego_rep_camhead_v1` Nymeria and the pinned
+camera/head-aligned `clean_calibrated_uniego283_{mean,std}.npy` statistics, as
+explicitly selected by the user. BONES remains motion-only UniEgo; using these
+statistics does not make it camera/head-equivalent. BONES is 50% within T2M:
+37.5% BONES T2M, 37.5% Nymeria T2M, and 25% Nymeria TI2M overall.
+
+The loss is feature + absolute_joint + 5*smooth + 0.05*contact + foot_velocity
++ 10*foot_height. Batch size 128, eight workers, 1k-step LR warmup to 2e-4,
+200k-step cosine schedule to 2e-5, subject wording, fixed visualizations every
+5k, permanent checkpoints every 5k, and recovery checkpoints every 250 remain
+unchanged. Raw motion-array caching and the parallel-read/background-write
+image/conditioning caches stay enabled on Yonsei scratch. This is a new data,
+statistics, and joint-loss experiment relative to the ongoing legacy/Nano-stats
+run, not a single-factor comparison with that run.
+
+Allocation request: `2204981`, one RTX 4090, eight CPUs, 64 GiB RAM, three days,
+excluding `cs-gpu-01` and `node33`. Tmux session:
+`phase2_edge_absjoint_4090_yonsei_20260911`; its trainer window waits for the
+allocation and starts the launcher through srun, retaining the allocation after
+exit. At implementation time this request was pending, not confirmed training.
+The existing legacy/centered run in allocation `2184232` was not restarted.
+
+## Edge Phase-2 Global Feature Weight Ablation (2026-09-12)
+
+`train.py --w-global-rot 10 --w-global-trans 10` adds ten to the per-coordinate
+feature weights for normalized canonical-delta rotation `[270:276]` and
+translation `[276:279]`. Both extra sums retain the full 283-D feature-MSE
+denominator and valid-frame mask. With `w_feat=1`, these nine coordinates
+therefore have weight 11, while local-joint and contact feature coordinates
+retain weight 1. These are representation deltas, not an additional decoded
+world-position or geodesic rotation loss. The rotation and translation loss
+components are logged separately with the full-feature denominator.
+
+Both new weights default to zero, preserving previous experiments. They are
+stored in args.json, W&B config, and checkpoint args. Resuming with different
+global feature weights is rejected; older checkpoint args imply zero extra
+weight. The shared one-GPU launcher accepts `W_GLOBAL_ROT` and
+`W_GLOBAL_TRANS` on both Yonsei and Grasp.
+
+Yonsei launcher:
+`motion_expert_t2m_edge/train_contact_globalfeat10_yonsei.sh`.
+Its separate output directory is
+`$RUN_ROOT/motion_expert_t2m_edge/edge_7layer_nymeria_bones50_t2m_ti2m_camhead_v1_subjectv1_globalfeat10_w1_1_5_contact_c0p05_v1_h10_yonsei_20260912`.
+It reproduces the September 8 `camhead_v1_subjectv1_w1_1_5_contact_c0p05_v1_h10`
+run, including the centered decoded-joint loss, recanonicalized Nymeria,
+pinned camera/head-aligned mean/std, BONES 50% within T2M, batch 128, eight
+workers, 200k steps, 1k warmup to 2e-4 and cosine decay to 2e-5, contact weights
+0.05/1/10, and the fixed five-per-task UniPC-35/CFG-2 visualization every 5k.
+It is not the absolute-joint ablation. The representation-preserving motion,
+image, and frozen-condition caches remain enabled on Yonsei scratch.
+
+New retained allocation: `2212228`, `node31`, one RTX 4090, eight CPUs,
+64 GiB RAM, three days, excluding `cs-gpu-01,node33`. Tmux:
+`phase2_edge_globalfeat10_4090_yonsei_20260912`. Operations/logs:
+`/scratch2/whwjdqls99/cosmos/operations/phase2_globalfeat10_camhead_20260912`.
+The allocation is acquired; training launch is separate from this record.
+Existing allocations and runs are left untouched.
+
+## Edge Phase-2 Interleaved Motion Self-Attention Ablation (2026-09-12)
+
+`EDGE_MOTION_SELF_ATTENTION_PER_GAP=1` adds one fresh motion-only Transformer
+block after each of the first six joint-attention motion blocks. The joint
+blocks remain at reasoner layers `[3,7,11,15,19,23,27]`; new blocks follow
+`[3,7,11,15,19,23]`, giving seven joint-attention and six self-attention blocks.
+There is no extra block before the first or after the final joint block.
+The added blocks use width 2048, 16 Q / 8 KV heads, head dimension 128,
+fresh Q/K/V/O and RMS norms, and a width-3072 SwiGLU FFN. Their bidirectional
+attention reads only each sample's shape token and valid motion frames,
+with packed per-sample offsets and the existing motion mRoPE coordinates.
+They never read or update reasoner rows; the frozen reasoner and vision path
+remain unchanged. Non-reentrant activation checkpointing recomputes only the
+new blocks during training to preserve batch 128 on a 24-GiB RTX 4090.
+
+The setting defaults to zero on both Yonsei and Grasp. Checkpoint contracts
+record the new block count and positions; older schema-3 checkpoints default
+to zero added blocks and are rejected under the expanded architecture.
+Inference must select the same environment setting as training.
+No changes to the Nano model or Phase 1 are involved.
+
+Yonsei launcher: `motion_expert_t2m_edge/train_contact_selfattn_yonsei.sh`.
+Fresh run: `$RUN_ROOT/motion_expert_t2m_edge/edge_7ja6sa_nymeria_bones50_t2m_ti2m_camhead_v1_subjectv1_w1_1_5_contact_c0p05_v1_h10_yonsei_20260912`.
+It matches the September 8 camera/head-aligned baseline's data/statistics,
+BONES fraction 0.5 within T2M, subject policy, 0.75/0.25 task mixture, batch
+128, 200k updates, LR 2e-4 with 1k warmup/cosine to 2e-5, centered decoded
+joint loss, weights 1/1/5 plus contact 0.05/1/10, and fixed visualization.
+Absolute-joint loss and extra global-feature weights are disabled.
+The exact baseline fixed-sample inputs are copied into the new run;
+raw-array/image/frozen-condition caches use the existing Yonsei scratch paths.
+The production launch targets retained allocation `2213496` on `node32`,
+one RTX 4090, eight CPUs, 64 GiB, previously used for sampler visualization.
+Tmux session: `phase2_edge_sampler_viz_4090_yonsei_20260912`,
+window `selfattn_train`. Operations/logs: `/scratch2/whwjdqls99/cosmos/operations/phase2_7ja6sa_camhead_20260912_job2213496`.
+This is launch configuration, not a claim that training has completed.
+
+## Edge Phase-2 BONES-Only Text-to-Motion Ablation (2026-09-12)
+
+The shared one-GPU launcher accepts `TASK_WEIGHTS` as JSON, retaining the
+historical `{"text2motion":0.75,"textimg2motion":0.25}` default. Selecting
+`TASK_WEIGHTS='{"text2motion":1.0}'` and `BONES_FRAC=1` routes every training
+example to the existing BONES-SEED pair loader. The Edge dataset already
+rejects an unavailable BONES source, and the trainer additionally rejects
+any non-BONES, non-T2M, or image-bearing row under this configuration.
+The shared adapter still constructs an unused Nymeria index at initialization;
+this does not mean Nymeria examples enter the optimizer batches.
+
+`train.py --viz-source bones` (shared launcher `VIZ_SOURCE=bones`) uses
+fixed, caption-diverse BONES validation T2M examples, selected with no CFG
+dropout and materialized with their exact motion, skeleton, caption and
+sampling seed. It does not visualize an untrained image-conditioned task.
+The default `VIZ_SOURCE=nymeria` preserves the previous five-per-task
+Nymeria test-suite contract, identities, and sampler. All existing launchers
+keep that default unless they explicitly opt in. The source and split are
+recorded in the fixed manifest; changing an existing suite is rejected.
+
+Yonsei launcher: `motion_expert_t2m_edge/train_contact_bonesonly_yonsei.sh`.
+Fresh run: `$RUN_ROOT/motion_expert_t2m_edge/edge_7layer_bones100_t2m_camheadstats_v1_subjectv1_w1_1_5_contact_c0p05_v1_h10_yonsei_20260912`.
+It matches the September 8 baseline's seven joint-attention blocks, 230.51M
+trainable parameters, camera/head-aligned mean/std, subject wording policy,
+batch 128, T200, 200k steps, 2e-4 peak LR / 1k warmup / cosine to 2e-5,
+centered decoded-joint loss and weights 1/1/5 plus contact 0.05/1/10.
+There are no added self-attention blocks, no absolute-joint term and no extra
+global-feature weights. BONES remains its original motion-only UniEgo data;
+this experiment neither recanonicalizes BONES nor computes BONES-only stats.
+Checkpoint interval remains 5k, rolling recovery 250, visualization at start
+and every 5k with UniPC-35 / CFG-2 / shift-3.
+
+Allocation `2219279`: RTX 4090 on `node36`, eight CPUs, 64 GiB, three days.
+Tmux `phase2_edge_bonesonly_4090_yonsei_20260912`; operations/logs
+`/scratch2/whwjdqls99/cosmos/operations/phase2_bonesonly_camheadstats_20260912_job2219279`. Training launch and progress are separate from this configuration
+record. Existing training jobs are not restarted.
+
+## Edge Phase-2 Batch-256 / Zero-LR-Floor Ablation (2026-09-13)
+
+The Nano contact-aware launcher uses eight ranks at batch 32 (effective batch
+256). Its `motion_expert_joint_attention/train.py:lr_factor` decays cosine
+to zero; the `min_lr_ratio=0.1` value in that module's configuration is not
+used by this trainer. The Edge trainer instead has an explicit
+`--min-lr-ratio` argument, historically defaulting to 0.1.
+
+The shared Edge launcher now exposes `MIN_LR_RATIO`, retaining 0.1 unless
+explicitly overridden. This remains portable between Grasp and Yonsei and
+does not alter existing running processes or the defaults of other launchers.
+
+Yonsei launcher: `motion_expert_t2m_edge/train_contact_bs256_lr0_yonsei.sh`.
+Fresh run: `$RUN_ROOT/motion_expert_t2m_edge/edge_7layer_nymeria_bones50_t2m_ti2m_camhead_v1_subjectv1_bs256_lr0_w1_1_5_contact_c0p05_v1_h10_yonsei_20260913`.
+The only requested training-recipe changes from the September 8 camhead
+baseline are actual per-GPU batch 256 (one GPU, accumulation 1) and a zero
+cosine LR floor. Peak LR remains 2e-4, warmup 1k updates, total 200k updates,
+seed 0, and all loss weights remain centered joint 1/1/5 with contact
+0.05/1/10. The model is the original seven joint-attention layers, without
+added self-attention or extra global-feature weights. Data remains 75% T2M
+with 50% BONES within T2M, plus 25% Nymeria TI2M; camera/head-aligned
+Nymeria data and its mean/std, original BONES motion-only representation,
+subject policy, caches, T200/TI2M97 and 256px reasoner images are unchanged.
+
+The exact baseline fixed visualization cohort is copied to the new run.
+Visualization remains UniPC-35 / CFG-2 / shift-3 at start and every 5k;
+scheduled checkpoints remain every 5k, rolling recovery every 250.
+This is a fresh experiment, not a resume of the September 8 weights.
+
+Retained tmux: `phase2_edge_bs256_lr0_4090_yonsei_20260913`.
+Operations/logs: `/scratch2/whwjdqls99/cosmos/operations/phase2_bs256_lr0_camhead_20260913`.
+The allocation wrapper records its actual job/node in `allocation.txt`,
+starts production training once allocated, and retains a shell on trainer
+exit. Request one RTX 4090, eight CPUs, 64 GiB, three days, excluding
+`cs-gpu-01,node31,node33`. This section records configuration, not an
+assertion that the job is allocated or optimizer updates have started.
+
+### Two-GPU DDP Replacement for the Batch-256 Attempt (2026-09-13)
+
+The physical batch-256 attempt in job `2224956` on `node40` completed
+its initial ten visualizations but failed on its first training forward with
+CUDA OOM: 23.45 GiB process usage on a 23.52 GiB RTX 4090. No optimizer
+updates completed. At the user's explicit request, cancellation of that
+retained one-GPU allocation was issued to free the GPU/QoS budget. Its
+logs and output remain as failure provenance, not a trained checkpoint.
+
+The replacement is a fresh run with two GPUs on one node, per-GPU batch
+128, accumulation 1, effective batch 256, 200k optimizer updates, peak LR
+2e-4, 1k warmup, and cosine decay to zero. It uses the same September 8
+seven-layer architecture, mixed Nymeria/BONES data, camhead statistics,
+centered losses 1/1/5 + contact 0.05/1/10, and exact fixed visualization
+cohort. This is not the proposed batch-182/300k alternative.
+
+The shared launcher accepts `NPROC_PER_NODE` (default 1). Values above one
+invoke `torch.distributed.run --standalone --nnodes=1` before the existing
+trainer, which already implements DDP and a distributed data sampler.
+This option is site-independent; request matching GPUs/CPUs on a single
+node and use one Slurm task, not one Slurm task per torchrun rank.
+Existing one-GPU launchers retain their prior behavior.
+
+Yonsei launcher: `motion_expert_t2m_edge/train_contact_ddp2_bs256_lr0_yonsei.sh`.
+Run: `$RUN_ROOT/motion_expert_t2m_edge/edge_7layer_nymeria_bones50_t2m_ti2m_camhead_v1_subjectv1_ddp2_bs128_gbs256_lr0_w1_1_5_contact_c0p05_v1_h10_yonsei_20260913`.
+Retained tmux: `phase2_edge_ddp2_bs256_lr0_yonsei_20260913`.
+Operations/logs: `/scratch2/whwjdqls99/cosmos/operations/phase2_ddp2_bs256_lr0_camhead_20260913`.
+The request is two RTX 4090s, 16 CPUs (eight workers per rank), 128 GiB,
+three days, excluding `cs-gpu-01,node31,node33`. The wrapper starts the
+trainer when allocated, records job/node in `allocation.txt`, and retains
+the allocation after exit. This is launch configuration, not confirmation
+of allocation or successful optimizer steps. Other training jobs are unchanged.
+
+### Nano-reference Phase-2 parity audit (Yonsei, 2026-09-13)
+
+The user requested a thorough Edge/Nano comparison and fresh 200k experiments:
+one GPU with batch 128, and two GPUs with batch 128/rank (global 256), both
+peak LR 2e-4, 1k warmup, cosine floor zero. Keep the camera/head-aligned
+Nymeria representation and its recomputed statistics, 75/25 T2M/TI2M,
+50% BONES within T2M, and the September-8 fixed visualization cohort.
+
+Evidence and provenance:
+
+- The successful Nano contact checkpoint at step 200000 records AdamW
+  betas 0.9/0.99, epsilon 1e-8, weight decay zero, fused optimizer, LR
+  1.2461309761846451e-14 on its final update, batch 32/rank and DDP.
+  Its launcher used eight ranks, giving global batch 256. Edge baseline90k
+  and pre-audit DDP55k checkpoints instead record beta2=0.95.
+- Nano has 132 BF16 model tensors and 17 FP32 tensors; optimizer moment
+  dtypes match. Source inspection explains this: transformer motion blocks
+  are BF16, but all motion heads plus the final norm remain FP32. Edge has
+  90 BF16 and four FP32 tensors, retaining only the timestep MLP in FP32.
+  Its old heads.to(BF16).time_embedder.to(FP32) also irreversibly rounds the
+  non-persistent sinusoidal-frequency buffer. The new FP32 I/O path avoids
+  this round trip entirely, not merely a later cast of rounded values.
+- The checked-in Nano trainer reduces each objective component separately
+  within each task and weights it by count(task)/local_batch, followed by
+  rank-mean gradient reduction. Old Edge pools all valid frames and contact
+  denominators across tasks. With different clip lengths these are not the
+  same objective. DDP rank-local task means are not a single global
+  task-normalized mean; the new path deliberately follows Nano's local
+  reduction and then DDP averaging.
+- Important historical uncertainty: git commit f81b1aa (2026-07-20) added
+  per-task reduction together with contact objectives and later Phase-3
+  features. Earlier committed b2c307f used pooled reconstruction losses.
+  The successful contact checkpoint has contact arguments but lacks the
+  later head-camera arguments from that same commit, so it came from an
+  uncommitted intermediate version. No original source snapshot or code
+  SHA is present in the imported run. We cannot prove its precise loss
+  reduction from current code or Git. The new runs explicitly follow the
+  current Nano per-task reference; do not describe this as a proven exact
+  reconstruction of the historical successful training.
+- Nano's loss-spike guard already exists in b2c307f: above max(50,25*EMA),
+  zero that rank's contribution without dropping a distributed backward;
+  EMA decay is 0.99. Non-finite optimizer updates are skipped coherently.
+  Old Edge had no finite-loss spike guard and aborted on non-finite values.
+- Nano does not explicitly enable TF32 in its trainer/root import. The new
+  runs explicitly disable TF32 for FP32 matmuls, matching PyTorch's default;
+  the historical job's environment-level overrides cannot be recovered.
+- Old Edge checkpoint RNG state is rank-0-only and gets restored to every
+  DDP rank. New guarded runs collect and restore each rank's own RNG state
+  and synchronize signal-triggered checkpoint decisions. DataLoader worker
+  state/in-epoch cursor are still not checkpointed: resumption is not a
+  bitwise replay of uninterrupted sampling.
+
+Compared and retained:
+
+- Both use native shifted logit-normal x0 training with shift 3, noise
+  x_sigma=(1-sigma)*x0+sigma*noise, no noise/loss on padded frames, and true
+  normalized sigma at the timestep MLP. Nano divides by 1e-3 before its
+  heads multiply by 1e-3; Edge passes normalized sigma directly.
+- Motion I/O structure, zero-initialized output, shape token from centered
+  neutral joints, additive time bias, fresh 0.02-normal transformer
+  projections, width-3072 SwiGLU, causal frozen reasoner and full motion
+  attention have the same role-level design. Edge necessarily retains its
+  Nemotron geometry, norm family, cross-path K norm, seven joint blocks,
+  native generation text prefix, and image-position offset convention.
+  Nano has 12 blocks at width4096 versus Edge seven at width2048; these are
+  NOT parameter-identical models. Nano raw-text/EOS-only tokenization and
+  token-count TI2M motion origin differ from Edge's native prefix and next
+  rotary position. They remain explicit backbone-interface differences,
+  not demonstrated causes of floating.
+- The same shared decoder/contact helper implements centered joint MSE,
+  frame-difference MSE, contact BCE with logit scale2, XZ contact-foot
+  velocity at20FPS, and raw local-joint foot-Y reconstruction. Weights stay
+  1/1/5 plus .05/1/10. Global extra weights stay zero; no absolute-joint or
+  added-self-attention ablation is enabled in the parity runs.
+- Both route through NymeriaJointDataset: calibrated grounding, frame-zero
+  canonicalization, z-scoring, native-caption-span T2M, 97-frame aligned
+  TI2M, BONES motion-only crops up to200, padding masks, and no image
+  dropout in TI2M CFG. Edge explicitly uses camhead Nymeria and applies its
+  statistics to BONES too. BONES remains legacy head-defined motion and is
+  not camera/head-equivalent. Subject normalization stays enabled.
+- Shared BONES loading applies caption dropout twice (inner source and
+  outer adapter), approximately19% at nominal10%, versus10% for Nymeria.
+  This exists in the Nano and Edge paths and is deliberately not changed
+  silently during this parity comparison. It is a separate possible
+  source-conditioning ablation, not an Edge-only discrepancy.
+- UniPC wrappers agree on35steps, CFG2, shift3, native integer model
+  timesteps, full-precision integration sigma, velocity=(x-x0_hat)/sigma,
+  and the same image/shape retained in the null-text branch. No re-noising,
+  centroid removal, or artificial grounding is applied to saved generated
+  joints. This is static inspection, not a numerical solver equivalence test.
+
+Implementation/launch contract:
+
+- Old defaults remain pooled loss, beta2=.95, strict non-finite handling,
+  BF16 I/O and TF32 enabled. Old checkpoints default to that precision
+  contract; loading them under FP32 I/O is rejected instead of silently
+  reinterpreting an ablation. Resume also rejects optimizer/loss-policy drift.
+- Fresh runs set EDGE_MOTION_IO_DTYPE=float32, ADAM_BETA2=.99,
+  LOSS_REDUCTION=per_task, LOSS_GUARD=nano, ALLOW_TF32=0, MIN_LR_RATIO=0.
+  All contact components, guarded-batch counts and skipped updates are now
+  logged. These options work through the shared launcher on Grasp or Yonsei;
+  no data/statistics or frozen framework files are changed.
+- Yonsei launcher: motion_expert_t2m_edge/train_contact_nanoparity_yonsei.sh.
+  Set NPROC_PER_NODE=1 or2 inside the appropriate retained GPU allocation.
+  Output names are
+  edge_7layer_nymeria_bones50_t2m_ti2m_camhead_v1_subjectv1_nanoparity_gbs128_lr0_w1_1_5_contact_c0p05_v1_h10_yonsei_20260913
+  and the same name with gbs256. Both are fresh output directories; neither
+  resumes an older ablation. Subsequent restarts use their own recovery.
+- Manual inference must also select EDGE_MOTION_IO_DTYPE=float32 for these
+  checkpoints. Their saved architecture contract records this requirement.
+- Retain per-user queue policy: PRO6000 requests2194983 and2194977 were put
+  on user hold before freeing4090 capacity. Exclude cs-gpu-01,node31,node33
+  from new4090 requests. Do not cancel unrelated active training.
+- At implementation time, focused numerical/gradient tests were awaiting
+  user approval and have not been run. Allocation/startup/progress evidence
+  must be reported separately; implementation alone is not a running run,
+  and none of these findings proves the cause of floating/drift.
+
+## Shared quantitative metric reporting policy (2026-09-14)
+
+For every quantitative evaluation report on Yonsei or Grasp, always report the
+corresponding ground-truth (GT) metrics alongside each generated-model result.
+Use the same eligible cases, sequence/window coverage, lengths, evaluator,
+shape conditioning, frame rate, and physical-metric conventions for both.
+Measure GT retrieval (including R@3), foot skating, and floor penetration;
+do not assume GT retrieval is 100% or GT physical errors are zero. Report
+GT-to-itself FID as 0 and explicitly label it as the reference baseline.
+When a requested metric is unavailable, mark it unavailable for the affected
+row rather than silently dropping GT or substituting a fabricated value.
+
+## Edge Phase-2 normalization ablations (2026-09-15)
+
+The user requested four fresh one-4090 runs: two independent normalization
+ablations, each with the parity mixed Nymeria/BONES recipe and with BONES-only
+T2M. Do not combine both normalization changes in these comparisons.
+
+- Ablation 1: EDGE_MOTION_NORM_DTYPE=float32 keeps trainable motion-block
+  input/post-attention/Q/K RMSNorm gains in FP32. Activation boundaries remain
+  BF16; ordinary AdamW creates FP32 moment storage for these parameters.
+- Ablation 2: EDGE_REASONER_K_NORM_TRAINABLE=1 gives each motion joint block
+  its own trainable FP32 copy of the existing frozen reasoner-to-motion K norm.
+  Initial gains and epsilon are copied without consuming initialization RNG.
+  This replaces that branch's frozen norm, not an extra normalization. Causal
+  reasoner Q/K/V, all frozen backbone weights, and ordinary motion norms remain
+  unchanged. Seven 128-value copies add 896 trainable parameters.
+- Both options default to legacy behavior on Yonsei and Grasp. Architecture
+  contracts record them; old checkpoints imply BF16 motion norms and a frozen
+  reasoner K norm. Cross-ablation resume/inference is rejected rather than
+  silently loading weights under a different interpretation.
+- Shared launcher: motion_expert_t2m_edge/train_norm_ablation.sh. Arguments are
+  motion_fp32 or reasoner_k_fp32, followed by mixed or bones. Select COSMOS_SITE
+  and run inside an owned GPU allocation; never on a login node or cs-gpu-01.
+- All four use batch128, accumulation1, workers8, 200k updates, LR2e-4,
+  warmup1000, cosine floor0, Adam betas0.9/0.99, FP32 I/O, per-task reduction,
+  Nano guards, seed0, and centered losses1/1/5 plus contact0.05/1/10.
+- Mixed runs retain 75% T2M (50% BONES within T2M) and 25% Nymeria TI2M.
+  BONES-only runs use 100% BONES T2M. All keep camera/head-aligned statistics;
+  BONES remains original motion-only UniEgo, not camera-recanonicalized data.
+- Outputs on Yonsei: /scratch2/whwjdqls99/cosmos/cosmos_motion_ft_runs/
+  motion_expert_t2m_edge/edge_7layer_<variant>_<cohort>_nanoparity_gbs128_...
+  Data/statistics/pretrained checkpoints stay on Lustre. Grasp defaults to its
+  normal RUN_ROOT; NORM_ABLATION_OUTPUT_ROOT can override output placement.
+- Save only positive multiples of 10k. --checkpoint-interval-only together
+  with --recovery-save-every 0 suppresses rolling/signal/off-interval writes.
+  Up to 10k progress may be lost on interruption. Existing runs keep their
+  prior checkpoint policy. Visualization remains at start/every5k, with the
+  existing fixed Nymeria or BONES suite and generated/GT comparisons.
+- Console/W&B log actual FP32 gain movement relative to the current launch.
+  This is an experiment, not a confirmed fix for floating. No standalone
+  smoke/numerical tests were requested or run for this change.
+
+New requests use suma_rtx4090, one GPU/eight CPUs/64GiB/three days each,
+excluding cs-gpu-01,node31,node33. Tmux sessions are phase2_edge_n1_mix_20260915,
+phase2_edge_n1_bones_20260915, phase2_edge_n2_mix_20260915, and
+phase2_edge_n2_bones_20260915. Their launchers retain allocations after exit.
+Existing training and pending PRO6000 holds/dependencies are not changed.
+Scheduling and actual optimizer progress must be reported from live output,
+not inferred from this configuration record.
+
+### Ablation numbering correction and as-is K/V experiment #3 (2026-09-15)
+
+The previously launched #1 is FP32 motion-norm parameter storage, NOT the
+user's intended as-is reasoner-attention experiment. Its results must not
+be presented as a test of bypassing the reasoner-to-motion K normalization.
+The user requested retaining #1/#2 and adding the intended path as #3.
+
+- #3 uses EDGE_REASONER_K_NORM_BYPASS=1. Motion queries consume exactly the
+  native reasoner K after its existing native normalization and RoPE, and
+  the unchanged reasoner V. The extra generator-specific/interface K norm
+  is not called; native K is not rotated a second time. Reasoner Q and the
+  entire frozen causal reasoner computation remain unchanged.
+- Motion Q/K/input/post norms stay at baseline BF16 parameter storage, with
+  FP32 I/O heads as in the parity baseline. No extra layers, parameters,
+  projections, or trainable interface norm are introduced.
+- The bypass defaults to false on Yonsei and Grasp. Checkpoint contracts
+  record reasoner_k_norm_bypass; old checkpoints imply false. Combining the
+  bypass with EDGE_REASONER_K_NORM_TRAINABLE=1 is rejected, and checkpoints
+  cannot silently cross between baseline/#1/#2 and #3 at resume/inference.
+- Shared launcher: bash motion_expert_t2m_edge/train_norm_ablation.sh
+  reasoner_kv_as_is mixed (or bones for an explicitly requested BONES-only
+  variant). The current request starts only the mixed run on the idle
+  RTX4090 in retained job2250537, node39; #1/#2 and other jobs are untouched.
+- Same parity recipe: batch128/accum1/workers8, 200k target, seed0, LR2e-4,
+  warmup1000/cosine floor0, camera/head-aligned data/statistics, 75% T2M
+  with 50% BONES within T2M, 25% Nymeria TI2M, and the existing centered
+  1/1/5 plus contact0.05/1/10 losses. No #1/#2 weights are used to initialize.
+- Yonsei output is on Scratch2 under motion_expert_t2m_edge with the
+  edge_7layer_reasoner_kv_as_is_nymeria_bones50_t2m_ti2m_... run prefix.
+  Save only positive 10k multiples; no rolling/signal checkpoint writes.
+  Existing fixed visualizations remain at start/every5k. Tmux session:
+  phase2_edge_n3_mix_20260915. Retain the allocation after exit.
+- This is an architectural ablation, not a confirmed floating fix.
+  No standalone tests were requested or run.
+
+## Edge Phase-2 learned K/V projection ablation A (2026-09-16)
+
+The user requested replacing both FP32 motion-norm runs (#1, mixed and BONES)
+with fresh learned-K/V projection runs. Existing learned-K-norm (#2) and
+native-as-is K/V (#3) experiments are not stopped or repurposed. In particular,
+#3 means native-as-is K/V, not the learned-K-norm experiment.
+
+- A projects the reasoner's existing pre-RoPE K projection and existing V,
+  not the reasoner hidden state. Every one of the seven motion joint blocks
+  owns two independent bias-free 1024x1024 linear maps over flattened 8x128
+  KV heads. They are identity initialized without consuming baseline model
+  initialization RNG. The projections add 14,680,064 trainable parameters.
+- Projected K passes through a trainable copy of the original interface
+  RMSNorm, then native RoPE exactly once. Its 896 norm gains use FP32 storage,
+  as in #2; the ordinary motion-block norms remain BF16. Projected V has no
+  extra normalization. These tensors are consumed only by motion attention.
+  Frozen causal reasoner Q/K/V and weights are unchanged; motion still uses
+  joint attention over reasoner plus shape/motion tokens, not cross-attention.
+- Opt in with EDGE_REASONER_KV_PROJECTION=linear_identity_v1 and
+  EDGE_REASONER_K_NORM_TRAINABLE=1. Default projection is none, retaining
+  existing Yonsei and Grasp behavior. Contracts record the projection kind;
+  older checkpoints imply none. Projected and unprojected checkpoints cannot
+  silently cross-load. Projection plus native-K bypass is rejected.
+- Launcher: bash motion_expert_t2m_edge/train_norm_ablation.sh
+  reasoner_kv_project mixed (or bones), with COSMOS_SITE selected on a GPU
+  compute node. New output names use edge_7layer_reasoner_kv_project_... and
+  date 20260916. Yonsei outputs stay on Scratch2; Grasp keeps RUN_ROOT defaults.
+- Both runs start fresh, not from the stopped FP32 models. They keep batch128,
+  accumulation1, workers8, 200k target, LR2e-4, warmup1000, cosine floor0,
+  seed0, camera/head statistics, existing centered 1/1/5 plus contact0.05/1/10
+  losses, and the same source proportions and fixed visualization suites.
+  Save only positive 10k multiples; no off-interval or rolling checkpoints.
+- Reuse retained jobs2248639 (mixed) and2248640 (BONES) on node40, one4090 and
+  eight CPUs each. Stop only the old trainer processes, not the allocations;
+  old run files/checkpoints are preserved. New tmux sessions are
+  phase2_edge_kvprojA_mix_20260916 and phase2_edge_kvprojA_bones_20260916.
+- No standalone tests were requested. This records the experiment contract,
+  not validated equivalence, observed optimizer progress, or a floating fix.

@@ -1533,3 +1533,73 @@ After changes, run the smallest relevant checks:
 - official inference smoke from the saved checkpoint, covering forward, inverse, policy, and image-to-video
 
 Do not declare this path healthy after only a config import. The required bar is train, save, load, sample, output file validation, and at least a small action-shape check.
+
+## Yonsei two-task Phase-1 experiment lineage (2026-10-17)
+
+The original Edge forward-dynamics recipe includes a semantic caption:
+`first image + camera trajectory + caption -> video`. Inverse dynamics uses
+`full video -> camera` with an empty caption. Dropping policy and image2video
+alone did not remove text from forward dynamics.
+
+The following caption-conditioned two-task experiments were stopped at the
+user's request on 2026-10-17. They did not finish their 200k targets. Their
+checkpoints and W&B histories remain preserved; neither initializes the new
+no-text experiments.
+
+| Retired experiment | Forward conditioning | Last observed optimizer step | Last committed checkpoint | W&B |
+| --- | --- | ---: | ---: | --- |
+| `edge_phase1_T97_20fps_2gpu_bs16_camera_wearer_lora_exclude5_fd_invdyn_200k_yonsei_20261015` | First image + camera + caption | 53,883 | 53,751 | [Training history](https://wandb.ai/scene_motion/cosmos3_camera/runs/f10r4w4p) |
+| `edge_phase1_T97_20fps_2gpu_bs16_camera_wearer_lora_exclude5_fd_invdyn_p17_200k_yonsei_20261016` | First 17 RGB frames + camera + caption | 11,327 | 11,024 | [Training history](https://wandb.ai/scene_motion/cosmos3_camera/runs/3o4w7r2n) |
+
+All run directories above and below are under
+`/scratch2/whwjdqls99/cosmos/cosmos_motion_ft_runs/cosmos3_camera/camera_world_edge`.
+The Oct15 run expired on its previous allocation, was briefly relaunched on
+Oct17, and was stopped during startup before new optimizer progress was
+observed. The old prefix17 supervisor has a `STOP` marker to prevent an
+unintended restart.
+
+### Fresh no-caption replacements
+
+Use `native_phase_training/train_phase1_edge_two_tasks_no_text.sh` with
+`COSMOS_SITE=yonsei` or `grasp`, and `NATIVEP1_PREFIX_LENGTHS=1` or `17`.
+The launcher sets `NATIVEP1_DISABLE_CAPTIONS=1`. The saved dataset configuration
+records `caption_conditioning=false`; `caption_control.py` applies that policy
+before prompt formatting/tokenization. Native structural/task metadata tokens
+are retained. The indexed windows and caption-based eligibility checks are
+unchanged, so this does not silently expand the dataset.
+
+| New experiment | Forward conditioning | Allocation at launch |
+| --- | --- | --- |
+| `edge_phase1_T97_20fps_2gpu_bs16_lora_exclude5_fd_invdyn_no_text_p1_200k_yonsei_20261017` | First image + camera, no caption | `2449145`, 2x PRO6000, node55 |
+| `edge_phase1_T97_20fps_2gpu_bs16_lora_exclude5_fd_invdyn_no_text_p17_200k_yonsei_20261017` | First 17 RGB frames + camera, no caption | `2449146`, 2x PRO6000, node55 |
+
+Both start from the pretrained Edge base with fresh optimizer/scheduler state,
+not from the retired caption-conditioned checkpoints. Both retain full-video
+inverse dynamics, T97/20fps/256, global batch32 (2x16, accumulation1), exclude5,
+forward:inverse ratio40:25, global LoRA16/alpha32, EMA, action loss weight10,
+and the same 200k LR recipe. Training checkpoints remain every5k plus rolling
+15-minute saves. An inherited launcher message about retained captions describes
+the legacy default; the no-text wrapper and saved `caption_conditioning=false`
+are authoritative for these replacements.
+
+### Asynchronous monitoring
+
+Operational scripts and launch logs:
+`/scratch2/whwjdqls99/cosmos/operations/phase1_no_text_20261017`.
+The separate A6000 allocation is `2490842` on node51. The monitor serializes GPU
+work across both experiments and uses empty inference prompts for both tasks.
+Its regular cadence is every5k checkpoint, over the existing fixed71 test
+windows (one window per held-out recording), with five qualitative examples.
+These are test-set monitoring results, not validation-split losses or an
+all-windows test evaluation.
+
+Results are written below each run's `online_eval/iter_XXXXXXXXX/`, including
+`metrics.json`, `viz/manifest.json`, side-by-side videos and camera plots.
+The monitor reports PSNR/SSIM/LPIPS on each generated suffix, a shared RGB-frame
+17-96 suffix for cross-prefix comparison, and camera metrics using the existing
+alignment conventions. GT self-reference metrics are included. Videos mark
+observed frames green and generated frames red. Separate W&B evaluation runs
+link to their training histories; this avoids concurrent writers to one run.
+`latest_results.json` in the operations directory summarizes completed results.
+The monitor and training workers are limited by their Slurm allocation lifetime;
+no automatic allocation handoff is configured for these new experiments.

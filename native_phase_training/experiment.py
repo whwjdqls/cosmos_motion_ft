@@ -29,6 +29,7 @@ from native_phase_training.latent_nymeria_dataset import (  # noqa: E402
     get_nymeria_camera_latent_sft_dataset,
 )
 from native_phase_training.checkpoint_eval_callback import NativeCheckpointEvalSubmitter  # noqa: E402
+from native_phase_training.caption_control import get_dataset_with_caption_policy  # noqa: E402
 
 _MODEL_FAMILY = os.environ.get("NATIVEP1_MODEL_FAMILY", "nano").strip().lower()
 if _MODEL_FAMILY == "edge":
@@ -68,6 +69,9 @@ _LATENT_ROOT = os.environ.get(
     str(WEKA_ROOT / "nymeriaplus_kimodo_proportional" / f"joint_latents_T{_NUM_FRAMES}"),
 )
 _QUALITY_FILTER_PATH = os.environ.get("NYMERIA_QUALITY_FILTER", "").strip()
+_CAPTION_CONDITIONING = os.environ.get("NATIVEP1_DISABLE_CAPTIONS", "0").lower() not in {
+    "1", "true", "yes",
+}
 _REPLACE_STANDALONE_C = os.environ.get("NYMERIA_REPLACE_STANDALONE_C", "0").lower() in {
     "1",
     "true",
@@ -254,7 +258,8 @@ if _SHIFT_OVERRIDE is not None:
 
 
 def _task_stream(task: str):
-    dataset = L(get_nymeria_camera_latent_sft_dataset)(
+    dataset = L(get_dataset_with_caption_policy)(
+        caption_conditioning=_CAPTION_CONDITIONING,
         num_frames=_NUM_FRAMES,
         fps=20.0,
         mode=task,

@@ -36,11 +36,12 @@ from bs_dataset import (BonesSeedUniegoDataset, collate, DATA_ROOT, NATURAL_CSV,
 from bs_model import MotionExpertInContext
 from bs_text_cache import LLM2VecCache, DEFAULT_CACHE
 from bs_viz import load_skeleton, render_pair
+from motion_expert_joint_attention.render_motion import head_rotation_from_features
 from decode_uniego_torch import decode_joints
 from uniego_layout import FEAT_DIM, canonicalize_frame0
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RUN_ROOT = "/mnt/shared/jungbin_cho/cosmos_motion_ft_runs"
+RUN_ROOT = os.environ.get("BS_RUN_ROOT", "/mnt/shared/jungbin_cho/cosmos_motion_ft_runs")
 
 CONTINUATION_COMPAT_FIELDS = (
     "batch_size",
@@ -183,7 +184,8 @@ def load_viz_items(split_path, cache, n, dev, viz_frames):
             gt = canonicalize_frame0(feats[:length])                  # unnormalized uniego features
             gt_joints = decode_joints(torch.from_numpy(gt).unsqueeze(0))[0].numpy()  # [L,30,3]
             items.append({"caption": cap, "nj": torch.from_numpy(nj).to(dev),
-                          "gt_joints": gt_joints, "length": length})
+                          "gt_joints": gt_joints, "gt_features": gt,
+                          "motion_path": p, "length": length})
             if len(items) >= n:
                 break
     return items
@@ -636,7 +638,9 @@ def main(argv=None, parser_defaults=None):
     @torch.no_grad()
     def do_viz(step):
         model.eval()
-        vdir = os.path.join(out, f"viz_step{step:06d}"); os.makedirs(vdir, exist_ok=True)
+        vdir = os.path.join(out, "visualizations", f"step_{step:09d}")
+        os.makedirs(vdir, exist_ok=True)
+        records = []
         null_H = cache.null(1)                               # [1,1,4096]
         for i, it in enumerate(viz_items):
             H = cache.batch([it["caption"]])                 # [1,1,4096]
@@ -645,10 +649,33 @@ def main(argv=None, parser_defaults=None):
                          motion_dim=FEAT_DIM, steps=args.viz_steps, guidance=args.viz_guidance,
                          H_null=null_H, null_pad_mask=None, device=dev,
                          dtype=torch.float32, generator=g)
-            gen_joints = decode_joints((x0[0] * std + mean).unsqueeze(0))[0].cpu().numpy()
+            gen_features = x0[0] * std + mean
+            gen_joints = decode_joints(gen_features.unsqueeze(0))[0].cpu().numpy()
+            gen_features_np = gen_features.cpu().numpy()
+            stem = f"text2motion_{i:02d}_bones"
+            arrays_path = os.path.join(vdir, stem + ".npz")
+            video_path = os.path.join(vdir, stem + ".mp4")
+            np.savez_compressed(
+                arrays_path, generated_normalized=x0[0].cpu().numpy(),
+                generated_features=gen_features_np, generated_joints=gen_joints,
+                gt_features=it["gt_features"], gt_joints=it["gt_joints"],
+                neutral_joints=it["nj"].cpu().numpy(),
+            )
             render_pair(it["gt_joints"], gen_joints, parents,
-                        os.path.join(vdir, f"{i}_{it['caption'][:30].replace(' ', '_')}.mp4"),
-                        caption=it["caption"][:60], skip_joints=skip, fps=20)
+                        video_path, caption=f"BONES-SEED | Prompt: {it['caption']}",
+                        skip_joints=skip, fps=20,
+                        gen_head_rotation0=head_rotation_from_features(gen_features_np),
+                        gt_head_rotation0=head_rotation_from_features(it["gt_features"]))
+            records.append({
+                "slot": i, "source": "bones", "task": "text2motion",
+                "prompt": it["caption"], "motion_path": it["motion_path"],
+                "valid_frames": it["length"], "sampling_seed": 0,
+                "sampling_steps": args.viz_steps, "guidance": args.viz_guidance,
+                "arrays_npz": arrays_path, "video": video_path,
+            })
+        with open(os.path.join(vdir, "manifest.json"), "w") as handle:
+            json.dump({"step": step, "renderer": "shared_phase2", "samples": records},
+                      handle, indent=2)
         model.train()
         print(f"[viz] step {step} -> {vdir} ({len(viz_items)} clips: GT|gen)", flush=True)
 

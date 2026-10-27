@@ -34,14 +34,14 @@ from uniego_layout import FEAT_DIM, canonicalize_frame0
 
 log = logging.getLogger(__name__)
 
-# ---- defaults for THIS box (A100; /weka absent) ----
-DATA_ROOT = "/mnt/shared/jungbin_cho/seed/soma_proportional_uniegomotion_20fps"
+# Environment overrides keep the historical defaults usable on the original server.
+DATA_ROOT = os.environ.get("BS_DATA_ROOT", "/mnt/shared/jungbin_cho/seed/soma_proportional_uniegomotion_20fps")
 MEAN_PATH = os.path.join(DATA_ROOT, "Mean_uniego.npy")
 STD_PATH = os.path.join(DATA_ROOT, "Std_uniego.npy")
-NATURAL_CSV = "/home/jungbin_cho/seed/metadata/seed_metadata_v004.csv"
-TEMPORAL_JSONL = "/home/jungbin_cho/seed/metadata/seed_metadata_v002_temporal_labels.jsonl"
-MULTI_JSONL = "/home/jungbin_cho/seed/multi_timeline.jsonl"
-SPLIT_DIR = "/home/jungbin_cho/Kimodo-Motion-Gen-Benchmark/splits"
+NATURAL_CSV = os.environ.get("BS_NATURAL_CSV", "/home/jungbin_cho/seed/metadata/seed_metadata_v004.csv")
+TEMPORAL_JSONL = os.environ.get("BS_TEMPORAL_JSONL", "/home/jungbin_cho/seed/metadata/seed_metadata_v002_temporal_labels.jsonl")
+MULTI_JSONL = os.environ.get("BS_MULTI_JSONL", "/home/jungbin_cho/seed/multi_timeline.jsonl")
+SPLIT_DIR = os.environ.get("BS_SPLIT_DIR", "/home/jungbin_cho/Kimodo-Motion-Gen-Benchmark/splits")
 
 
 class BonesSeedUniegoDataset(SOMABonesSeedDataset):

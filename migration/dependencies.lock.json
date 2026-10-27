@@ -1,0 +1,49 @@
+{
+  "format": 1,
+  "captured": "2026-10-27",
+  "sources": {
+    "cosmos-framework-edge": {
+      "url": "https://github.com/NVIDIA/cosmos-framework.git",
+      "commit": "d4599e2e43fbd06168e9884205b9b66c3902d8f6",
+      "role": "Edge Phase1/2/3 and EgoControl; clean Yonsei checkout"
+    },
+    "cosmos-framework": {
+      "url": "https://github.com/NVIDIA/cosmos-framework.git",
+      "commit": "82f82293ffd8983651cd51d8191287da3973f534",
+      "role": "Legacy Nano reference; separate from Edge"
+    },
+    "kimodo_open": {
+      "url": "https://github.com/whwjdqls/kimodo_open.git",
+      "commit": "5e3daacf09887a6c8581a8f496629b008b6ba4d5",
+      "role": "SOMA skeleton, motion data and evaluation utilities"
+    },
+    "UniEgoMotion": {
+      "url": "https://github.com/chaitanya100100/UniEgoMotion.git",
+      "commit": "580c92c6d70a91672c4106bab30ca82cdd80f379",
+      "role": "Official baseline with Nymeria-SOMA adaptation",
+      "patch": "migration/patches/UniEgoMotion.patch",
+      "patch_sha256": "29a7f67d3c70b23c0c62c5547099517994202a5d68e828d85a5b9d6deba38ecb",
+      "patched_files": {
+        "model/uniegomotion.py": "6ea16df216b8c206c0c17f6e749a7b1ee8f5502fd172ecee2edc3c9522ea3327",
+        "run/train_uem.py": "74f54517902ebc294052950ec82b69596be79ad5e149e8dae8a45a36d8c6e31e",
+        "config/nymeria_soma.yaml": "7799aac9c6371a45811420b460dfaef8cee2bee94dd766badd9c525d6051f5a4",
+        "dataset/nymeria_soma_dataset.py": "365ab06d94226b6003c4102a4bb3630b450c0af22db26d9859646652778b718b"
+      }
+    },
+    "egoallo": {
+      "url": "https://github.com/brentyi/egoallo.git",
+      "commit": "0c20ae8c8d48be4ff682803ea523bcb00a6a708d",
+      "role": "Official baseline with Nymeria-SOMA adaptation",
+      "patch": "migration/patches/egoallo.patch",
+      "patch_sha256": "65eca96d055ea04cec13bdbde87f21a9d41c9ba4bc4a5b76cf960368fc977cad",
+      "patched_files": {
+        "1_train_motion_prior.py": "f6697b9f8a0a5fbd1404fba26762a6e05f3bbe6d1c4afe364f61ad7806432b32",
+        "src/egoallo/data/dataclass.py": "2d87596645443bf8ff837572a0b6fe3cd23444d713affb80e541b7b0d6911efd",
+        "src/egoallo/network.py": "8396081ea933ccebaa2411e4ed139ff998acedeba75e703952a466aefe5e69c8",
+        "src/egoallo/training_loss.py": "7f536cd74753de1c6f22dce8e63033eb4b36015a765c1b332fe89dd50ee166a4",
+        "src/egoallo/noise_schedule.py": "cdac4ef342068240d030052e27de81d9e1fc06c5afd913513511c12c2c257c47",
+        "src/egoallo/data/nymeria_soma.py": "1e8afa1c481ea49058222ec890fb62c99e706385023fc2d718502369db3de089"
+      }
+    }
+  }
+}

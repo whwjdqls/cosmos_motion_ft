@@ -22,7 +22,10 @@ import json
 import logging
 import math
 import os
+import random
 import time
+
+import numpy as np
 from pathlib import Path
 
 os.environ.setdefault("OMP_NUM_THREADS", "1")
@@ -126,6 +129,9 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--out-dir", required=True)
     p.add_argument("--stats-path", required=True)
+    p.add_argument("--dataset", choices=("bones", "nymeria"), default="bones")
+    p.add_argument("--nymeria-data-dir", default=None,
+                   help="immutable prepare_nymeria.py output; only for --dataset nymeria")
     p.add_argument("--train-split", default=f"{SPLIT_DIR}/train_split_paths.txt")
     p.add_argument("--text-emb-cache", default=DEFAULT_CACHE)
     p.add_argument("--eval-text-cache", default=None,
@@ -135,6 +141,11 @@ def main():
     p.add_argument("--max-steps", type=int, default=200_000)
     p.add_argument("--warmup", type=int, default=2_000)
     p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--text-lr-multiplier", type=float, default=1.0,
+                   help="LR multiplier for a trainable C45 text encoder; LLM2Vec stays cached")
+    p.add_argument("--nymeria-selection-metric",
+                   choices=("plain_avg_tie_R03", "R32_R03_mean"),
+                   default="plain_avg_tie_R03")
     p.add_argument("--weight-decay", type=float, default=1e-2)
     p.add_argument("--lambda-kl", type=float, default=1e-4)
     p.add_argument("--lambda-kl-motion", type=float, default=None,
@@ -206,6 +217,22 @@ def main():
                    help="initialize encoder/decoder WEIGHTS from a ckpt but start at step 0 "
                         "(fresh optimizer/schedule) — for two-stage fine-tuning")
     args = p.parse_args()
+    if args.text_lr_multiplier <= 0:
+        p.error("--text-lr-multiplier must be positive")
+    if args.resume_from and args.init_from:
+        p.error("--resume-from and --init-from are mutually exclusive")
+    for checkpoint in (args.resume_from, args.init_from):
+        if checkpoint and not Path(checkpoint).is_file():
+            p.error(f"checkpoint does not exist: {checkpoint}")
+    if args.dataset == "nymeria":
+        from nymeria_data import require_compute
+        require_compute()
+        if not args.nymeria_data_dir:
+            p.error("--dataset nymeria requires --nymeria-data-dir")
+        if args.ema_decay or args.eval_every <= 0 or args.eval_cases:
+            p.error("Nymeria C45 requires EMA off and full validation enabled")
+        if (Path(args.out_dir) / "last.pt").exists() and not args.resume_from:
+            p.error("existing Nymeria run: use --resume-from or a fresh --out-dir")
     if args.lambda_kl_motion is None:
         args.lambda_kl_motion = args.lambda_kl
     if args.lambda_kl_text is None:
@@ -214,6 +241,12 @@ def main():
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     torch.manual_seed(args.seed)
+    nymeria_contract = None
+    if args.dataset == "nymeria":
+        from nymeria_data import training_contract
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        nymeria_contract = training_contract(args)
 
     # ---- CPU motion_rep (with stats) for the dataset workers + inline eval
     from kimodo.skeleton import SOMASkeleton30
@@ -222,10 +255,6 @@ def main():
     nfeats = cpu_motion_rep.motion_rep_dim
     log.info("TMRMotionRep dim = %d (SOMASkeleton30)", nfeats)
 
-    json.dump({**vars(args), "nfeats": nfeats, "shape_aware": True,
-               "arch": "TMR dual-encoder VAE + shape token (enc) + shape memory token (dec)"},
-              open(out_dir / "config.json", "w"), indent=2)
-
     # ---- dataset / loader (all 3 sources, +-0.3 s boundary jitter)
     desc_cols = (("content_natural_desc_4",) if args.natural_desc4_only
                  else ("content_natural_desc_1", "content_natural_desc_2",
@@ -233,35 +262,52 @@ def main():
     # round-robin interleave: duplicating "natural" in SOURCES raises its per-batch share
     # (pools are keyed by name, so the index cache is unaffected by the duplication).
     sources = ("natural",) * max(1, args.natural_weight) + ("single", "multi")
-    dataset = ShapeTMRDataset(
-        args.train_split, motion_rep=cpu_motion_rep,
-        sources=sources,
-        cache_index=str(out_dir / "st_train_index.json"),
-        fps=int(args.data_fps), rep_fps=args.fps,
-        time_jitter_sec=args.aug_time_jitter_sec, train=True, seed=args.seed,
-        natural_desc_cols=desc_cols,
-    )
-    log.info("train dataset: virtual_len=%d pools=%s", len(dataset),
-             {s: len(dataset._pools[s]) for s in dataset.SOURCES})
+    if args.dataset == "nymeria":
+        from nymeria_data import NymeriaShapeTMRDataset
+        if nfeats != 186:
+            raise ValueError("Nymeria C45 requires the 186-D TMR representation")
+        dataset = NymeriaShapeTMRDataset(
+            Path(args.nymeria_data_dir) / "train.jsonl", cpu_motion_rep,
+            train=True, time_jitter_sec=args.aug_time_jitter_sec,
+            src_fps=args.data_fps, rep_fps=args.fps)
+        log.info("Nymeria train: %d native caption windows", len(dataset))
+    else:
+        dataset = ShapeTMRDataset(
+            args.train_split, motion_rep=cpu_motion_rep,
+            sources=sources,
+            cache_index=str(out_dir / "st_train_index.json"),
+            fps=int(args.data_fps), rep_fps=args.fps,
+            time_jitter_sec=args.aug_time_jitter_sec, train=True, seed=args.seed,
+            natural_desc_cols=desc_cols,
+        )
+        log.info("train dataset: virtual_len=%d pools=%s", len(dataset),
+                 {s: len(dataset._pools[s]) for s in dataset.SOURCES})
+    if len(dataset) < args.batch:
+        raise ValueError("training split is smaller than one drop_last batch")
     loader = DataLoader(dataset, batch_size=args.batch, shuffle=True,
                         num_workers=args.num_workers, drop_last=True, pin_memory=True,
                         collate_fn=collate_st, persistent_workers=args.num_workers > 0)
 
     # ---- model + frozen text cache
     cache = LLM2VecCache(args.text_emb_cache, device=args.device)
+    if args.dataset == "nymeria":
+        missing = sorted({row["text"] for row in dataset.rows if row["text"] not in cache})
+        if cache.dim != 4096 or missing:
+            raise ValueError(f"incompatible Nymeria LLM2Vec cache: dim={cache.dim}, missing={missing[:3]}")
     motion_encoder, text_encoder, decoder = build_shape_tmr(
         nfeats=nfeats, llm_dim=cache.dim, latent_dim=args.latent_dim, ff_size=args.ff_size,
         enc_layers=args.enc_layers, dec_layers=args.dec_layers, num_heads=args.num_heads,
         dropout=args.dropout, device=args.device,
     )
-    if args.pretrained_text_encoder:
+    fresh_weights = not (args.resume_from or args.init_from)
+    if args.pretrained_text_encoder and fresh_weights:
         from kimodo.model.loading import load_checkpoint_state_dict
         sd = load_checkpoint_state_dict(args.pretrained_text_encoder)
         text_encoder.load_state_dict(sd)
         log.info("loaded pretrained text encoder from %s", args.pretrained_text_encoder)
-    if args.pretrained_motion_encoder:
+    if args.pretrained_motion_encoder and fresh_weights:
         _load_matching_state_dict(motion_encoder, args.pretrained_motion_encoder, "pretrained motion encoder")
-    if args.pretrained_motion_decoder:
+    if args.pretrained_motion_decoder and fresh_weights:
         _load_matching_state_dict(decoder, args.pretrained_motion_decoder, "pretrained motion decoder")
     if args.freeze_text_encoder:
         for p_text in text_encoder.parameters():
@@ -278,7 +324,16 @@ def main():
         text_encoder.train()
     params = [p for m in (motion_encoder, text_encoder, decoder) for p in m.parameters()
               if p.requires_grad]
-    opt = torch.optim.AdamW(params, lr=args.lr, weight_decay=args.weight_decay)
+    if not args.freeze_text_encoder and args.text_lr_multiplier != 1.0:
+        motion_params = [p for m in (motion_encoder, decoder) for p in m.parameters() if p.requires_grad]
+        text_params = [p for p in text_encoder.parameters() if p.requires_grad]
+        opt = torch.optim.AdamW([
+            {"params": motion_params, "lr_scale": 1.0},
+            {"params": text_params, "lr_scale": args.text_lr_multiplier},
+        ], lr=args.lr, weight_decay=args.weight_decay)
+    else:
+        # Preserve legacy single-group optimizer checkpoints by default.
+        opt = torch.optim.AdamW(params, lr=args.lr, weight_decay=args.weight_decay)
 
     from torch.utils.tensorboard import SummaryWriter
     tb = SummaryWriter(log_dir=str(out_dir / "tb"))
@@ -288,46 +343,73 @@ def main():
     # remains the full six-group report.
     evaluator = None
     if args.eval_every > 0:
-        from st_inline_eval import TestsuiteEvaluator, BENCH_TEXT_CACHE
-        eval_cache = LLM2VecCache(args.eval_text_cache or BENCH_TEXT_CACHE, device=args.device)
-        evaluator = TestsuiteEvaluator(
-            cpu_motion_rep, eval_cache,
-            groups=(("content", "overview"),),
-            max_cases_per_group=args.eval_cases, src_fps=args.data_fps, rep_fps=args.fps,
-            device=args.device, seed=args.seed)
+        if args.dataset == "nymeria":
+            from nymeria_data import NymeriaShapeTMRDataset
+            from nymeria_eval import NymeriaEvaluator
+            eval_cache = LLM2VecCache(args.eval_text_cache or args.text_emb_cache, device=args.device)
+            validation = NymeriaShapeTMRDataset(
+                Path(args.nymeria_data_dir) / "validation.jsonl", cpu_motion_rep,
+                train=False, src_fps=args.data_fps, rep_fps=args.fps)
+            evaluator = NymeriaEvaluator(validation, eval_cache, device=args.device)
+        else:
+            from st_inline_eval import TestsuiteEvaluator, BENCH_TEXT_CACHE
+            eval_cache = LLM2VecCache(args.eval_text_cache or BENCH_TEXT_CACHE, device=args.device)
+            evaluator = TestsuiteEvaluator(
+                cpu_motion_rep, eval_cache,
+                groups=(("content", "overview"),),
+                max_cases_per_group=args.eval_cases, src_fps=args.data_fps, rep_fps=args.fps,
+                device=args.device, seed=args.seed)
 
-    # ---- resume
+    # Pretrained initialization is fresh-only. Never overwrite restored motion weights.
     start_step = 0
-    if args.init_from and Path(args.init_from).is_file():
-        ck = torch.load(args.init_from, map_location=args.device, weights_only=False)
+    resume_checkpoint = None
+    best_validation_score = -math.inf
+    best_validation_step = None
+    if args.init_from:
+        ck = torch.load(args.init_from, map_location="cpu", weights_only=False)
         motion_encoder.load_state_dict(ck["motion_encoder"])
         text_encoder.load_state_dict(ck["text_encoder"])
         decoder.load_state_dict(ck["motion_decoder"])
-        log.info("initialized WEIGHTS from %s (step %s); starting at step 0", args.init_from, ck.get("step"))
-    if args.resume_from and Path(args.resume_from).is_file():
-        ck = torch.load(args.resume_from, map_location=args.device, weights_only=False)
+        log.info("initialized weights from %s; fresh optimizer/schedule", args.init_from)
+    if args.resume_from:
+        ck = torch.load(args.resume_from, map_location="cpu", weights_only=False)
+        if nymeria_contract is not None and ck.get("nymeria_contract") != nymeria_contract:
+            raise ValueError("Nymeria resume contract changed: data, stats, text cache, or recipe")
+        if ck.get("optimizer") is None:
+            raise ValueError("checkpoint has no resumable optimizer")
         motion_encoder.load_state_dict(ck["motion_encoder"])
         text_encoder.load_state_dict(ck["text_encoder"])
         decoder.load_state_dict(ck["motion_decoder"])
-        if "optimizer" in ck:
-            opt.load_state_dict(ck["optimizer"])
+        opt.load_state_dict(ck["optimizer"])
         start_step = int(ck.get("step", 0))
-        log.info("resumed from %s at step %d", args.resume_from, start_step)
-    if args.pretrained_text_encoder and (args.init_from or args.resume_from):
-        from kimodo.model.loading import load_checkpoint_state_dict
-        sd = load_checkpoint_state_dict(args.pretrained_text_encoder)
-        text_encoder.load_state_dict(sd)
-        log.info("reloaded pretrained text encoder after checkpoint init/resume")
-    if args.pretrained_motion_encoder and (args.init_from or args.resume_from):
-        _load_matching_state_dict(motion_encoder, args.pretrained_motion_encoder,
-                                  "reloaded pretrained motion encoder after checkpoint init/resume")
-    if args.pretrained_motion_decoder and (args.init_from or args.resume_from):
-        _load_matching_state_dict(decoder, args.pretrained_motion_decoder,
-                                  "reloaded pretrained motion decoder after checkpoint init/resume")
+        best_validation_score = ck.get("best_validation_score", -math.inf)
+        best_validation_step = ck.get("best_validation_step")
+        resume_checkpoint = ck
+        log.info("resumed %s at step %d; pretrained overrides disabled", args.resume_from, start_step)
 
+    with (out_dir / "config.json").open("w") as handle:
+        json.dump({**vars(args), "nfeats": nfeats, "shape_aware": True,
+                   "arch": "TMR dual-encoder VAE + shape token (enc) + shape memory token (dec)",
+                   "nymeria_contract": nymeria_contract}, handle, indent=2)
+    if start_step >= args.max_steps:
+        log.info("already complete at step %d", start_step)
+        tb.close()
+        return
     ema = _EMA([motion_encoder, text_encoder, decoder], args.ema_decay) if args.ema_decay > 0 else None
-
     queue_zm = queue_zt = queue_sent = None
+    if args.dataset == "nymeria" and resume_checkpoint is not None:
+        saved_queue = resume_checkpoint.get("queue_state")
+        if saved_queue:
+            queue_zm, queue_zt, queue_sent = [
+                value.to(args.device) if value is not None else None for value in saved_queue]
+        rng = resume_checkpoint.get("rng_state")
+        if rng:
+            torch.set_rng_state(rng["torch"])
+            random.setstate(rng["python"])
+            np.random.set_state(rng["numpy"])
+            if rng["cuda"] is not None and torch.cuda.is_available():
+                torch.cuda.set_rng_state_all(rng["cuda"])
+    del resume_checkpoint
     step = start_step
     t0 = time.time()
     for _epoch in range(10_000):                       # virtual; capped by max_steps
@@ -397,7 +479,7 @@ def main():
 
             lr = _cosine_lr(step, args.warmup, args.max_steps, args.lr)
             for g in opt.param_groups:
-                g["lr"] = lr
+                g["lr"] = lr * g.get("lr_scale", 1.0)
 
             opt.zero_grad()
             loss.backward()
@@ -406,6 +488,7 @@ def main():
             if ema is not None:
                 ema.update()
             step += 1
+            is_best = False
 
             if step % args.log_every == 0:
                 with torch.no_grad():
@@ -421,6 +504,8 @@ def main():
                     tb.add_scalar(k, v.item(), step)
                 tb.add_scalar("train/batch_R@1", r1, step)
                 tb.add_scalar("train/lr", lr, step)
+                tb.add_scalar("train/text_lr",
+                              0.0 if args.freeze_text_encoder else lr * args.text_lr_multiplier, step)
                 tb.add_scalar("train/steps_per_sec", rate, step)
 
             if evaluator is not None and step % args.eval_every == 0:
@@ -437,7 +522,19 @@ def main():
                     for k, v in ms.items():
                         tb.add_scalar(f"eval_{src}/{k}", float(v), step)
 
-            if step % args.ckpt_every == 0:
+            if args.dataset == "nymeria" and step % args.eval_every == 0:
+                from nymeria_data import atomic_json
+                metrics = em["nymeria/validation"]
+                evaluator.write_report(out_dir / "validation" / f"step_{step:08d}.json",
+                                       step=step, metrics=metrics, contract=nymeria_contract)
+                score = metrics.get(args.nymeria_selection_metric, -math.inf)
+                if math.isfinite(score) and score > best_validation_score:
+                    best_validation_score, best_validation_step = score, step
+                    is_best = True
+                with (out_dir / "validation_history.jsonl").open("a") as handle:
+                    handle.write(json.dumps({"step": step, "GT": metrics}, allow_nan=False) + "\n")
+
+            if step % args.ckpt_every == 0 or is_best:
                 if ema is not None:
                     ema.swap_in()                        # persist the EMA weights (what we eval)
                 ckpt = {"step": step,
@@ -451,13 +548,35 @@ def main():
                     ckpt["optimizer"] = None             # EMA ckpts are eval snapshots, not resume points
                 else:
                     ckpt["optimizer"] = opt.state_dict()
-                torch.save(ckpt, out_dir / f"step_{step:08d}.pt")
-                torch.save(ckpt, out_dir / "last.pt")
+                if args.dataset == "nymeria":
+                    from nymeria_data import atomic_torch_save, atomic_json
+                    ckpt.update(
+                        nymeria_contract=nymeria_contract,
+                        best_validation_score=best_validation_score,
+                        best_validation_step=best_validation_step,
+                        queue_state=[value.detach().cpu() if value is not None else None
+                                     for value in (queue_zm, queue_zt, queue_sent)],
+                        rng_state={"torch": torch.get_rng_state(),
+                                   "python": random.getstate(), "numpy": np.random.get_state(),
+                                   "cuda": torch.cuda.get_rng_state_all()
+                                   if torch.cuda.is_available() else None},
+                    )
+                    atomic_torch_save(ckpt, out_dir / f"step_{step:08d}.pt")
+                    atomic_torch_save(ckpt, out_dir / "last.pt")
+                    if is_best:
+                        atomic_torch_save(ckpt, out_dir / "best.pt")
+                        atomic_json(out_dir / "best.json", {
+                            "step": step, "metric": "validation/" + args.nymeria_selection_metric,
+                            "score": best_validation_score, "test_used_for_selection": False})
+                else:
+                    torch.save(ckpt, out_dir / f"step_{step:08d}.pt")
+                    torch.save(ckpt, out_dir / "last.pt")
                 log.info("ckpt step %d%s", step, " (EMA weights)" if ema else "")
             if step >= args.max_steps:
                 break
         if step >= args.max_steps:
             break
+    tb.close()
     log.info("done after %d steps", step)
 
 

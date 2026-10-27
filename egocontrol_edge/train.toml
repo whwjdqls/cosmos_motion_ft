@@ -1,0 +1,35 @@
+[job]
+task = "vfm"
+experiment = "egocontrol_edge_m2v"
+project = "cosmos3_camera"
+group = "egocontrol_edge"
+name = "egocontrol_edge_m2v_p1ema200k_phase1recipe_200k"
+wandb_mode = "online"
+
+[model]
+precision = "bfloat16"
+
+[model.parallelism]
+data_parallel_shard_degree = 1
+data_parallel_replicate_degree = 2
+context_parallel_shard_degree = 1
+cfg_parallel_shard_degree = 1
+
+[model.activation_checkpointing]
+mode = "full"
+save_ops_regex = ["fmha"]
+
+[model.tokenizer]
+vae_path = "${oc.env:WAN_VAE_PATH}"
+
+[scheduler]
+cycle_lengths = [200000]
+
+[trainer]
+max_iter = 200000
+logging_iter = 50
+grad_accum_iter = 1
+
+[checkpoint]
+load_path = "${oc.env:EGOCONTROL_INITIAL_CHECKPOINT}"
+save_iter = 5000

@@ -171,3 +171,8 @@ motion_expert/pairs_*.jsonl
 slurm-*.out
 *.mp4
 *.bak
+
+# Recreated from migration/dependencies.lock.json; local paths/auth stay private.
+/.deps/
+/.site.local.sh
+/migration/environment/*local*

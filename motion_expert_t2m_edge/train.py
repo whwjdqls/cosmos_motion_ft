@@ -84,15 +84,37 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup", type=int, default=1_000)
     parser.add_argument("--min-lr-ratio", type=float, default=0.1)
     parser.add_argument("--weight-decay", type=float, default=0.0)
+    parser.add_argument("--adam-beta2", type=float, default=0.95)
+    parser.add_argument("--loss-reduction", choices=("pooled", "per_task"), default="pooled")
+    parser.add_argument("--loss-guard", choices=("strict", "nano"), default="strict")
+    parser.add_argument("--allow-tf32", type=int, choices=(0, 1), default=1)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--cfg-dropout", type=float, default=0.1)
     parser.add_argument("--w-feat", type=float, default=1.0)
+    parser.add_argument(
+        "--w-global-rot", type=float, default=0.0,
+        help="additional per-coordinate weight for normalized rot6d[270:276], using the full feature-MSE denominator",
+    )
+    parser.add_argument(
+        "--w-global-trans", type=float, default=0.0,
+        help="additional per-coordinate weight for normalized translation[276:279], using the full feature-MSE denominator",
+    )
     parser.add_argument("--w-joint", type=float, default=10.0)
+    parser.add_argument(
+        "--joint-loss-mode",
+        choices=("centered", "absolute"),
+        default="centered",
+        help="decoded-joint MSE: remove each frame's centroid, or use absolute decoded coordinates",
+    )
     parser.add_argument("--w-smooth", type=float, default=50.0)
     parser.add_argument("--w-contact", type=float, default=0.0)
     parser.add_argument("--w-foot-vel", type=float, default=0.0)
     parser.add_argument("--w-foot-height", type=float, default=0.0)
     parser.add_argument("--save-every", type=int, default=5_000)
+    parser.add_argument(
+        "--checkpoint-interval-only", action="store_true",
+        help="write only regular positive save-every multiples; no rolling/signal/off-interval saves",
+    )
     parser.add_argument(
         "--recovery-save-every",
         type=int,
@@ -144,6 +166,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--viz-every", type=int, default=5_000)
     parser.add_argument("--viz-samples-per-task", type=int, default=0)
+    parser.add_argument(
+        "--viz-bones-samples", type=int, default=2,
+        help="additional fixed BONES validation T2M examples for mixed runs with Nymeria visualization; 0 disables",
+    )
+    parser.add_argument(
+        "--viz-source", choices=("nymeria", "bones"), default="nymeria",
+        help="fixed held-out suite: Nymeria test T2M/TI2M or BONES validation T2M only",
+    )
     parser.add_argument("--viz-steps", type=int, default=35)
     parser.add_argument("--viz-guidance", type=float, default=2.0)
     parser.add_argument("--viz-seed", type=int, default=20260901)
@@ -321,10 +351,22 @@ def main() -> None:
         raise ValueError("reasoner-image-size must be positive")
     if args.log_every <= 0 or args.save_every <= 0:
         raise ValueError("log-every and save-every must be positive")
+    for key in ("w_global_rot", "w_global_trans"):
+        value = getattr(args, key)
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"{key} must be finite and non-negative")
+    if not 0.0 <= args.adam_beta2 < 1.0:
+        raise ValueError("adam-beta2 must be in [0,1)")
+    if not 0.0 <= args.min_lr_ratio <= 1.0:
+        raise ValueError("min-lr-ratio must be in [0,1]")
     if args.recovery_save_every < 0:
         raise ValueError("recovery-save-every must be non-negative")
+    if args.checkpoint_interval_only and args.recovery_save_every:
+        raise ValueError("checkpoint-interval-only requires recovery-save-every=0")
     if args.viz_samples_per_task < 0:
         raise ValueError("viz-samples-per-task must be non-negative")
+    if args.viz_bones_samples < 0:
+        raise ValueError("viz-bones-samples must be non-negative")
     if args.viz_samples_per_task > 0 and min(
         args.viz_every, args.viz_steps, args.viz_frame_stride
     ) <= 0:
@@ -343,12 +385,13 @@ def main() -> None:
         raise ValueError("--wandb-init-retry-delay must be non-negative")
     task_weights = normalize_task_weights(args.task_weights)
     args.task_weights = task_weights
+    bones_only = args.bones_frac == 1.0 and set(task_weights) == {"text2motion"}
 
     random.seed(args.seed + rank)
     np.random.seed(args.seed + rank)
     torch.manual_seed(args.seed + rank)
     torch.cuda.manual_seed_all(args.seed + rank)
-    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cuda.matmul.allow_tf32 = bool(args.allow_tf32)
     config.validate_artifacts(include_bones=args.bones_frac > 0.0)
 
     run_name = time.strftime("edge_phase2_7layer_%Y%m%d_%H%M%S")
@@ -448,19 +491,71 @@ def main() -> None:
 
     model = EdgePhase2MotionExpert(device=device, dtype=torch.bfloat16, verbose=rank == 0)
     parameters = list(model.trainable_parameters())
+    if rank == 0 and config.MOTION_SELF_ATTENTION_PER_GAP:
+        extra_parameters = [
+            parameter
+            for name, parameter in model.named_parameters()
+            if "self_attention_motion" in name
+        ]
+        optimizer_parameter_ids = {id(parameter) for parameter in parameters}
+        if not extra_parameters or any(
+            id(parameter) not in optimizer_parameter_ids for parameter in extra_parameters
+        ):
+            raise RuntimeError("added motion self-attention parameters are missing from the optimizer")
+        print(
+            f"[architecture] joint_blocks={len(config.MOTION_LAYER_INDICES)} "
+            f"self_attention_blocks={len(config.MOTION_SELF_ATTENTION_AFTER_JOINT_LAYERS)} "
+            f"after_joint_layers={list(config.MOTION_SELF_ATTENTION_AFTER_JOINT_LAYERS)} "
+            f"added_parameters={sum(p.numel() for p in extra_parameters):,} "
+            f"total_trainable_parameters={sum(p.numel() for p in parameters):,} "
+            "self_attention=motion_only_bidirectional activation_checkpointing=added_blocks",
+            flush=True,
+        )
     optimizer = torch.optim.AdamW(
         parameters,
         lr=args.lr,
-        betas=(0.9, 0.95),
+        betas=(0.9, args.adam_beta2),
         weight_decay=args.weight_decay,
         fused=True,
     )
     start_step = 0
     resume_epoch = 0
     resume_rng_state = None
+    resume_guard_state = {}
     if args.resume is not None:
         payload = load_checkpoint(args.resume, model=model, optimizer=optimizer)
         saved_args = payload.get("args", {})
+        for key, legacy_default in (
+            ("loss_reduction", "pooled"),
+            ("loss_guard", "strict"),
+            ("adam_beta2", 0.95),
+            ("allow_tf32", 1),
+        ):
+            if saved_args.get(key, legacy_default) != getattr(args, key):
+                raise RuntimeError(
+                    f"refusing resume with training-policy drift for {key}: "
+                    f"saved={saved_args.get(key, legacy_default)!r} live={getattr(args, key)!r}"
+                )
+        if any(tuple(group["betas"]) != (0.9, args.adam_beta2) for group in optimizer.param_groups):
+            raise RuntimeError("saved AdamW betas disagree with the requested optimizer policy")
+        for key in ("w_feat", "w_joint", "w_smooth", "w_contact", "w_foot_vel", "w_foot_height"):
+            if key in saved_args and saved_args[key] != getattr(args, key):
+                raise RuntimeError(f"refusing resume with loss-weight drift for {key}")
+        for key in ("w_global_rot", "w_global_trans"):
+            saved_weight = float(saved_args.get(key, 0.0))
+            if saved_weight != getattr(args, key):
+                raise RuntimeError(
+                    f"refusing resume with global feature loss drift for {key}: "
+                    f"saved={saved_weight!r} live={getattr(args, key)!r}"
+                )
+        # Checkpoints predating this option used centroid-relative joint MSE.
+        saved_joint_loss_mode = saved_args.get("joint_loss_mode", "centered")
+        if saved_joint_loss_mode != args.joint_loss_mode:
+            raise RuntimeError(
+                "refusing resume with joint-loss drift: "
+                f"saved={saved_joint_loss_mode!r} live={args.joint_loss_mode!r}; "
+                "start a separate run for a different joint-loss objective"
+            )
         for key in (
             "T",
             "ti2m_frames",
@@ -476,7 +571,14 @@ def main() -> None:
         start_step = int(payload["step"])
         saved_extra = payload.get("extra", {})
         resume_epoch = int(saved_extra.get("data_epoch", 0))
-        resume_rng_state = saved_extra.get("rng_state")
+        rank_rng = saved_extra.get("rng_state_by_rank")
+        if rank_rng is not None:
+            if len(rank_rng) != world:
+                raise RuntimeError("rank-specific RNG resume requires the saved world size")
+            resume_rng_state = rank_rng[rank]
+        else:
+            resume_rng_state = saved_extra.get("rng_state")
+        resume_guard_state = saved_extra.get("loss_guard_state", {})
         if rank == 0:
             print(
                 f"[resume] loaded step={start_step} data_epoch={resume_epoch} "
@@ -490,16 +592,60 @@ def main() -> None:
         else model
     )
     model.train()
+    # Track only opt-in FP32 block/interface gains, not the parity I/O heads.
+    norm_names = {
+        "input_norm_motion", "post_norm_motion", "q_norm_motion", "k_norm_motion",
+        "reasoner_k_norm_motion",
+    }
+    norm_gain_parameters = [
+        (name, parameter)
+        for name, parameter in model.named_trainable_parameters()
+        if name.startswith("layers.") and name.rsplit(".", 2)[-2] in norm_names
+        and parameter.dtype == torch.float32
+    ]
+    norm_gain_initial = (
+        torch.cat([p.detach().reshape(-1) for _, p in norm_gain_parameters]).clone()
+        if norm_gain_parameters else None
+    )
+    if rank == 0 and norm_gain_initial is not None:
+        print(
+            f"[norm-policy] fp32_gain_tensors={len(norm_gain_parameters)} "
+            f"fp32_gain_parameters={norm_gain_initial.numel()} "
+            "change_reference=current_launch; frozen_reasoner_unchanged=True",
+            flush=True,
+        )
 
     mean = torch.from_numpy(np.load(config.MOTION_STATS_MEAN)).to(device=device, dtype=torch.float32)
     std = torch.from_numpy(np.load(config.MOTION_STATS_STD)).to(device=device, dtype=torch.float32)
     effective_batch = args.batch_size * args.grad_accum * world
+    if rank == 0:
+        print(
+            f"[training-policy] loss_reduction={args.loss_reduction} "
+            f"adam_betas=0.9/{args.adam_beta2} loss_guard={args.loss_guard} "
+            f"motion_io_dtype={config.MOTION_IO_DTYPE} allow_tf32={args.allow_tf32} "
+            f"lr_peak={args.lr:g} warmup={args.warmup} min_lr_ratio={args.min_lr_ratio:g}",
+            flush=True,
+        )
     wandb_run = None
     if rank == 0:
+        print(
+            f"[loss] global_rot_extra={args.w_global_rot:g} "
+            f"global_trans_extra={args.w_global_trans:g} "
+            f"global_coordinate_weights={args.w_feat + args.w_global_rot:g}/"
+            f"{args.w_feat + args.w_global_trans:g} "
+            "slices=270:276/276:279 reduction=full_283_feature_mean",
+            flush=True,
+        )
         wandb_run = initialize_wandb(
             args, out=out, effective_batch=effective_batch, world=world
         )
     if rank == 0:
+        print(
+            f"[loss] joint_loss_mode={args.joint_loss_mode} "
+            f"feat/joint/smooth={args.w_feat}/{args.w_joint}/{args.w_smooth} "
+            f"contact/foot_vel/foot_height={args.w_contact}/{args.w_foot_vel}/{args.w_foot_height}",
+            flush=True,
+        )
         print(
             f"[train] out={out} world={world} batch/gpu={args.batch_size} "
             f"accum={args.grad_accum} effective_batch={effective_batch} T={args.T} "
@@ -529,17 +675,56 @@ def main() -> None:
                 reasoner_image_size=args.reasoner_image_size,
                 samples_per_task=args.viz_samples_per_task,
                 seed=args.viz_seed,
+                source=args.viz_source,
             )
+            bones_manifest = None
+            if (
+                args.viz_source == "nymeria"
+                and args.bones_frac > 0.0
+                and task_weights.get("text2motion", 0.0) > 0.0
+                and args.viz_bones_samples > 0
+            ):
+                # Append an independent held-out suite without changing the
+                # existing Nymeria manifest or consuming training RNG state.
+                viz_rng = capture_rng_state()
+                try:
+                    bones_manifest, bones_items = build_or_load_fixed_suite(
+                        out,
+                        T=args.T,
+                        ti2m_frames=args.ti2m_frames,
+                        reasoner_image_size=args.reasoner_image_size,
+                        samples_per_task=args.viz_bones_samples,
+                        seed=args.viz_seed,
+                        source="bones",
+                        fixed_subdir="fixed_samples_bones",
+                    )
+                finally:
+                    restore_rng_state(viz_rng)
+                viz_items.extend(bones_items)
+            viz_counts = {
+                f"{source}/{task}": sum(
+                    item["source"] == source and item["task"] == task
+                    for item in viz_items
+                )
+                for source, task in sorted({
+                    (item["source"], item["task"]) for item in viz_items
+                })
+            }
             print(
                 f"[viz] fixed suite ready: {len(viz_items)} samples "
-                f"({args.viz_samples_per_task} per task), "
-                f"manifest={out / 'visualizations' / 'fixed_samples' / 'manifest.json'}",
+                f"counts={viz_counts} manifests="
+                f"{sorted({item['fixed_sample_manifest'] for item in viz_items})}",
                 flush=True,
             )
             if wandb_run is not None:
                 wandb_run.summary["fixed_visualization_contract"] = fixed_manifest[
                     "contract"
                 ]
+                wandb_run.summary["fixed_visualization_counts"] = viz_counts
+                if bones_manifest is not None:
+                    wandb_run.summary["fixed_bones_visualization_contract"] = (
+                        bones_manifest["contract"]
+                    )
         except Exception as error:
             viz_setup_error = f"{type(error).__name__}: {str(error)[:500]}"
             print(f"[viz] fixed-suite setup failed: {viz_setup_error}", flush=True)
@@ -595,8 +780,13 @@ def main() -> None:
                     device=device,
                 )
                 counts = {
-                    task: sum(record["task"] == task for record in records)
-                    for task in ("text2motion", "textimg2motion")
+                    f"{source}/{task}": sum(
+                        record["source"] == source and record["task"] == task
+                        for record in records
+                    )
+                    for source, task in sorted({
+                        (record["source"], record["task"]) for record in records
+                    })
                 }
                 print(
                     f"[viz] step={step} reason={reason} rendered={counts} "
@@ -668,14 +858,45 @@ def main() -> None:
     last_rate_wall = wall_start
     last_rate_step = start_step
     seen_conditions: set[tuple[str, str]] = set()
+    loss_ema = float(resume_guard_state.get("ema", 1.0))
+    guarded_batches = int(resume_guard_state.get("guarded_batches", 0))
+    skipped_updates = int(resume_guard_state.get("skipped_updates", 0))
+    term_names = (
+        "feature", "global_rot", "global_trans", "joint", "smooth",
+        "contact", "foot_vel", "foot_height",
+    )
 
     def save_training_checkpoint(path: Path, *, step: int, kind: str) -> None:
+        if args.checkpoint_interval_only and (
+            kind != "regular" or step <= 0 or step % args.save_every != 0
+        ):
+            if rank == 0:
+                print(f"[checkpoint] skipped {kind} step={step}: interval-only policy", flush=True)
+            return
+        local_rng = capture_rng_state()
+        rank_rng = None
+        if args.loss_guard == "nano":
+            rank_rng = [None] * world
+            if world > 1:
+                # Every rank enters this branch on the same checkpoint step.
+                dist.all_gather_object(rank_rng, local_rng)
+            else:
+                rank_rng[0] = local_rng
+        if rank != 0:
+            return
         extra = {
             "effective_batch": effective_batch,
             "data_epoch": int(epoch),
-            "rng_state": capture_rng_state(),
+            "rng_state": local_rng,
             "checkpoint_kind": kind,
+            "loss_guard_state": {
+                "ema": loss_ema,
+                "guarded_batches": guarded_batches,
+                "skipped_updates": skipped_updates,
+            },
         }
+        if rank_rng is not None:
+            extra["rng_state_by_rank"] = rank_rng
         save_checkpoint(
             path,
             model=model,
@@ -691,9 +912,18 @@ def main() -> None:
 
     for step in range(start_step + 1, args.steps + 1):
         optimizer.zero_grad(set_to_none=True)
-        accumulated = {key: 0.0 for key in ("loss", "feature", "joint", "smooth")}
+        accumulated = {
+            key: 0.0
+            for key in ("loss", *term_names)
+        }
         for micro in range(args.grad_accum):
             batch, data_iterator, epoch = next_batch(data_iterator, loader, sampler, epoch)
+            if bones_only and (
+                any(mode != "text2motion" for mode in batch["mode"])
+                or any(source != "bones" for source in batch["source"])
+                or any(image is not None for image in batch["reasoner_image"])
+            ):
+                raise RuntimeError("BONES-only T2M run received a different source/task or an image")
             x0 = batch["motion"].to(device=device, dtype=torch.float32, non_blocking=True)
             pad = batch["motion_pad_mask"].to(device=device, non_blocking=True)
             neutral = batch["neutral_joints"].to(device=device, non_blocking=True)
@@ -726,29 +956,69 @@ def main() -> None:
                     mean,
                     std,
                     w_feat=args.w_feat,
+                    w_global_rot=args.w_global_rot,
+                    w_global_trans=args.w_global_trans,
                     w_joint=args.w_joint,
+                    joint_loss_mode=args.joint_loss_mode,
                     w_smooth=args.w_smooth,
                     w_contact=args.w_contact,
                     w_foot_vel=args.w_foot_vel,
                     w_foot_height=args.w_foot_height,
                     fps=config.FPS,
+                    modes=batch["mode"],
+                    reduction=args.loss_reduction,
+                    decoded_nonfinite=("skip" if args.loss_guard == "nano" else "raise"),
                 )
-                if not torch.isfinite(loss):
+                if args.loss_guard == "nano":
+                    raw_loss = float(loss.detach())
+                    if not math.isfinite(raw_loss) or raw_loss > max(50.0, 25.0 * loss_ema):
+                        guarded_batches += 1
+                        print(
+                            f"[bomb-guard] rank={rank} step={step} micro={micro} "
+                            f"raw_loss={raw_loss:g} ema={loss_ema:g}; zeroing rank contribution",
+                            flush=True,
+                        )
+                        loss = (
+                            loss * 0.0 if math.isfinite(raw_loss)
+                            else torch.where(torch.isfinite(loss), loss, torch.zeros_like(loss))
+                        )
+                    else:
+                        loss_ema = 0.99 * loss_ema + 0.01 * raw_loss
+                elif not torch.isfinite(loss):
                     raise FloatingPointError(f"non-finite loss at step={step} micro={micro}")
                 (loss / args.grad_accum).backward()
             accumulated["loss"] += float(loss.detach()) / args.grad_accum
-            for key in ("feature", "joint", "smooth"):
+            for key in term_names:
                 accumulated[key] += float(terms[key].detach()) / args.grad_accum
 
         if any(parameter.grad is not None for parameter in model.frozen_parameters()):
             raise RuntimeError("frozen Edge reasoner or visual tower received a gradient")
         grad_norm = torch.nn.utils.clip_grad_norm_(parameters, args.grad_clip)
-        if not torch.isfinite(grad_norm) or float(grad_norm) <= 0.0:
+        step_ok = bool(torch.isfinite(grad_norm))
+        if args.loss_guard == "nano":
+            if world > 1:
+                # Couple skip decisions and USR1 saves across ranks. No rank
+                # can enter a checkpoint RNG collective on its own.
+                flags = torch.tensor(
+                    [int(step_ok), int(not _RECOVERY_SIGNAL_RECEIVED)],
+                    dtype=torch.int32, device=device,
+                )
+                dist.all_reduce(flags, op=dist.ReduceOp.MIN)
+                step_ok = bool(flags[0].item())
+                _RECOVERY_SIGNAL_RECEIVED = not bool(flags[1].item())
+        elif not step_ok or float(grad_norm) <= 0.0:
             raise FloatingPointError(f"invalid motion gradient norm at step={step}: {grad_norm}")
         factor = lr_factor(step - 1, args.warmup, args.steps, args.min_lr_ratio)
         for group in optimizer.param_groups:
             group["lr"] = args.lr * factor
-        optimizer.step()
+        if step_ok:
+            optimizer.step()
+        else:
+            skipped_updates += 1
+            print(
+                f"[nonfinite-guard] rank={rank} step={step}; skipped optimizer update "
+                f"(total={skipped_updates})", flush=True,
+            )
 
         if rank == 0 and (step % args.log_every == 0 or step == 1):
             elapsed = max(time.time() - wall_start, 1e-6)
@@ -758,6 +1028,23 @@ def main() -> None:
             recent_steps_per_second = (step - last_rate_step) / max(rate_now - last_rate_wall, 1e-9)
             last_rate_step = step
             last_rate_wall = rate_now
+            norm_metrics = {}
+            if norm_gain_initial is not None:
+                norm_delta = torch.cat(
+                    [p.detach().reshape(-1) for _, p in norm_gain_parameters]
+                ) - norm_gain_initial
+                norm_metrics = {
+                    "train/norm_gain_max_change_since_launch": float(norm_delta.abs().max()),
+                    "train/norm_gain_changed_fraction_since_launch": float(
+                        (norm_delta != 0).float().mean()
+                    ),
+                }
+                print(
+                    f"[norm-gains] step={step} "
+                    f"max_change={norm_metrics['train/norm_gain_max_change_since_launch']:.8g} "
+                    f"changed_fraction={norm_metrics['train/norm_gain_changed_fraction_since_launch']:.6f}",
+                    flush=True,
+                )
             print(
                 f"[speed] recent_steps/s={recent_steps_per_second:.4f} "
                 f"overall_steps/s={steps_per_second:.4f}",
@@ -766,7 +1053,12 @@ def main() -> None:
             print(
                 f"[step {step}/{args.steps}] loss={accumulated['loss']:.6f} "
                 f"feat={accumulated['feature']:.6f} joint={accumulated['joint']:.6f} "
+                f"global_rot={accumulated['global_rot']:.6f} "
+                f"global_trans={accumulated['global_trans']:.6f} "
                 f"smooth={accumulated['smooth']:.6f} grad={float(grad_norm):.4f} "
+                f"contact={accumulated['contact']:.6f} foot_vel={accumulated['foot_vel']:.6f} "
+                f"foot_height={accumulated['foot_height']:.6f} "
+                f"guarded_batches={guarded_batches} skipped_updates={skipped_updates} "
                 f"lr={optimizer.param_groups[0]['lr']:.3e} peak={peak:.2f}GiB "
                 f"steps/s={steps_per_second:.4f} "
                 f"seen={sorted(seen_conditions)}",
@@ -777,14 +1069,26 @@ def main() -> None:
                     "train/step": int(step),
                     "train/loss": accumulated["loss"],
                     "train/loss_feature": accumulated["feature"],
+                    "train/loss_feature_global_rot": accumulated["global_rot"],
+                    "train/loss_feature_global_trans": accumulated["global_trans"],
+                    "train/loss_feature_global_extra": (
+                        args.w_global_rot * accumulated["global_rot"]
+                        + args.w_global_trans * accumulated["global_trans"]
+                    ),
                     "train/loss_joint": accumulated["joint"],
                     "train/loss_smooth": accumulated["smooth"],
+                    "train/loss_contact": accumulated["contact"],
+                    "train/loss_foot_velocity": accumulated["foot_vel"],
+                    "train/loss_foot_height": accumulated["foot_height"],
+                    "train/guarded_batches_rank0": guarded_batches,
+                    "train/skipped_updates": skipped_updates,
                     "train/grad_norm": float(grad_norm),
                     "train/grad_clip_max": float(args.grad_clip),
                     "train/learning_rate": float(optimizer.param_groups[0]["lr"]),
                     "train/peak_allocated_gib": float(peak),
                     "train/steps_per_second": float(steps_per_second),
                     "train/effective_batch": int(effective_batch),
+                    **norm_metrics,
                 }
                 try:
                     wandb_run.log(metrics)
@@ -803,7 +1107,7 @@ def main() -> None:
                         flush=True,
                     )
         regular_checkpoint_due = step % args.save_every == 0 or step == args.steps
-        if rank == 0 and regular_checkpoint_due:
+        if regular_checkpoint_due and (rank == 0 or args.loss_guard == "nano"):
             checkpoint_path = out / "checkpoints" / f"step_{step:09d}.pt"
             save_training_checkpoint(
                 checkpoint_path, step=step, kind="regular"
@@ -816,7 +1120,7 @@ def main() -> None:
             and step % args.recovery_save_every == 0
         )
         signal_checkpoint_due = bool(_RECOVERY_SIGNAL_RECEIVED)
-        if rank == 0 and (recovery_checkpoint_due or signal_checkpoint_due):
+        if (rank == 0 or args.loss_guard == "nano") and (recovery_checkpoint_due or signal_checkpoint_due):
             if not regular_checkpoint_due:
                 save_training_checkpoint(
                     out / "checkpoints" / "recovery_latest.pt",

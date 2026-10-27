@@ -66,12 +66,93 @@ def _contract_without_validation(payload: dict[str, Any]) -> dict[str, Any]:
     return contract
 
 
+def configure_attention_from_checkpoint(path: str | Path) -> dict[str, Any]:
+    """Resolve inference architecture before construction; reject explicit drift."""
+    payload = torch.load(path, map_location="cpu", weights_only=False, mmap=True)
+    contract = _contract_without_validation(payload)
+    fields = (
+        ("motion_attention_mode", "MOTION_ATTENTION_MODE", "EDGE_MOTION_ATTENTION_MODE", "joint"),
+        ("motion_io_dtype", "MOTION_IO_DTYPE", "EDGE_MOTION_IO_DTYPE", "bfloat16"),
+        ("motion_norm_dtype", "MOTION_NORM_DTYPE", "EDGE_MOTION_NORM_DTYPE", "bfloat16"),
+        ("reasoner_k_norm_trainable", "REASONER_K_NORM_TRAINABLE", "EDGE_REASONER_K_NORM_TRAINABLE", False),
+        ("reasoner_k_norm_bypass", "REASONER_K_NORM_BYPASS", "EDGE_REASONER_K_NORM_BYPASS", False),
+        ("reasoner_kv_projection", "REASONER_KV_PROJECTION", "EDGE_REASONER_KV_PROJECTION", "none"),
+        ("reasoner_v_norm_trainable", "REASONER_V_NORM_TRAINABLE", "EDGE_REASONER_V_NORM_TRAINABLE", False),
+        ("motion_self_attention_per_gap", "MOTION_SELF_ATTENTION_PER_GAP", "EDGE_MOTION_SELF_ATTENTION_PER_GAP", 0),
+        ("motion_self_attention_before_joint", "MOTION_SELF_ATTENTION_BEFORE_JOINT", "EDGE_MOTION_SELF_ATTENTION_BEFORE_JOINT", False),
+        ("bones_caption_subject_policy", "BONES_CAPTION_SUBJECT_POLICY", "EDGE_BONES_CAPTION_POLICY", "original"),
+        ("text_packing", "TEXT_PACKING", "EDGE_TEXT_PACKING", "edge_native_generation_prefix"),
+    )
+    resolved = []
+    for key, attribute, environment, default in fields:
+        saved = contract.get(key, default)
+        if environment in os.environ and getattr(config, attribute) != saved:
+            raise RuntimeError(
+                f"explicit {environment} conflicts with checkpoint: live={getattr(config, attribute)!r} saved={saved!r}"
+            )
+        resolved.append((attribute, saved))
+    if contract.get("text_packing", "edge_native_generation_prefix") not in {
+        "edge_native_generation_prefix", "nano_caption_only",
+    }:
+        raise RuntimeError(f"unsupported checkpoint text_packing={contract.get('text_packing')!r}")
+    mode = contract.get("motion_attention_mode", "joint")
+    cross_key_norm = (
+        contract.get("cross_attention_key_normalization", "none")
+        if mode == "self_cross_final_hidden" else "none"
+    )
+    if (
+        "EDGE_CROSS_ATTENTION_K_NORM" in os.environ
+        and config.CROSS_ATTENTION_K_NORM != cross_key_norm
+    ):
+        raise RuntimeError(
+            "explicit EDGE_CROSS_ATTENTION_K_NORM conflicts with checkpoint: "
+            f"live={config.CROSS_ATTENTION_K_NORM!r} saved={cross_key_norm!r}"
+        )
+    resolved.append(("CROSS_ATTENTION_K_NORM", cross_key_norm))
+    for key, attribute, environment, default in (
+        ("cross_attention_value_normalization", "CROSS_ATTENTION_V_NORM", "EDGE_CROSS_ATTENTION_V_NORM", "none"),
+        ("cross_attention_reasoner_rope", "CROSS_ATTENTION_REASONER_ROPE", "EDGE_CROSS_ATTENTION_REASONER_ROPE", True),
+    ):
+        saved = contract.get(key, default) if mode == "self_cross_final_hidden" else default
+        if environment in os.environ and getattr(config, attribute) != saved:
+            raise RuntimeError(
+                f"explicit {environment} conflicts with checkpoint: live={getattr(config, attribute)!r} saved={saved!r}"
+            )
+        resolved.append((attribute, saved))
+    for attribute, value in resolved:
+        setattr(config, attribute, value)
+    config.MOTION_SELF_ATTENTION_AFTER_JOINT_LAYERS = (
+        config.MOTION_LAYER_INDICES[:-1] if config.MOTION_SELF_ATTENTION_PER_GAP else ()
+    )
+    config.validate_attention_configuration()
+    return dict(contract)
+
+
 def validate_checkpoint_contract(payload: dict[str, Any]) -> None:
     saved = dict(_contract_without_validation(payload))
     # Existing schema-3 Grasp checkpoints predate this optional BONES policy.
     # They used original BONES wording; reject loading them under the new rule,
     # while keeping their original-policy reload behavior backward compatible.
     saved.setdefault("bones_caption_subject_policy", "original")
+    # Older schema-3 runs contain only the seven joint-attention blocks.
+    # Keep those loadable under the default architecture, but never silently
+    # load a seven-block checkpoint into the opt-in 7-JA/6-SA experiment.
+    saved.setdefault("motion_self_attention_per_gap", 0)
+    saved.setdefault("motion_self_attention_before_joint", False)
+    saved.setdefault("motion_self_attention_after_joint_layers", [])
+    saved.setdefault("motion_io_dtype", "bfloat16")
+    saved.setdefault("motion_norm_dtype", "bfloat16")
+    saved.setdefault("reasoner_k_norm_trainable", False)
+    saved.setdefault("reasoner_k_norm_bypass", False)
+    saved.setdefault("reasoner_kv_projection", "none")
+    saved.setdefault("reasoner_v_norm_trainable", False)
+    # Legacy self/cross checkpoints used unnormalized V and rotated cross K.
+    # Do not fill these defaults from the currently selected experiment.
+    saved_mode = saved.get("motion_attention_mode", "joint")
+    saved.setdefault("cross_attention_value_normalization", None if saved_mode == "joint" else "none")
+    saved.setdefault("cross_attention_reasoner_rope", None if saved_mode == "joint" else True)
+    for key, value in config.attention_mode_contract("joint").items():
+        saved.setdefault(key, value)
     live = config.architecture_contract()
     mismatches = {
         key: (saved.get(key), value)
@@ -141,6 +222,7 @@ def load_checkpoint(
 
 
 __all__ = [
+    "configure_attention_from_checkpoint",
     "capture_rng_state",
     "latest_checkpoint",
     "load_checkpoint",

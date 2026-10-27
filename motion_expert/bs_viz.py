@@ -16,12 +16,13 @@ Runs in the ``kimodo`` env (``PYTHONPATH=/home/jungbin_cho/kimodo_open``).
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
-import imageio.v3 as iio
 
-from kimodo.scripts.render_soma import render_sidebyside
+from motion_expert_joint_attention.render_motion import render_sidebyside, write_mp4
 
-SKEL = "/home/jungbin_cho/cosmos_motion_ft/skeleton_soma30.npz"
+SKEL = str(Path(__file__).resolve().parents[1] / "skeleton_soma30.npz")
 # Same fingertip-end joints kimodo drops from the SOMA stick figure.
 _DROP_NAMES = ("LeftHandThumbEnd", "LeftHandMiddleEnd", "RightHandThumbEnd", "RightHandMiddleEnd")
 
@@ -36,7 +37,8 @@ def load_skeleton(skel_path: str = SKEL):
 
 
 def render_pair(left_joints, gen_joints, joint_parents, out_mp4, caption="",
-                skip_joints=None, fps=20, camera="follow"):
+                skip_joints=None, fps=20, camera="follow", *,
+                gen_head_rotation0=None, gt_head_rotation0=None):
     """left|right side-by-side -> mp4 (h264/pyav), exactly as kimodo viz_step writes it.
 
     left_joints: (T,J,3) world joints (Y-up, +Z-fwd) or None (blank left panel). Conventionally
@@ -45,8 +47,19 @@ def render_pair(left_joints, gen_joints, joint_parents, out_mp4, caption="",
     camera     : "follow" (per-frame root tracking) or "fixed" (one static viewport for the whole
                  clip — use when the left panel is a static input pose so it stays in frame).
     """
-    frames = render_sidebyside(
-        left_joints, gen_joints, joint_parents, caption=caption, skip_joints=skip_joints,
-        camera=camera,
-    )
-    iio.imwrite(str(out_mp4), frames, fps=float(fps), codec="h264", plugin="pyav")
+    if camera == "fixed":
+        # Preserve explicit legacy static-input-pose callers. Training uses follow.
+        from kimodo.scripts.render_soma import render_sidebyside as render_fixed
+        frames = render_fixed(
+            left_joints, gen_joints, joint_parents, caption=caption,
+            skip_joints=skip_joints, camera="fixed",
+        )
+    elif camera == "follow":
+        frames = render_sidebyside(
+            left_joints, gen_joints, joint_parents, caption=caption,
+            skip_joints=skip_joints, gen_head_rotation0=gen_head_rotation0,
+            gt_head_rotation0=gt_head_rotation0,
+        )
+    else:
+        raise ValueError(f"unsupported visualization camera: {camera}")
+    write_mp4(frames, str(out_mp4), fps=fps)

@@ -1,0 +1,168 @@
+--- a/model/uniegomotion.py
++++ b/model/uniegomotion.py
+@@ -46,8 +46,8 @@
+             logger.warning(f"Using finetune type {self.finetune_type}.")
+ 
+         self.repre_type = cfg.DATA.REPRE_TYPE
+-        self.input_feats = {"v1_beta": 234, "v4_beta": 243, "v5_beta": 243}[self.repre_type]
+-        traj_dim = {"v1_beta": 9, "v4_beta": 18, "v5_beta": 18}[self.repre_type]
++        self.input_feats = {"v1_beta": 234, "v4_beta": 243, "v5_beta": 243, "soma_body230": 230}[self.repre_type]
++        traj_dim = {"v1_beta": 9, "v4_beta": 18, "v5_beta": 18, "soma_body230": 18}[self.repre_type]
+         self.latent_dim = latent_dim
+ 
+         if cfg.MODEL.LEARN_TRAJ:
+--- a/run/train_uem.py
++++ b/run/train_uem.py
+@@ -7,7 +7,6 @@
+ from pytorch_lightning.loggers import TensorBoardLogger
+ 
+ from config.defaults import get_cfg
+-from dataset.ee4d_motion_dataset import EE4D_Motion_DataModule
+ from module.uem_module import UEM_Module
+ from module.ema import EMA
+ 
+@@ -25,7 +24,12 @@
+     if not os.path.exists(cfg.TRAIN.EXP_PATH):
+         os.makedirs(cfg.TRAIN.EXP_PATH)
+ 
+-    datamodule = EE4D_Motion_DataModule(cfg)
++    if cfg.DATA.DATASET_NAME == "nymeria_soma":
++        from dataset.nymeria_soma_dataset import NymeriaSOMADataModule
++        datamodule = NymeriaSOMADataModule(cfg)
++    else:
++        from dataset.ee4d_motion_dataset import EE4D_Motion_DataModule
++        datamodule = EE4D_Motion_DataModule(cfg)
+     model = UEM_Module(cfg)
+ 
+     # Setup Tensorboard logger
+--- /dev/null
++++ b/config/nymeria_soma.yaml
+@@ -0,0 +1,16 @@
++DATA:
++  DATASET_NAME: nymeria_soma
++  REPRE_TYPE: soma_body230
++  COND_BETAS: False
++  COND_IMG_FEAT: False
++  COND_TRAJ: True
++  WINDOW: 97
++  BATCH_SIZE: 64
++  NUM_WORKERS: 4
++MODEL:
++  MODEL_NAME: uem
++TRAIN:
++  USE_CKPT_LR: True
++  WEIGHT_DECAY: 0.01
++  LR: 3.e-5
++  NUM_EPOCHS: 350
+--- /dev/null
++++ b/dataset/nymeria_soma_dataset.py
+@@ -0,0 +1,109 @@
++"""Nymeria-SOMA body data adapter for the official UniEgoMotion trainer.
++
++The 23-joint body subset uses 220 head-centric features plus 10 train-only
++SOMA shape components. Camera-only conditioning is official v4-style 18-D.
++All normalization statistics come from the Nymeria training recordings.
++"""
++
++from __future__ import annotations
++
++import json
++from collections import OrderedDict
++from pathlib import Path
++
++import numpy as np
++import pytorch_lightning as pl
++import torch
++from torch.utils.data import DataLoader, Dataset
++
++
++class NymeriaSOMADataset(Dataset):
++    def __init__(self, root: str, split: str):
++        self.root = Path(root)
++        if split not in {"train", "val", "test"}:
++            raise ValueError(split)
++        index = json.loads((self.root / "index.json").read_text())
++        if index["window"] != 97 or index["fps"] != 20:
++            raise ValueError("Nymeria cache is not T97/20fps")
++        self.rows = [row for row in index["rows"] if row["split"] == split]
++        if not self.rows:
++            raise ValueError(f"empty {split} split")
++        with np.load(self.root / "train_stats.npz", allow_pickle=False) as stats:
++            from nymeria_baselines.body_shape import MOTION_INDICES
++            self.motion_mean = stats["motion_mean"][MOTION_INDICES].copy()
++            self.motion_std = stats["motion_std"][MOTION_INDICES].copy()
++            self.camera_mean = stats["camera_mean"].copy()
++            self.camera_std = stats["camera_std"].copy()
++        with np.load(self.root / "body_shape16.npz", allow_pickle=False) as shape:
++            self.shape_mean = shape["mean"].copy()
++            self.shape_components = shape["components"][:10].copy()
++            self.shape_scale = shape["scale"][:10].copy()
++        self.arrays = OrderedDict()
++
++    def __len__(self) -> int:
++        return len(self.rows)
++
++    def _array(self, name: str, suffix: str):
++        key = (name, suffix)
++        if key not in self.arrays:
++            self.arrays[key] = np.load(self.root / "records" / f"{name}.{suffix}.npy",
++                                          mmap_mode="r", allow_pickle=False)
++        self.arrays.move_to_end(key)
++        while len(self.arrays) > 12:
++            self.arrays.popitem(last=False)
++        return self.arrays[key]
++
++    def __getitem__(self, idx: int):
++        # Imported here so the official upstream dataset remains usable alone.
++        from nymeria_baselines.prepare import prepare_window
++        from nymeria_baselines.body_shape import body_features, shape_coefficients
++
++        row = self.rows[idx]
++        start = row["start"]
++        motion = self._array(row["array"], "motion")[start:start + 97]
++        pose = self._array(row["array"], "pose_yup")[start:start + 97]
++        motion, camera = prepare_window(motion, pose, row["ground_offset_y"])
++        normalized_motion = (body_features(motion) - self.motion_mean) / (self.motion_std + 1e-6)
++        neutral = self._array(row["array"], "neutral")
++        betas = shape_coefficients(neutral, self.shape_mean, self.shape_components,
++                                   self.shape_scale)
++        normalized_motion = np.concatenate((normalized_motion,
++                                            np.broadcast_to(betas, (97, 10))), axis=-1)
++        normalized_camera = (camera - self.camera_mean) / (self.camera_std + 1e-6)
++        if not np.isfinite(normalized_motion).all() or not np.isfinite(normalized_camera).all():
++            raise ValueError(f"nonfinite normalized window {row['uuid']}@{start}")
++        traj = torch.from_numpy(normalized_camera.astype(np.float32))
++        target = torch.from_numpy(normalized_motion.astype(np.float32))
++        return {
++            "y": {"traj": traj, "valid_frames": torch.ones(97, dtype=torch.long)},
++            "pred": {},
++            "misc": {"motion": target, "traj": traj, "seq_name": row["uuid"],
++                     "start_idx": start, "end_idx": start + 96, "idx": idx,
++                     "dataset": "nymeria_soma"},
++        }
++
++
++class NymeriaSOMADataModule(pl.LightningDataModule):
++    def __init__(self, cfg):
++        super().__init__()
++        self.cfg = cfg
++
++    def setup(self, stage: str):
++        if self.cfg.DATA.REPRE_TYPE != "soma_body230" or self.cfg.DATA.COND_IMG_FEAT or not self.cfg.DATA.COND_TRAJ:
++            raise ValueError("Expected body-only SOMA plus shape with camera-only conditioning")
++        if self.cfg.DATA.WINDOW != 97:
++            raise ValueError("Nymeria baseline requires T97")
++        self.train_dataset = NymeriaSOMADataset(self.cfg.DATA.DATA_DIR, "train")
++        self.val_dataset = NymeriaSOMADataset(self.cfg.DATA.DATA_DIR, "val")
++
++    def train_dataloader(self):
++        return DataLoader(self.train_dataset, batch_size=self.cfg.DATA.BATCH_SIZE,
++                          num_workers=self.cfg.DATA.NUM_WORKERS, shuffle=True,
++                          persistent_workers=self.cfg.DATA.NUM_WORKERS > 0,
++                          pin_memory=True)
++
++    def val_dataloader(self):
++        return DataLoader(self.val_dataset, batch_size=self.cfg.DATA.BATCH_SIZE,
++                          num_workers=self.cfg.DATA.NUM_WORKERS, shuffle=False,
++                          persistent_workers=self.cfg.DATA.NUM_WORKERS > 0,
++                          pin_memory=True)

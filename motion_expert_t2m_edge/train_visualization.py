@@ -5,6 +5,8 @@ materializes its exact inputs under ``<run>/visualizations/fixed_samples``.
 Later checkpoints and resumed Slurm jobs load those frozen arrays instead of
 re-querying the dataset.  This makes both the sample identity and initial
 diffusion noise invariant across the whole training run.
+Mixed runs may append a separate BONES validation T2M suite under
+``fixed_samples_bones`` without replacing the original Nymeria cases.
 """
 from __future__ import annotations
 
@@ -21,11 +23,21 @@ import config
 from data import build_phase2_dataset
 from decode_uniego_torch import decode_joints
 from flow import sample_x0_unipc
-from render_motion import render_conditioned_motion_mp4, render_motion_mp4
+from render_motion import (
+    head_rotation_from_features, render_conditioned_motion_mp4, render_motion_mp4,
+)
 
 
 FIXED_SUITE_SCHEMA = 1
 TASKS = ("text2motion", "textimg2motion")
+
+
+def _suite_tasks(source: str) -> tuple[str, ...]:
+    if source == "nymeria":
+        return TASKS
+    if source == "bones":
+        return ("text2motion",)
+    raise ValueError(f"unsupported fixed visualization source: {source!r}")
 
 
 def _task_seed(seed: int, task: str) -> int:
@@ -53,6 +65,7 @@ def _suite_contract(
     reasoner_image_size: int,
     samples_per_task: int,
     seed: int,
+    source: str = "nymeria",
 ) -> dict[str, Any]:
     return {
         "schema_version": FIXED_SUITE_SCHEMA,
@@ -62,9 +75,9 @@ def _suite_contract(
         "reasoner_image_size": int(reasoner_image_size),
         "samples_per_task": int(samples_per_task),
         "seed": int(seed),
-        "tasks": list(TASKS),
-        "split": "test",
-        "source": "nymeria",
+        "tasks": list(_suite_tasks(source)),
+        "split": "test" if source == "nymeria" else "val",
+        "source": source,
     }
 
 
@@ -101,7 +114,7 @@ def _write_fixed_sample(
         image_np = np.empty((0,), dtype=np.uint8)
 
     sample_id = _sample_id(task, dataset_index, caption)
-    relative_npz = Path("fixed_samples") / f"{task}_{slot:02d}_{sample_id}.npz"
+    relative_npz = Path(fixed_dir.name) / f"{task}_{slot:02d}_{sample_id}.npz"
     np.savez_compressed(
         fixed_dir.parent / relative_npz,
         motion=motion,
@@ -132,14 +145,19 @@ def _select_task_samples(
     reasoner_image_size: int,
     seed: int,
     fixed_dir: Path,
+    source: str = "nymeria",
 ) -> list[dict[str, Any]]:
+    if task not in _suite_tasks(source):
+        raise ValueError(f"{source} cannot provide fixed {task} examples")
+    # The shared adapter uses Nymeria's test split for its auxiliary index;
+    # train=False independently selects BONES' held-out validation pairs.
     dataset = build_phase2_dataset(
         split="test",
         train=False,
         num_frames=T,
         ti2m_frames=ti2m_frames,
         task_weights={task: 1.0},
-        bones_frac=0.0,
+        bones_frac=1.0 if source == "bones" else 0.0,
         cfg_dropout=0.0,
         reasoner_image_size=reasoner_image_size,
         seed=_task_seed(seed, task),
@@ -160,7 +178,7 @@ def _select_task_samples(
             )
             continue
         caption = str(row.get("caption") or "").strip()
-        if not caption or caption in seen_prompts or row.get("source") != "nymeria":
+        if not caption or caption in seen_prompts or row.get("source") != source:
             continue
         if task == "textimg2motion" and row.get("reasoner_image") is None:
             continue
@@ -192,13 +210,18 @@ def build_or_load_fixed_suite(
     reasoner_image_size: int,
     samples_per_task: int,
     seed: int,
+    source: str = "nymeria",
+    fixed_subdir: str = "fixed_samples",
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Create once, then strictly reuse the exact fixed held-out arrays."""
 
     if samples_per_task <= 0:
         raise ValueError("samples_per_task must be positive")
+    if fixed_subdir in ("", ".", "..") or Path(fixed_subdir).name != fixed_subdir:
+        raise ValueError("fixed_subdir must be a single directory name")
+    tasks = _suite_tasks(source)
     viz_root = Path(output_root) / "visualizations"
-    fixed_dir = viz_root / "fixed_samples"
+    fixed_dir = viz_root / fixed_subdir
     manifest_path = fixed_dir / "manifest.json"
     expected = _suite_contract(
         T=T,
@@ -206,6 +229,7 @@ def build_or_load_fixed_suite(
         reasoner_image_size=reasoner_image_size,
         samples_per_task=samples_per_task,
         seed=seed,
+        source=source,
     )
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text())
@@ -219,7 +243,7 @@ def build_or_load_fixed_suite(
     else:
         fixed_dir.mkdir(parents=True, exist_ok=True)
         records = []
-        for task in TASKS:
+        for task in tasks:
             records.extend(
                 _select_task_samples(
                     task=task,
@@ -229,6 +253,7 @@ def build_or_load_fixed_suite(
                     reasoner_image_size=reasoner_image_size,
                     seed=seed,
                     fixed_dir=fixed_dir,
+                    source=source,
                 )
             )
         manifest = {"contract": expected, "samples": records}
@@ -236,12 +261,14 @@ def build_or_load_fixed_suite(
         temporary.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
         temporary.replace(manifest_path)
 
-    expected_count = samples_per_task * len(TASKS)
+    expected_count = samples_per_task * len(tasks)
     if len(records) != expected_count:
         raise RuntimeError(
             f"fixed visualization suite has {len(records)} rows, expected {expected_count}"
         )
-    for task in TASKS:
+    if any(record.get("source") != source for record in records):
+        raise RuntimeError("fixed visualization records do not match their source contract")
+    for task in tasks:
         task_rows = [record for record in records if record.get("task") == task]
         if len(task_rows) != samples_per_task:
             raise RuntimeError(
@@ -255,6 +282,7 @@ def build_or_load_fixed_suite(
             raise FileNotFoundError(f"fixed visualization arrays missing: {arrays_path}")
         with np.load(arrays_path, allow_pickle=False) as arrays:
             item = dict(record)
+            item["fixed_sample_manifest"] = str(manifest_path)
             item.update(
                 motion=torch.from_numpy(arrays["motion"].copy()).float(),
                 motion_pad_mask=torch.from_numpy(
@@ -325,12 +353,23 @@ def render_fixed_suite(
         device=device, dtype=torch.float32
     )
     records: list[dict[str, Any]] = []
+    mixed_sources = len({item["source"] for item in items}) > 1
+    # Keep Nymeria's original sampling batches intact. BONES is appended as
+    # its own batch, with its own saved identities and per-case noise seeds.
+    source_tasks = [
+        (source, task)
+        for source in ("nymeria", "bones")
+        for task in _suite_tasks(source)
+    ]
     was_training = bool(model.training)
     model.eval()
     try:
-        for task in TASKS:
+        for source, task in source_tasks:
             task_items = sorted(
-                (item for item in items if item["task"] == task),
+                (
+                    item for item in items
+                    if item["task"] == task and item["source"] == source
+                ),
                 key=lambda item: int(item["slot"]),
             )
             if not task_items:
@@ -398,12 +437,16 @@ def render_fixed_suite(
             for batch_index, item in enumerate(task_items):
                 valid = ~item["motion_pad_mask"]
                 gt_normalized = item["motion"][valid].to(device=device).unsqueeze(0)
-                gt_joints = decode_joints(gt_normalized * std + mean).cpu().numpy()[0]
+                gt_features = gt_normalized * std + mean
+                gt_joints = decode_joints(gt_features).cpu().numpy()[0]
+                gt_features_np = gt_features.cpu().numpy()[0]
                 generated_normalized = generated[batch_index].cpu().numpy()
                 generated_features_np = generated_features[batch_index].cpu().numpy()
                 generated_joints_np = generated_joints[batch_index]
                 compare_frames = min(len(gt_joints), len(generated_joints_np))
                 stem = f"{task}_{int(item['slot']):02d}_{item['sample_id']}"
+                if mixed_sources and source == "bones":
+                    stem = f"bones_{stem}"
                 arrays_path = step_dir / f"{stem}.npz"
                 np.savez_compressed(
                     arrays_path,
@@ -411,12 +454,19 @@ def render_fixed_suite(
                     generated_features=generated_features_np,
                     generated_joints=generated_joints_np,
                     gt_normalized=gt_normalized.cpu().numpy()[0],
+                    gt_features=gt_features_np,
                     gt_joints=gt_joints,
                 )
                 video_path = step_dir / f"{stem}.mp4"
                 condition_path = None
                 render_fps = max(1, round(float(config.FPS) / frame_stride))
                 title = f"Prompt: {item['prompt']}"
+                if mixed_sources and source == "bones":
+                    title = f"BONES-SEED | {title}"
+                head0 = dict(
+                    gen_head_rotation0=head_rotation_from_features(generated_features_np),
+                    gt_head_rotation0=head_rotation_from_features(gt_features_np),
+                )
                 if task == "textimg2motion":
                     condition_path = step_dir / f"{stem}_condition.png"
                     render_conditioned_motion_mp4(
@@ -428,6 +478,7 @@ def render_fixed_suite(
                         caption=title,
                         fps=render_fps,
                         frame_stride=frame_stride,
+                        **head0,
                     )
                 else:
                     render_motion_mp4(
@@ -437,6 +488,7 @@ def render_fixed_suite(
                         fps=render_fps,
                         gt_joints=gt_joints[:compare_frames],
                         frame_stride=frame_stride,
+                        **head0,
                     )
                 records.append(
                     {
@@ -446,6 +498,7 @@ def render_fixed_suite(
                         "sample_id": item["sample_id"],
                         "dataset_index": int(item["dataset_index"]),
                         "source": item["source"],
+                        "fixed_sample_manifest": item.get("fixed_sample_manifest"),
                         "prompt": item["prompt"],
                         "sampling_seed": int(item["sampling_seed"]),
                         "sampling_steps": int(sampling_steps),
@@ -471,6 +524,10 @@ def render_fixed_suite(
         "fixed_sample_manifest": str(
             Path(output_root) / "visualizations" / "fixed_samples" / "manifest.json"
         ),
+        "fixed_sample_manifests": sorted({
+            item["fixed_sample_manifest"]
+            for item in items if item.get("fixed_sample_manifest")
+        }),
         "sampling_steps": int(sampling_steps),
         "guidance": float(guidance),
         "samples": records,
@@ -489,12 +546,16 @@ def log_suite_to_wandb(wandb_run, records: list[dict[str, Any]], *, step: int) -
 
     payload: dict[str, Any] = {"train/step": int(step)}
     table_rows = []
+    mixed_sources = len({record["source"] for record in records}) > 1
     for record in records:
         task = record["task"]
         slot = int(record["slot"])
         key = f"visualizations/{task}/sample_{slot:02d}"
+        if mixed_sources and record["source"] == "bones":
+            key = f"visualizations/bones/{task}/sample_{slot:02d}"
         caption = (
-            f"step={step} | {record['sample_id']} | seed={record['sampling_seed']}\n"
+            f"step={step} | source={record['source']} | {record['sample_id']} | "
+            f"seed={record['sampling_seed']}\n"
             f"Prompt: {record['prompt']}"
         )
         payload[key] = wandb.Video(

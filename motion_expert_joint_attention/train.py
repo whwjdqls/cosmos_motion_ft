@@ -341,6 +341,9 @@ def main():
                     help="cast trainable params to fp32 master (else keep bf16)")
     ap.add_argument("--out", default=None, help="run name under RUN_ROOT")
     ap.add_argument("--save_every", type=int, default=config.TRAIN_DEFAULTS["save_every"])
+    ap.add_argument("--keep_last_checkpoints", type=int, default=0,
+                    help="Keep this many newest numbered checkpoints plus latest.pt; "
+                         "zero preserves all numbered checkpoints. Positive values enable atomic saves.")
     ap.add_argument("--viz_every", type=int, default=config.TRAIN_DEFAULTS["viz_every"])
     ap.add_argument("--viz_n", type=int, default=4)
     ap.add_argument("--viz_steps", type=int, default=50)
@@ -377,6 +380,8 @@ def main():
                          "warm-starts). WARNs loudly if the checkpoint's --T/--tasks/--objective "
                          "differ from this run.")
     args = ap.parse_args()
+    if args.keep_last_checkpoints < 0:
+        ap.error("--keep_last_checkpoints must be nonnegative")
 
     # ---- PER-MODALITY objectives (HISTORY: x0 was once SAMPLER-ONLY) ----
     # A fail-fast SystemExit used to live here: step_loss noised velocity-only, so `--objective
@@ -1811,7 +1816,7 @@ def main():
 
     def _render_joint_motion(x0_np, it, vdir, stem):
         """Decode and render normalized generated motion with its aligned GT."""
-        from render_motion import render_motion_mp4
+        from render_motion import head_rotation_from_features, render_motion_mp4
 
         x0v = torch.from_numpy(np.asarray(x0_np, dtype=np.float32)).to(dev).unsqueeze(0)
         joints = decode_joints(x0v[0].float().unsqueeze(0) * std + mean)[0].cpu().numpy()
@@ -1828,6 +1833,8 @@ def main():
             caption="joint physical generation (no text condition)",
             fps=max(1, round(20 / args.viz_frame_stride)),
             gt_joints=gt_joints,
+            gen_head_rotation0=head_rotation_from_features(x0v[0].float() * std + mean),
+            gt_head_rotation0=head_rotation_from_features(gt_feat),
             frame_stride=args.viz_frame_stride,
         )
         return {
@@ -2073,7 +2080,15 @@ def main():
                 comparison_path = None
                 motion_mp4_path = None
                 try:
-                    from render_motion import render_conditioned_motion_mp4, render_motion_mp4
+                    from render_motion import (
+                        head_rotation_from_features,
+                        render_conditioned_motion_mp4, render_motion_mp4,
+                    )
+                    head0 = dict(
+                        gen_head_rotation0=head_rotation_from_features(feat),
+                        gt_head_rotation0=(head_rotation_from_features(gt_feat)
+                                           if gt_joints is not None else None),
+                    )
 
                     motion_mp4_path = os.path.join(
                         vdir, stem + ("_gt_pred_motion.mp4" if mode == "video2motion" else ".mp4")
@@ -2090,12 +2105,14 @@ def main():
                             caption=it["caption"],
                             fps=render_fps,
                             frame_stride=args.viz_frame_stride,
+                            **head0,
                         )
                     else:
                         render_motion_mp4(
                             joints, motion_mp4_path, caption=it["caption"], fps=render_fps,
                             gt_joints=gt_joints,
                             frame_stride=args.viz_frame_stride,
+                            **head0,
                         )
                     if mode == "video2motion":
                         condition_path = os.path.join(vdir, stem + "_condition_video.mp4")
@@ -2206,8 +2223,30 @@ def main():
                    "optimizer": None if fsdp_sharded else opt.state_dict(),
                    "step": step, "args": vars(args), "task_weights": task_weights,
                    "data_policy": data_policy}
-        torch.save(payload, os.path.join(out, f"ckpt_step{step:06d}.pt"))
-        torch.save(payload, os.path.join(out, "latest.pt"))
+        checkpoint_path = os.path.join(out, f"ckpt_step{step:06d}.pt")
+        latest_path = os.path.join(out, "latest.pt")
+        if args.keep_last_checkpoints > 0:
+            # Publish complete files before removing any older recovery points.
+            for path in (checkpoint_path, latest_path):
+                temporary_path = path + ".tmp"
+                torch.save(payload, temporary_path)
+                os.replace(temporary_path, path)
+            numbered = []
+            for name in os.listdir(out):
+                if name.startswith("ckpt_step") and name.endswith(".pt"):
+                    step_text = name[len("ckpt_step"):-len(".pt")]
+                    if step_text.isdigit():
+                        numbered.append((int(step_text), os.path.join(out, name)))
+            numbered.sort(reverse=True)
+            for _, old_path in numbered[args.keep_last_checkpoints:]:
+                try:
+                    os.remove(old_path)
+                except OSError as exc:
+                    logline(f"[ckpt] WARNING: could not remove {old_path}: {exc}")
+        else:
+            # Other runs retain their historical checkpoint behavior by default.
+            torch.save(payload, checkpoint_path)
+            torch.save(payload, latest_path)
         logline(f"[ckpt] step {step}")
 
     # ----------------------------------------------------------------------------------

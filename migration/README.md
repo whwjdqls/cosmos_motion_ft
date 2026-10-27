@@ -1,5 +1,9 @@
 # Server Migration
 
+For the October 2026 Edge/Phase3/baseline code and a new server, start with
+[`SINGLE_REPO.md`](SINGLE_REPO.md). The older archive contract below remains
+useful for the original datasets and Nano reference artifacts.
+
 This directory is the authoritative restore contract for moving this project
 off the July 2026 a3ultra server.
 

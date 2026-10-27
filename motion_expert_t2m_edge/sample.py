@@ -9,12 +9,14 @@ import numpy as np
 import torch
 
 import config
-from checkpoint import load_checkpoint
+from checkpoint import configure_attention_from_checkpoint, load_checkpoint
 from data import build_phase2_dataset
 from decode_uniego_torch import decode_joints
 from flow import sample_x0_unipc
 from model import EdgePhase2MotionExpert
-from render_motion import render_conditioned_motion_mp4, render_motion_mp4
+from render_motion import (
+    head_rotation_from_features, render_conditioned_motion_mp4, render_motion_mp4,
+)
 
 
 def main() -> None:
@@ -33,6 +35,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--no-render", action="store_true")
     args = parser.parse_args()
+    configure_attention_from_checkpoint(args.checkpoint)
 
     device = torch.device("cuda", 0)
     if args.mode == "textimg2motion" and args.source == "bones":
@@ -105,7 +108,8 @@ def main() -> None:
     generated_features = generated * std + mean
     generated_joints = decode_joints(generated_features).cpu().numpy()[0]
     gt_normalized = row["motion"][valid_gt].unsqueeze(0).to(device)
-    gt_joints = decode_joints(gt_normalized * std + mean).cpu().numpy()[0]
+    gt_features = gt_normalized * std + mean
+    gt_joints = decode_joints(gt_features).cpu().numpy()[0]
 
     args.out.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
@@ -114,10 +118,16 @@ def main() -> None:
         generated_features=generated_features.cpu().numpy()[0],
         generated_joints=generated_joints,
         gt_normalized=gt_normalized.cpu().numpy()[0],
+        gt_features=gt_features.cpu().numpy()[0],
         gt_joints=gt_joints,
     )
     if not args.no_render:
         n = min(len(gt_joints), len(generated_joints))
+        head0 = dict(
+            gen_head_rotation0=head_rotation_from_features(generated_features[0]),
+            gt_head_rotation0=head_rotation_from_features(gt_features[0]),
+            first_frame_path=str(args.out / "frame0.png"),
+        )
         if args.mode == "textimg2motion":
             render_conditioned_motion_mp4(
                 condition_image=row["reasoner_image"],
@@ -127,6 +137,7 @@ def main() -> None:
                 condition_out_path=str(args.out / "condition.png"),
                 caption=f"Prompt: {prompt}",
                 fps=int(config.FPS),
+                **head0,
             )
         else:
             render_motion_mp4(
@@ -135,6 +146,7 @@ def main() -> None:
                 caption=f"Prompt: {prompt}",
                 fps=int(config.FPS),
                 gt_joints=gt_joints[:n],
+                **head0,
             )
     manifest = {
         "checkpoint": str(args.checkpoint),

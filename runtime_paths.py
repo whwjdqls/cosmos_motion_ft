@@ -76,6 +76,19 @@ class CosmosSitePaths:
 
 def get_cosmos_site_paths(site: str | None = None) -> CosmosSitePaths:
     selected = site or _site_os.environ.get("COSMOS_SITE")
+    if selected == "custom":
+        from migration.custom_paths import environment
+        paths = environment()
+        return CosmosSitePaths(
+            site="custom", repo_root=_SitePath(paths["REPO_ROOT"]),
+            storage_root=_SitePath(paths["PROJECT_ROOT"]), weka_root=_SitePath(paths["WEKA_ROOT"]),
+            runs_root=_SitePath(paths["RUN_ROOT"]), hf_home=_SitePath(paths["HF_HOME"]),
+            torch_home=_SitePath(paths["TORCH_HOME"]), wan_vae_path=_SitePath(paths["WAN_VAE_PATH"]),
+            cosmos3_edge_root=_SitePath(paths["COSMOS3_EDGE_ROOT"]),
+            cosmos3_nano_root=_SitePath(paths["COSMOS3_NANO_ROOT"]),
+            cosmos3_edge_dcp_root=_SitePath(paths["COSMOS3_EDGE_DCP_ROOT"]),
+            base_checkpoint_path=_SitePath(paths["BASE_CHECKPOINT_PATH"]),
+        )
     if selected == "yonsei":
         repo_root = _SitePath("/home/whwjdqls99/cosmos_motion_ft")
         storage_root = _SitePath("/lustre/whwjdqls99/cosmos")
@@ -165,6 +178,13 @@ PHASE1_GEN_INIT = _site_coerce_like_existing(
 
 # These mappings must be built from the selected site, not from the historical
 # defaults that were initialized before the explicit selector.
+if COSMOS_SITE == "custom":
+    from migration.custom_paths import environment as _custom_environment
+    _custom_paths = _custom_environment()
+    COSMOS_FRAMEWORK_ROOT = Path(_custom_paths["COSMOS_FRAMEWORK_ROOT"])
+    COSMOS_ENV_ROOT = Path(_custom_paths["COSMOS_ENV_ROOT"])
+    PHASE1_GEN_INIT = Path(_custom_paths["COSMOS_PHASE1_GEN_INIT"])
+
 _LEGACY_PREFIXES = (
     ("/weka/jungbin/cosmos_motion_ft_runs", RUN_ROOT),
     ("/weka/jungbin", WEKA_ROOT),
@@ -173,4 +193,16 @@ _LEGACY_PREFIXES = (
     ("/home/jungbin_cho/cosmos-framework", COSMOS_FRAMEWORK_ROOT),
     ("/home/jungbin_cho/miniforge3/envs/cosmos", COSMOS_ENV_ROOT),
 )
+if COSMOS_SITE == "custom":
+    _LEGACY_PREFIXES += (
+        ("/scratch2/whwjdqls99/cosmos/cosmos_motion_ft_runs", RUN_ROOT),
+        ("/lustre/whwjdqls99/cosmos/weka/cosmos_motion_ft_runs", RUN_ROOT),
+        ("/lustre/whwjdqls99/cosmos/weka", WEKA_ROOT),
+        ("/mnt/projects/ll/jungbinc/weka/cosmos_motion_ft_runs", RUN_ROOT),
+        ("/mnt/projects/ll/jungbinc/weka", WEKA_ROOT),
+        ("/home/whwjdqls99/cosmos_motion_ft", REPO_ROOT),
+        ("/home/jungbinc/cosmos_motion_ft", REPO_ROOT),
+        ("/home/whwjdqls99/cosmos-framework-edge", Path(_custom_paths["COSMOS_FRAMEWORK_EDGE_ROOT"])),
+        ("/home/whwjdqls99/cosmos-framework", COSMOS_FRAMEWORK_ROOT),
+    )
 # END EXPLICIT COSMOS SITE SELECTOR

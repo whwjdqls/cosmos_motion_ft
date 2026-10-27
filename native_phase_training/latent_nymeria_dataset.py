@@ -306,12 +306,22 @@ def validate_training_cache_contract(
     return contract
 
 
-_TRAIN_EXCLUDED_ORIGINAL_VIDEO_NAME_SUBSTRINGS = (
+_DEFAULT_TRAIN_EXCLUDED_ORIGINAL_VIDEO_NAME_SUBSTRINGS = (
     "brittney_goodwin",
     "austin_lopez",
     "kim_wilkins",
     "kevin_davis",
     "devon_norris",
+)
+# Preserve existing filtered runs on either site unless the launcher explicitly
+# overrides the list. An empty value opts into all otherwise-valid train rows.
+_TRAIN_EXCLUDED_ORIGINAL_VIDEO_NAME_SUBSTRINGS = tuple(
+    name.strip().casefold()
+    for name in os.environ.get(
+        "NYMERIA_EXCLUDE_ORIGINAL_VIDEO_NAMES",
+        ",".join(_DEFAULT_TRAIN_EXCLUDED_ORIGINAL_VIDEO_NAME_SUBSTRINGS),
+    ).split(",")
+    if name.strip()
 )
 
 
@@ -392,6 +402,7 @@ def build_cached_index(
                     s += num_frames
     print(
         f"[NymeriaCameraLatentDataset] split={split} T={num_frames} kept={len(index)} "
+        f"original_video_name_filter={list(_TRAIN_EXCLUDED_ORIGINAL_VIDEO_NAME_SUBSTRINGS)} "
         f"excluded_original_videos={excluded_original_videos} "
         f"excluded_original_video_names={dict(sorted(excluded_original_video_names.items()))} "
         f"quality_filtered={quality_filtered_rows} missing_latents={missing_latents} "
@@ -614,7 +625,7 @@ class NymeriaCameraLatentDataset(Dataset):
             self._expected_latent_hw = expected_latent_hw
             self._expected_image_hw = expected_image_hw
 
-        index = build_cached_index(
+        index = self._build_cached_index(
             manifest_path,
             split_file,
             split,
@@ -634,6 +645,10 @@ class NymeriaCameraLatentDataset(Dataset):
             output_keys=["text_token_ids"],
             args={"tokenizer_config": tokenizer_config, "cfg_dropout_rate": cfg_dropout_rate},
         )
+
+    # Subclasses with an immutable, prevalidated window manifest can reuse
+    # native packing without rebuilding a second, unused filesystem index.
+    _build_cached_index = staticmethod(build_cached_index)
 
     def __len__(self) -> int:
         return len(self._index)
@@ -704,7 +719,13 @@ class NymeriaCameraLatentDataset(Dataset):
                     f"expected transformed H=W={self._expected_image_hw}"
                 )
 
-        caption = "" if mode == "inverse_dynamics" else it["cap"]
+        # Keep the same indexed windows while explicitly disabling semantic
+        # captions for no-text ablations. Native task/metadata tokens remain.
+        caption = (
+            ""
+            if mode == "inverse_dynamics" or not getattr(self, "caption_conditioning", True)
+            else it["cap"]
+        )
         if caption and self.replace_standalone_c:
             caption = replace_standalone_c(caption, self.standalone_c_subject)
         rgb_prefix_length, latent_prefix_length = self._choose_prefix(mode)

@@ -42,11 +42,125 @@ MOTION_LAYER_STRIDE = 4
 MOTION_LAYER_INDICES = tuple(
     i for i in range(NUM_LAYERS) if (i + 1) % MOTION_LAYER_STRIDE == 0
 )
+MOTION_SELF_ATTENTION_PER_GAP = int(
+    os.environ.get("EDGE_MOTION_SELF_ATTENTION_PER_GAP", "0")
+)
+if MOTION_SELF_ATTENTION_PER_GAP not in (0, 1):
+    raise ValueError("EDGE_MOTION_SELF_ATTENTION_PER_GAP must be 0 or 1")
+MOTION_SELF_ATTENTION_AFTER_JOINT_LAYERS = (
+    MOTION_LAYER_INDICES[:-1] if MOTION_SELF_ATTENTION_PER_GAP else ()
+)
+_motion_self_attention_before_joint = os.environ.get(
+    "EDGE_MOTION_SELF_ATTENTION_BEFORE_JOINT", "0"
+)
+if _motion_self_attention_before_joint not in {"0", "1"}:
+    raise ValueError("EDGE_MOTION_SELF_ATTENTION_BEFORE_JOINT must be 0 or 1")
+MOTION_SELF_ATTENTION_BEFORE_JOINT = _motion_self_attention_before_joint == "1"
 # Preserve the original Cosmos-3 Nano Phase-2 motion expert.  Only the
 # backbone-facing residual/attention geometry changes for Edge; the fresh
 # motion FFN remains the same three-linear SwiGLU block.
 MOTION_MLP_TYPE = "motion_swiglu"
-TEXT_PACKING = "edge_native_generation_prefix"
+# Legacy Edge checkpoints rounded all I/O weights except time to BF16.
+# Nano trained its complete motion heads and final norm in FP32.
+MOTION_IO_DTYPE = os.environ.get("EDGE_MOTION_IO_DTYPE", "bfloat16")
+if MOTION_IO_DTYPE not in {"bfloat16", "float32"}:
+    raise ValueError(f"unsupported EDGE_MOTION_IO_DTYPE={MOTION_IO_DTYPE!r}")
+# Independent opt-ins: preserve every existing architecture by default.
+MOTION_NORM_DTYPE = os.environ.get("EDGE_MOTION_NORM_DTYPE", "bfloat16")
+if MOTION_NORM_DTYPE not in {"bfloat16", "float32"}:
+    raise ValueError(f"unsupported EDGE_MOTION_NORM_DTYPE={MOTION_NORM_DTYPE!r}")
+_reasoner_k_norm_trainable = os.environ.get("EDGE_REASONER_K_NORM_TRAINABLE", "0")
+if _reasoner_k_norm_trainable not in {"0", "1"}:
+    raise ValueError("EDGE_REASONER_K_NORM_TRAINABLE must be 0 or 1")
+REASONER_K_NORM_TRAINABLE = _reasoner_k_norm_trainable == "1"
+_reasoner_k_norm_bypass = os.environ.get("EDGE_REASONER_K_NORM_BYPASS", "0")
+if _reasoner_k_norm_bypass not in {"0", "1"}:
+    raise ValueError("EDGE_REASONER_K_NORM_BYPASS must be 0 or 1")
+REASONER_K_NORM_BYPASS = _reasoner_k_norm_bypass == "1"
+if REASONER_K_NORM_BYPASS and REASONER_K_NORM_TRAINABLE:
+    raise ValueError("as-is reasoner K/V and a trainable interface K norm are mutually exclusive")
+REASONER_KV_PROJECTION = os.environ.get("EDGE_REASONER_KV_PROJECTION", "none")
+if REASONER_KV_PROJECTION not in {"none", "linear_identity_v1"}:
+    raise ValueError(f"unsupported EDGE_REASONER_KV_PROJECTION={REASONER_KV_PROJECTION!r}")
+if REASONER_KV_PROJECTION != "none" and REASONER_K_NORM_BYPASS:
+    raise ValueError("projected reasoner K/V requires the post-projection interface K norm")
+_reasoner_v_norm_trainable = os.environ.get("EDGE_REASONER_V_NORM_TRAINABLE", "0")
+if _reasoner_v_norm_trainable not in {"0", "1"}:
+    raise ValueError("EDGE_REASONER_V_NORM_TRAINABLE must be 0 or 1")
+REASONER_V_NORM_TRAINABLE = _reasoner_v_norm_trainable == "1"
+if REASONER_V_NORM_TRAINABLE and (
+    REASONER_KV_PROJECTION != "linear_identity_v1" or not REASONER_K_NORM_TRAINABLE
+):
+    raise ValueError("learned projected-V normalization requires Projection A with its learned K norm")
+MOTION_ATTENTION_MODE = os.environ.get("EDGE_MOTION_ATTENTION_MODE", "joint")
+CROSS_ATTENTION_K_NORM = os.environ.get("EDGE_CROSS_ATTENTION_K_NORM", "none")
+CROSS_ATTENTION_V_NORM = os.environ.get("EDGE_CROSS_ATTENTION_V_NORM", "none")
+_cross_attention_reasoner_rope = os.environ.get("EDGE_CROSS_ATTENTION_REASONER_ROPE", "1")
+if _cross_attention_reasoner_rope not in {"0", "1"}:
+    raise ValueError("EDGE_CROSS_ATTENTION_REASONER_ROPE must be 0 or 1")
+CROSS_ATTENTION_REASONER_ROPE = _cross_attention_reasoner_rope == "1"
+
+
+def validate_attention_configuration() -> None:
+    if MOTION_SELF_ATTENTION_BEFORE_JOINT and (
+        MOTION_ATTENTION_MODE != "joint" or MOTION_SELF_ATTENTION_PER_GAP
+    ):
+        raise ValueError("pre-joint motion self-attention requires joint mode without gap blocks")
+    if CROSS_ATTENTION_K_NORM not in {"none", "rmsnorm"}:
+        raise ValueError(f"unsupported EDGE_CROSS_ATTENTION_K_NORM={CROSS_ATTENTION_K_NORM!r}")
+    if CROSS_ATTENTION_K_NORM != "none" and MOTION_ATTENTION_MODE != "self_cross_final_hidden":
+        raise ValueError("cross-key RMSNorm is supported only for final-hidden self/cross attention")
+    if CROSS_ATTENTION_V_NORM not in {"none", "rmsnorm"}:
+        raise ValueError(f"unsupported EDGE_CROSS_ATTENTION_V_NORM={CROSS_ATTENTION_V_NORM!r}")
+    if MOTION_ATTENTION_MODE != "self_cross_final_hidden" and (
+        CROSS_ATTENTION_V_NORM != "none" or not CROSS_ATTENTION_REASONER_ROPE
+    ):
+        raise ValueError("cross-value RMSNorm and unrotated cross keys require final-hidden self/cross attention")
+    if MOTION_ATTENTION_MODE not in {"joint", "self_cross_final_hidden", "self_cross_layer_kv"}:
+        raise ValueError(f"unsupported EDGE_MOTION_ATTENTION_MODE={MOTION_ATTENTION_MODE!r}")
+    if MOTION_ATTENTION_MODE != "joint":
+        if REASONER_K_NORM_TRAINABLE or REASONER_KV_PROJECTION != "none":
+            raise ValueError("self/cross ablations have no learned reasoner-interface norm or adapter")
+        if MOTION_SELF_ATTENTION_PER_GAP:
+            raise ValueError("self/cross blocks cannot be combined with extra joint-attention gap blocks")
+
+
+def attention_mode_contract(mode: str | None = None) -> dict[str, Any]:
+    mode = MOTION_ATTENTION_MODE if mode is None else mode
+    joint = mode == "joint"
+    return {
+        "motion_attention_mode": mode,
+        "motion_block_order": (
+            ["self_attention", "joint_attention", "ffn"]
+            if joint and MOTION_SELF_ATTENTION_BEFORE_JOINT
+            else ["joint_attention", "ffn"] if joint
+            else ["self_attention", "cross_attention", "ffn"]
+        ),
+        "cross_attention_memory": (
+            None if joint else "final_post_norm_hidden" if mode == "self_cross_final_hidden"
+            else "selected_layer_native_kv"
+        ),
+        "cross_attention_key_normalization": (
+            None if joint else CROSS_ATTENTION_K_NORM if mode == "self_cross_final_hidden" else "frozen_reasoner_native"
+        ),
+        "cross_attention_value_normalization": (
+            None if joint else CROSS_ATTENTION_V_NORM if mode == "self_cross_final_hidden" else "none"
+        ),
+        "cross_attention_reasoner_rope": (
+            None if joint else CROSS_ATTENTION_REASONER_ROPE if mode == "self_cross_final_hidden" else True
+        ),
+        "cross_attention_position_encoding": (
+            None if joint else "motion_native_mrope_reasoner_unrotated"
+            if mode == "self_cross_final_hidden" and not CROSS_ATTENTION_REASONER_ROPE
+            else "native_mrope_once"
+        ),
+    }
+
+
+validate_attention_configuration()
+TEXT_PACKING = os.environ.get("EDGE_TEXT_PACKING", "edge_native_generation_prefix")
+if TEXT_PACKING not in {"edge_native_generation_prefix", "nano_caption_only"}:
+    raise ValueError(f"unsupported EDGE_TEXT_PACKING={TEXT_PACKING!r}")
 MOTION_MROPE = "cosmos3d"
 TIMESTEP_CONVENTION = "normalized_sigma"
 FPS = 20.0
@@ -283,7 +397,13 @@ def architecture_contract() -> dict[str, Any]:
         "reasoner_image_size": REASONER_IMAGE_SIZE,
         "reasoner_image_conditioning": "frozen_edge_siglip2_visual_tokens",
         "generator_tokens": False,
-        "attention_roles": ["causal_reasoner", "full_motion"],
+        "attention_roles": (
+            ["causal_reasoner", "motion_self", "full_motion"]
+            if MOTION_ATTENTION_MODE == "joint" and MOTION_SELF_ATTENTION_BEFORE_JOINT
+            else ["causal_reasoner", "full_motion"] if MOTION_ATTENTION_MODE == "joint"
+            else ["causal_reasoner", "motion_self", "motion_cross"]
+        ),
+        **attention_mode_contract(),
         "model_family": MODEL_FAMILY,
         "hidden_size": HIDDEN_SIZE,
         "num_layers": NUM_LAYERS,
@@ -293,7 +413,18 @@ def architecture_contract() -> dict[str, Any]:
         "motion_dim": MOTION_DIM,
         "motion_intermediate_size": MOTION_INTERMEDIATE_SIZE,
         "motion_layer_indices": list(MOTION_LAYER_INDICES),
+        "motion_self_attention_per_gap": MOTION_SELF_ATTENTION_PER_GAP,
+        "motion_self_attention_before_joint": MOTION_SELF_ATTENTION_BEFORE_JOINT,
+        "motion_self_attention_after_joint_layers": list(
+            MOTION_SELF_ATTENTION_AFTER_JOINT_LAYERS
+        ),
         "motion_mlp_type": MOTION_MLP_TYPE,
+        "motion_io_dtype": MOTION_IO_DTYPE,
+        "motion_norm_dtype": MOTION_NORM_DTYPE,
+        "reasoner_k_norm_trainable": REASONER_K_NORM_TRAINABLE,
+        "reasoner_k_norm_bypass": REASONER_K_NORM_BYPASS,
+        "reasoner_kv_projection": REASONER_KV_PROJECTION,
+        "reasoner_v_norm_trainable": REASONER_V_NORM_TRAINABLE,
         "text_packing": TEXT_PACKING,
         "motion_mrope": MOTION_MROPE,
         "timestep_convention": TIMESTEP_CONVENTION,

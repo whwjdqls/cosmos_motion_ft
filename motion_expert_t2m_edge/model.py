@@ -11,6 +11,7 @@ import config
 from attention import build_layout
 from edge_loader import FrozenEdgeReasoner
 from layer import EdgeTextMotionLayer, _fresh_norm_like
+from self_cross import EdgeSelfCrossMotionLayer, run_self_cross_layers
 from motion_heads import MotionHeads
 
 
@@ -53,11 +54,18 @@ class EdgePhase2MotionExpert(nn.Module):
         device: torch.device | str = "cuda",
         dtype: torch.dtype = torch.bfloat16,
         verbose: bool = True,
+        frozen_edge: FrozenEdgeReasoner | None = None,
     ) -> None:
         super().__init__()
         self.device = torch.device(device)
         self.compute_dtype = dtype
-        edge = FrozenEdgeReasoner(device=self.device, dtype=dtype, verbose=verbose)
+        config.validate_attention_configuration()
+        self.attention_mode = config.MOTION_ATTENTION_MODE
+        # Phase 3 supplies the same frozen reasoner with its native generator
+        # retained. The default Phase-2 construction and state keys are unchanged.
+        edge = frozen_edge if frozen_edge is not None else FrozenEdgeReasoner(
+            device=self.device, dtype=dtype, verbose=verbose
+        )
         # Keep the 2B frozen reasoner outside this module's registered parameter
         # tree.  The per-layer wrappers hold non-registering references too, so
         # DDP synchronizes and checkpoints only the motion expert.
@@ -67,9 +75,12 @@ class EdgePhase2MotionExpert(nn.Module):
         geometry = edge.geometry
         self.motion_layer_indices = tuple(config.MOTION_LAYER_INDICES)
         motion_set = set(self.motion_layer_indices)
+        layer_type = (
+            EdgeTextMotionLayer if self.attention_mode == "joint" else EdgeSelfCrossMotionLayer
+        )
         self.layers = nn.ModuleList(
             [
-                EdgeTextMotionLayer(
+                layer_type(
                     base_layer=base_layer,
                     hidden_size=geometry.hidden_size,
                     num_heads=geometry.num_attention_heads,
@@ -84,11 +95,28 @@ class EdgePhase2MotionExpert(nn.Module):
         self.heads = MotionHeads(geometry.hidden_size)
         self.norm_moe_motion = _fresh_norm_like(self.backbone.norm, geometry.hidden_size)
         self.layers.to(device=self.device, dtype=dtype)
-        self.heads.to(device=self.device, dtype=dtype)
-        # Match the original Phase-2 contract: sinusoidal time features and
-        # their small MLP are evaluated in fp32, then cast into motion tokens.
+        # Only parameter storage changes. Edge RMSNorm performs its reduction
+        # in FP32 and returns the incoming activation dtype, keeping the BF16
+        # projections/packed attention compatible. AdamW follows param dtype.
+        motion_norm_names = {
+            "input_norm_motion", "post_norm_motion", "q_norm_motion", "k_norm_motion",
+            "input_norm_cross_motion", "q_norm_cross_motion", "k_norm_cross_motion",
+            "v_norm_cross_motion",
+        }
+        for name, module in self.layers.named_modules():
+            leaf = name.rsplit(".", 1)[-1]
+            if config.MOTION_NORM_DTYPE == "float32" and leaf in motion_norm_names:
+                module.float()
+            elif config.REASONER_K_NORM_TRAINABLE and leaf == "reasoner_k_norm_motion":
+                module.float()
+            elif config.REASONER_V_NORM_TRAINABLE and leaf == "reasoner_v_norm_motion":
+                module.float()
+        io_dtype = torch.float32 if config.MOTION_IO_DTYPE == "float32" else dtype
+        # Do not round FP32-initialized I/O weights or the non-persistent time
+        # frequencies through BF16 on the Nano-parity path.
+        self.heads.to(device=self.device, dtype=io_dtype)
         self.heads.time_embedder.to(device=self.device, dtype=torch.float32)
-        self.norm_moe_motion.to(device=self.device, dtype=dtype)
+        self.norm_moe_motion.to(device=self.device, dtype=io_dtype)
         self.backbone.requires_grad_(False)
         self.backbone.eval()
 
@@ -96,7 +124,16 @@ class EdgePhase2MotionExpert(nn.Module):
             trainable = sum(parameter.numel() for parameter in self.trainable_parameters())
             print(
                 f"[EdgePhase2MotionExpert] motion_layers={list(self.motion_layer_indices)} "
+                f"attention_mode={self.attention_mode} "
                 f"motion_mlp=swiglu/{config.MOTION_INTERMEDIATE_SIZE} "
+                f"motion_norm_dtype={config.MOTION_NORM_DTYPE} "
+                f"reasoner_k_norm_trainable={config.REASONER_K_NORM_TRAINABLE} "
+                f"reasoner_k_norm_bypass={config.REASONER_K_NORM_BYPASS} "
+                f"reasoner_kv_projection={config.REASONER_KV_PROJECTION} "
+                f"reasoner_v_norm_trainable={config.REASONER_V_NORM_TRAINABLE} "
+                f"cross_k_norm={config.CROSS_ATTENTION_K_NORM} "
+                f"cross_v_norm={config.CROSS_ATTENTION_V_NORM} "
+                f"cross_reasoner_rope={config.CROSS_ATTENTION_REASONER_ROPE} "
                 f"trainable={trainable/1e6:.2f}M",
                 flush=True,
             )
@@ -108,7 +145,7 @@ class EdgePhase2MotionExpert(nn.Module):
         return self
 
     def tokenize_captions(self, captions: Sequence[str | None]) -> list[torch.LongTensor]:
-        return [self._edge.tokenize_generation(caption) for caption in captions]
+        return [self._edge.tokenize_text(caption) for caption in captions]
 
     @prefetch_frozen_image_conditions
     def prepare_conditions(
@@ -230,8 +267,13 @@ class EdgePhase2MotionExpert(nn.Module):
         positions = torch.cat(position_parts, dim=1)
         layout = build_layout(text_lengths, motion_lengths, device)
         cos, sin = self._edge.rope(positions)
-        for layer in self.layers:
-            packed = layer(packed, layout, cos, sin)
+        if self.attention_mode == "joint":
+            for layer in self.layers:
+                packed = layer(packed, layout, cos, sin)
+        else:
+            packed = run_self_cross_layers(
+                self.layers, packed, layout, cos, sin, self.backbone.norm, self.attention_mode
+            )
 
         motion_rows = self.norm_moe_motion(packed.index_select(0, layout.motion_idx))
         prediction = torch.zeros(

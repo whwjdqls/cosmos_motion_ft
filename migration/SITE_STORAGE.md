@@ -2,6 +2,12 @@
 
 Last updated: 2026-09-04
 
+New-server addition (2026-10-27): use the opt-in `COSMOS_SITE=custom` path
+resolver and source setup in [`SINGLE_REPO.md`](SINGLE_REPO.md). Existing
+Yonsei/Grasp selection is unchanged. The inventory and scratch policy below
+are a September snapshot; later user-authorized October runs/caches live on
+Scratch2. Do not interpret the old inventory as their current readiness.
+
 This document maps physical storage for the Yonsei datacenter and the Grasp lab
 server. It complements `SERVER_MIGRATION.md`, which remains the restore
 runbook, and the artifact manifests, which remain the authority for required

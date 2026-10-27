@@ -1,0 +1,364 @@
+--- a/1_train_motion_prior.py
++++ b/1_train_motion_prior.py
+@@ -16,6 +16,7 @@
+ 
+ from egoallo import network, training_loss, training_utils
+ from egoallo.data.amass import EgoAmassHdf5Dataset
++from egoallo.data.nymeria_soma import NymeriaSomaDataset
+ from egoallo.data.dataclass import collate_dataclass
+ 
+ 
+@@ -24,6 +25,7 @@
+     experiment_name: str
+     dataset_hdf5_path: Path
+     dataset_files_path: Path
++    nymeria_cache: Path | None = None
+ 
+     model: network.EgoDenoiserConfig = network.EgoDenoiserConfig()
+     loss: training_loss.TrainingLossConfig = training_loss.TrainingLossConfig()
+@@ -87,14 +89,23 @@
+ 
+     # Initialize experiment.
+     if accelerator.is_main_process:
+-        training_utils.pdb_safety_net()
++        if config.nymeria_cache is None:
++            training_utils.pdb_safety_net()
+ 
+         # Save various things that might be useful.
+         experiment_dir.mkdir(exist_ok=True, parents=True)
+-        (experiment_dir / "git_commit.txt").write_text(
+-            training_utils.get_git_commit_hash()
+-        )
+-        (experiment_dir / "git_diff.txt").write_text(training_utils.get_git_diff())
++        if config.nymeria_cache is not None:
++            (experiment_dir / "git_commit.txt").write_text(
++                "0c20ae8c8d48be4ff682803ea523bcb00a6a708d\n"
++            )
++            (experiment_dir / "git_diff.txt").write_text(
++                "Pinned upstream tarball; Nymeria-SOMA adaptations are in this checkout.\n"
++            )
++        else:
++            (experiment_dir / "git_commit.txt").write_text(
++                training_utils.get_git_commit_hash()
++            )
++            (experiment_dir / "git_diff.txt").write_text(training_utils.get_git_diff())
+         (experiment_dir / "run_config.yaml").write_text(yaml.dump(config))
+         (experiment_dir / "model_config.yaml").write_text(yaml.dump(config.model))
+ 
+@@ -112,7 +123,7 @@
+     # Setup.
+     model = network.EgoDenoiser(config.model)
+     train_loader = torch.utils.data.DataLoader(
+-        dataset=EgoAmassHdf5Dataset(
++        dataset=NymeriaSomaDataset(config.nymeria_cache, split="train") if config.nymeria_cache is not None else EgoAmassHdf5Dataset(
+             config.dataset_hdf5_path,
+             config.dataset_files_path,
+             splits=config.train_splits,
+--- a/src/egoallo/data/dataclass.py
++++ b/src/egoallo/data/dataclass.py
+@@ -128,5 +128,5 @@
+     """Collate function that works for dataclasses."""
+     keys = vars(batch[0]).keys()
+     return type(batch[0])(
+-        **{k: torch.stack([getattr(b, k) for b in batch]) for k in keys}
++        **{k: (None if getattr(batch[0], k) is None else torch.stack([getattr(b, k) for b in batch])) for k in keys}
+     )
+--- a/src/egoallo/network.py
++++ b/src/egoallo/network.py
+@@ -43,8 +43,8 @@
+     """Local orientations for each body joint."""
+ 
+     @staticmethod
+-    def get_packed_dim(include_hands: bool) -> int:
+-        packed_dim = 16 + 21 * 9 + 21
++    def get_packed_dim(include_hands: bool, body_joint_count: int = 21, contact_joint_count: int = 21) -> int:
++        packed_dim = 16 + body_joint_count * 9 + contact_joint_count
+         if include_hands:
+             packed_dim += 30 * 9
+         return packed_dim
+@@ -65,7 +65,6 @@
+     def pack(self) -> Float[Tensor, "*#batch timesteps d_state"]:
+         """Pack trajectory into a single flattened vector."""
+         (*batch, time, num_joints, _, _) = self.body_rotmats.shape
+-        assert num_joints == 21
+         return torch.cat(
+             [
+                 x.reshape((*batch, time, -1))
+@@ -81,6 +80,8 @@
+         x: Float[Tensor, "*#batch timesteps d_state"],
+         include_hands: bool,
+         project_rotmats: bool = False,
++        body_joint_count: int = 21,
++        contact_joint_count: int = 21,
+     ) -> EgoDenoiseTraj:
+         """Unpack trajectory from a single flattened vector.
+ 
+@@ -89,20 +90,20 @@
+             project_rotmats: If True, project the rotation matrices to SO(3) via SVD.
+         """
+         (*batch, time, d_state) = x.shape
+-        assert d_state == cls.get_packed_dim(include_hands)
++        assert d_state == cls.get_packed_dim(include_hands, body_joint_count, contact_joint_count)
+ 
+         if include_hands:
+             betas, body_rotmats_flat, contacts, hand_rotmats_flat = torch.split(
+-                x, [16, 21 * 9, 21, 30 * 9], dim=-1
+-            )
+-            body_rotmats = body_rotmats_flat.reshape((*batch, time, 21, 3, 3))
++                x, [16, body_joint_count * 9, contact_joint_count, 30 * 9], dim=-1
++            )
++            body_rotmats = body_rotmats_flat.reshape((*batch, time, body_joint_count, 3, 3))
+             hand_rotmats = hand_rotmats_flat.reshape((*batch, time, 30, 3, 3))
+             assert betas.shape == (*batch, time, 16)
+         else:
+             betas, body_rotmats_flat, contacts = torch.split(
+-                x, [16, 21 * 9, 21], dim=-1
+-            )
+-            body_rotmats = body_rotmats_flat.reshape((*batch, time, 21, 3, 3))
++                x, [16, body_joint_count * 9, contact_joint_count], dim=-1
++            )
++            body_rotmats = body_rotmats_flat.reshape((*batch, time, body_joint_count, 3, 3))
+             hand_rotmats = None
+             assert betas.shape == (*batch, time, 16)
+ 
+@@ -141,6 +142,8 @@
+     include_canonicalized_cpf_rotation_in_cond: bool = True
+     include_hands: bool = True
+     """Whether to include hand joints (+15 per hand) in the denoised state."""
++    body_joint_count: int = 21
++    contact_joint_count: int = 21
+ 
+     cond_param: Literal[
+         "ours", "canonicalized", "absolute", "absrel", "absrel_global_deltas"
+@@ -322,8 +325,8 @@
+         # MLP encoders and decoders for each modality we want to denoise.
+         modality_dims: dict[str, int] = {
+             "betas": 16,
+-            "body_rotmats": 21 * 9,
+-            "contacts": 21,
++            "body_rotmats": config.body_joint_count * 9,
++            "contacts": config.contact_joint_count,
+         }
+         if config.include_hands:
+             modality_dims["hand_rotmats"] = 30 * 9
+@@ -414,7 +417,7 @@
+         )
+ 
+     def get_d_state(self) -> int:
+-        return EgoDenoiseTraj.get_packed_dim(self.config.include_hands)
++        return EgoDenoiseTraj.get_packed_dim(self.config.include_hands, self.config.body_joint_count, self.config.contact_joint_count)
+ 
+     def forward(
+         self,
+@@ -435,9 +438,9 @@
+         level, not a timestep."""
+         config = self.config
+ 
+-        x_t = EgoDenoiseTraj.unpack(x_t_packed, include_hands=self.config.include_hands)
++        x_t = EgoDenoiseTraj.unpack(x_t_packed, include_hands=self.config.include_hands, body_joint_count=config.body_joint_count, contact_joint_count=config.contact_joint_count)
+         (batch, time, num_body_joints, _, _) = x_t.body_rotmats.shape
+-        assert num_body_joints == 21
++        assert num_body_joints == config.body_joint_count
+ 
+         # Encode the trajectory into a single vector per timestep.
+         x_t_encoded = (
+@@ -537,7 +540,7 @@
+                     project_rotmats_via_svd(
+                         modality_decoder(decoder_out).reshape((-1, 3, 3))
+                     ).reshape(
+-                        (batch, time, {"body_rotmats": 21, "hand_rotmats": 30}[key] * 9)
++                        (batch, time, {"body_rotmats": config.body_joint_count, "hand_rotmats": 30}[key] * 9)
+                     )
+                     # if enabled,
+                     if project_output_rotmats
+--- a/src/egoallo/training_loss.py
++++ b/src/egoallo/training_loss.py
+@@ -11,7 +11,7 @@
+ 
+ from . import network
+ from .data.amass import EgoTrainingData
+-from .sampling import CosineNoiseScheduleConstants
++from .noise_schedule import CosineNoiseScheduleConstants
+ from .transforms import SO3
+ 
+ 
+@@ -70,7 +70,7 @@
+         log_outputs: dict[str, Tensor | float] = {}
+ 
+         batch, time, num_joints, _ = train_batch.body_quats.shape
+-        assert num_joints == 21
++        assert num_joints == unwrapped_model.config.body_joint_count
+         if unwrapped_model.config.include_hands:
+             assert train_batch.hand_quats is not None
+             x_0 = network.EgoDenoiseTraj(
+@@ -143,7 +143,9 @@
+         )
+         assert isinstance(x_0_packed_pred, torch.Tensor)
+         x_0_pred = network.EgoDenoiseTraj.unpack(
+-            x_0_packed_pred, include_hands=unwrapped_model.config.include_hands
++            x_0_packed_pred, include_hands=unwrapped_model.config.include_hands,
++            body_joint_count=unwrapped_model.config.body_joint_count,
++            contact_joint_count=unwrapped_model.config.contact_joint_count,
+         )
+ 
+         weight_t = self.weight_t[t].to(device)
+@@ -184,7 +186,7 @@
+             "body_rotmats": weight_and_mask_loss(
+                 # (b, t, 21 * 3 * 3)
+                 (x_0_pred.body_rotmats - x_0.body_rotmats).reshape(
+-                    (batch, time, 21 * 3 * 3)
++                    (batch, time, num_joints * 3 * 3)
+                 )
+                 ** 2,
+             ),
+--- /dev/null
++++ b/src/egoallo/noise_schedule.py
+@@ -0,0 +1,31 @@
++"""Training-only copy of the official cosine schedule, without sampling imports."""
++
++import torch
++from jaxtyping import Float
++from torch import Tensor
++
++from .tensor_dataclass import TensorDataclass
++
++
++class CosineNoiseScheduleConstants(TensorDataclass):
++    alpha_t: Float[Tensor, "T"]
++    alpha_bar_t: Float[Tensor, "T+1"]
++
++    @staticmethod
++    def compute(timesteps: int, s: float = 0.008) -> "CosineNoiseScheduleConstants":
++        steps = timesteps + 1
++        x = torch.linspace(0, 1, steps, dtype=torch.float64)
++
++        def get_betas():
++            alphas_cumprod = torch.cos((x + s) / (1 + s) * torch.pi * 0.5) ** 2
++            alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
++            betas = 1.0 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
++            return torch.clip(betas, 0, 0.999)
++
++        alpha_t = 1.0 - get_betas()
++        alpha_cumprod_t = torch.cat(
++            [torch.ones((1,)), torch.cumprod(alpha_t, dim=0)], dim=0
++        )
++        return CosineNoiseScheduleConstants(
++            alpha_t=alpha_t, alpha_bar_t=alpha_cumprod_t
++        )
+--- /dev/null
++++ b/src/egoallo/data/nymeria_soma.py
+@@ -0,0 +1,114 @@
++"""Nymeria-SOMA body-only adapter for the official EgoAllo trainer."""
++
++import json
++from functools import lru_cache
++from pathlib import Path
++
++import numpy as np
++import torch
++from scipy.spatial.transform import Rotation
++
++from .dataclass import EgoTrainingData
++
++
++def _matrices_from_6d(values):
++    x = values[..., :3].astype(np.float64)
++    y = values[..., 3:6].astype(np.float64)
++    x /= np.linalg.norm(x, axis=-1, keepdims=True)
++    z = np.cross(x, y)
++    z /= np.linalg.norm(z, axis=-1, keepdims=True)
++    y = np.cross(z, x)
++    return np.stack((x, y, z), axis=-1)
++
++
++def _wxyz(matrices):
++    xyzw = Rotation.from_matrix(matrices).as_quat()
++    return xyzw[..., [3, 0, 1, 2]].astype(np.float32)
++
++
++class NymeriaSomaDataset(torch.utils.data.Dataset):
++    def __init__(self, cache: Path, split: str = "train"):
++        self.cache = Path(cache)
++        self.metadata_root = self.cache / "egoallo_metadata_v1"
++        if not (self.metadata_root / "index.json").is_file():
++            raise FileNotFoundError("Run nymeria_baselines.prepare_egoallo_metadata for this cache first")
++        manifest = json.loads((self.cache / "index.json").read_text())
++        assert manifest["window"] == 97 and manifest["fps"] == 20
++        self.rows = [r for r in manifest["rows"] if r["split"] == split]
++        shape = np.load(self.cache / "body_shape16.npz")
++        self.body_joints = shape["body_joints"].astype(int)
++        self.parents = shape["parents"].astype(int)
++        self.shape_mean = shape["mean"].astype(np.float64)
++        self.shape_components = shape["components"].astype(np.float64)
++        self.shape_scale = shape["scale"].astype(np.float64)
++        assert len(self.body_joints) == 23
++
++    def __len__(self):
++        return len(self.rows)
++
++    @lru_cache(maxsize=8)
++    def _metadata(self, key):
++        return tuple(
++            np.load(self.metadata_root / f"{key}.{name}.npy", mmap_mode="r")
++            for name in ("world_root_zup", "joints_wrt_cpf")
++        )
++
++    @lru_cache(maxsize=8)
++    def _arrays(self, key):
++        root = self.cache / "records"
++        return tuple(np.load(root / f"{key}.{name}.npy", mmap_mode="r") for name in ("motion", "pose_zup", "neutral"))
++
++    def __getitem__(self, index):
++        row = self.rows[index]
++        motion_all, pose_all, neutral = self._arrays(row["array"])
++        start = row["start"]
++        motion = np.asarray(motion_all[start:start + 97], dtype=np.float64)
++        pose = np.array(pose_all[start:start + 97], dtype=np.float64, copy=True)
++        # The official denoiser reads camera Z directly as floor-relative
++        # height. Cache poses are z-up, with the same vertical sign as the
++        # recorded y-up ground offset. Never mutate the shared cache.
++        ground_offset = row["ground_offset_y"]
++        pose[:, 2, 3] -= 0.0 if ground_offset is None else float(ground_offset)
++        assert motion.shape == (97, 283) and pose.shape == (97, 4, 4)
++
++        # UniEgo stores per-joint orientation in a common canonical frame.
++        # Relative SOMA joint rotation is R_parent^T R_child; the shared
++        # canonical rotation therefore cancels without decoding world motion.
++        joint9 = motion[:, :270].reshape(97, 30, 9)
++        rotations = _matrices_from_6d(joint9[..., :6])[:, self.body_joints]
++        local = np.matmul(np.swapaxes(rotations[:, self.parents[1:]], -1, -2), rotations[:, 1:])
++        body_quats = _wxyz(local.reshape(-1, 3, 3)).reshape(97, 22, 4)
++
++        shape_vec = np.asarray(neutral, dtype=np.float64)[self.body_joints]
++        shape_vec = (shape_vec - shape_vec[0]).reshape(-1)
++        betas = ((self.shape_components @ (shape_vec - self.shape_mean)) / self.shape_scale).astype(np.float32)[None]
++
++        camera_quat = _wxyz(pose[:, :3, :3])
++        camera_xyz = pose[:, :3, 3].astype(np.float32)
++        world_camera = np.concatenate((camera_quat, camera_xyz), axis=-1)
++        relative = np.matmul(np.linalg.inv(pose[:-1]), pose[1:])
++        relative_quat = _wxyz(relative[:, :3, :3])
++        relative_xyz = relative[:, :3, 3].astype(np.float32)
++        relative_pose = np.concatenate((relative_quat, relative_xyz), axis=-1)
++        relative_pose = np.concatenate((np.array([[1, 0, 0, 0, 0, 0, 0]], dtype=np.float32), relative_pose), axis=0)
++
++        # These fields are not consumed by the body-only denoising loss, but
++        # they must still be correct for evaluation and future data consumers.
++        # Precomputation avoids decoding the entire recording for every crop.
++        root_all, cpf_joints_all = self._metadata(row["array"])
++        root = np.array(root_all[start:start + 97], dtype=np.float32, copy=True)
++        root[:, 6] -= 0.0 if ground_offset is None else float(ground_offset)
++        joints_wrt_cpf = np.array(cpf_joints_all[start:start + 97], dtype=np.float32, copy=True)
++
++        return EgoTrainingData(
++            T_world_root=torch.from_numpy(root.copy()),
++            contacts=torch.from_numpy(motion[:, -4:].astype(np.float32).copy()),
++            betas=torch.from_numpy(betas.copy()),
++            body_quats=torch.from_numpy(body_quats.copy()),
++            T_cpf_tm1_cpf_t=torch.from_numpy(relative_pose.copy()),
++            T_world_cpf=torch.from_numpy(world_camera.copy()),
++            height_from_floor=torch.from_numpy(camera_xyz[:, 2:3].copy()),
++            joints_wrt_cpf=torch.from_numpy(joints_wrt_cpf),
++            mask=torch.ones(97, dtype=torch.bool),
++            hand_quats=None,
++        )

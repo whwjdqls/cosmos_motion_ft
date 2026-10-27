@@ -243,9 +243,27 @@ class FrozenEdgeReasoner:
         )
         return torch.tensor(ids, dtype=torch.long, device=self.device)
 
+    def tokenize_text(self, text: str | None) -> torch.LongTensor:
+        """Select the checkpoint's T2M packing without changing TI2M packing.
+
+        Nano's historical motion-only path uses raw caption IDs, or one EOS
+        for empty/whitespace-only CFG input. Keep Edge's own tokenizer and
+        vocabulary; only the surrounding generation tokens are ablated.
+        """
+        if config.TEXT_PACKING == "edge_native_generation_prefix":
+            return self.tokenize_generation(text)
+        text = "" if text is None else str(text)
+        ids = (
+            list(self.tokenizer(text, add_special_tokens=False).get("input_ids", []))
+            if text.strip() else []
+        )
+        if not ids:
+            ids = [self.special_tokens["eos_token_id"]]
+        return torch.tensor(ids, dtype=torch.long, device=self.device)
+
     @torch.no_grad()
     def encode_text(self, text: str | None) -> dict[str, torch.Tensor | int]:
-        ids = self.tokenize_generation(text)
+        ids = self.tokenize_text(text)
         embeds = self.backbone.embed_tokens(ids).to(self.dtype)
         length = int(ids.numel())
         positions = torch.arange(length, device=self.device, dtype=torch.long)
