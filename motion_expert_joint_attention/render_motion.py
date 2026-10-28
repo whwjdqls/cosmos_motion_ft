@@ -210,7 +210,14 @@ def head_rotation_from_features(features) -> np.ndarray:
     try:
         from .decode_uniego_torch import decode_transforms
     except ImportError:
-        from decode_uniego_torch import decode_transforms
+        # Evaluation may already have cached the legacy motion_expert module
+        # under this flat name. Prefer the package-qualified sibling decoder.
+        try:
+            from motion_expert_joint_attention.decode_uniego_torch import decode_transforms
+        except ModuleNotFoundError as error:
+            if error.name != "motion_expert_joint_attention":
+                raise
+            from decode_uniego_torch import decode_transforms
 
     first = features[:1]
     if hasattr(first, "detach"):

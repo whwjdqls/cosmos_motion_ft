@@ -1,5 +1,160 @@
 # Shared Agent Context
 
+## Standing experiment reporting preference (2026-10-28)
+
+- Always publish experiment/status reports and quantitative conclusions to the
+  user's Notion Experiments workspace, with GT metrics, exact checkpoints,
+  protocol/coverage, artifact paths, and selected qualitative comparisons.
+  Parent: https://app.notion.com/p/binne/Experiments-396d2a44f44b8053b736ceb63350f26b
+- Keep repository documentation and local machine-readable evidence as well.
+  Reuse an existing report page for progress/results when possible. Verify the
+  remote write and include its link in the user-facing report. If access fails,
+  preserve the prepared report locally and explicitly say it is not published;
+  never claim an upload succeeded without checking.
+
+## Phase-1 latest no-text comparison and camera CFG (2026-10-29)
+
+- `native_phase_training/CAMERA_CFG_20261029.md` records the frozen194233
+  no-text/prefix1 versus original200k comparison on71 fixed test windows.
+  The original is evaluated both with and without captions; all video metrics
+  exclude observed frame0 and include measured GT references.
+- `native_phase_training/camera_cfg_inference_config.py` adds inference-only
+  camera CFG using a camera-token-absent branch with the same image/text.
+  Six fixed cases sweep1/1.5/2/3/5; both inference caches are disabled throughout
+  this sweep. Native/scale1 latents match bitwise in the same loaded model on
+  all6 cases; separate-process pixels differ, including independent native
+  repeats. The original failed pixel audit is retained; do not claim full
+  cross-process bitwise reproducibility.
+- Scratch2 operation `phase1_latest_vs_baseline_20261029` contains immutable
+  settings, metrics, media and separate main/early/camera_cfg publication states.
+  Completed2026-10-29 04:37KST: main71 metrics, six comparison videos, two
+  camera figures and six CFG videos published/hash-verified (plus two early
+  previews). Main exit0; camera_cfg/recovery.json records final success after
+  the preserved initial control failure. No trainer or checkpoint changes.
+- Report: https://app.notion.com/p/407d2a44f44b81608660d1fe4a51036e .
+
+## Phase-2 image-conditioning diagnostic (2026-10-28)
+
+- `motion_expert_t2m_edge/IMAGE_CONDITIONING_DIAGNOSTIC.md` records the inference-only
+  Self→cross/Knorm/caption-only B256 200k test on32 distinct held-out recordings,
+  three seeds, two layout-matched wrong-image controls and native no-image T2M.
+- Correct images improve pure-noise feature MSE and sampled frame-0 MPJPE;
+  whole-clip/PA gains are mixed. The image path is functional, with limited
+  useful conditioning; this does not establish a foot-contact/floating fix.
+- `nano_caption_only` changes T2M packing only. TI2M uses Edge's multimodal chat
+  template during both training and inference, retaining the image under text CFG.
+- Yonsei evidence/visuals: Scratch2 Cosmos `operations/phase2_image_conditioning_20261028`.
+  Existing training/checkpoints are unchanged; allocation2608785 is retained.
+- Full-test extension: `evaluate_image_conditioning.py` samples all11892 valid
+  Nymeria TI2M cases (11657 physical windows,71 recordings) from noise under
+  correct image/two wrong-image permutations/native T2M, sharing captions,
+  shapes,lengths,seeds. UniPC35/shift3/CFG2, checkpoint200k unchanged. Use the
+  Nymeria evaluator's own statistics and32-candidate retrieval with3 grouping
+  seeds. GT floor offsets and every batch's measured reference are verified.
+  Scratch2 operation `phase2_image_generative_20261028` holds immutable inputs,
+  progress, resumable batches, measurements and final Notion publication.
+  First batches on both2608785 workers passed; live logs determine completion.
+- Report: https://app.notion.com/p/407d2a44f44b81a5ad53dbb685cdbd9e . The32-case
+  diagnostic and two remotely hash-verified playable videos are published;
+  the coordinator adds full-test metrics only after successful aggregation.
+- Resume correction: GT embeddings must use NymeriaShapeTMRDataset's CPU
+  decoding path, matching the saved reference. A2.38e-7m CPU/GPU joint
+  difference amplified to8.88e-4 in one GT embedding; the original CPU path
+  matched exactly at batch64. Do not widen the guard or drop that case.
+  Generated sampling/scoring is unchanged; final GT uses the common measured
+  reference. The formerly failing batch passed after this correction.
+- `diagnose_joint_cfg.py` tests the user's joint text/image CFG request on the
+  same32 diagnostic cases/seeds: current text-CFG2 versus joint CFG1/2/3/5.
+  Joint null is native T2M empty text with no image, so prompt layout changes
+  too. No training modifications. Scratch2 operation `phase2_joint_cfg_20261028`
+  saves per-case measurements and6-panel previews; publication appends to the
+  same Notion report. This small cohort is separate from the full11892-case
+  benchmark. The retained allocation's resume coordinator runs the preview on
+  GPU1 while full-test shard0 continues, then resumes full-test shard1.
+- The joint-CFG32-case sweep completed and published its metrics/two videos.
+  `diagnose_joint_cfg.py --target image` adds the image-only follow-up with
+  the same caption in conditional TI2M and reference T2M branches:
+  `x0_text + s*(x0_text_image - x0_text)`, s=1/2/3/5. Check caption token IDs
+  and absent reference image tokens. Native prompt-layout differences remain.
+  Scratch2 operation `phase2_image_only_cfg_20261028` shares retained2608785
+  GPU1 with a40% process allocator cap (observed total16.5GB), leaving both
+  full-test shards advancing. Results/previews publish to the same Notion page.
+  Frozen training and full-test inference code are unchanged by this option.
+- Image-only CFG completed32/32 cases ×3 seeds, with metrics and two verified
+  videos in the report. CFG2 slightly lowers MPJPE40.01→39.17cm (paired interval
+  crosses zero), but worsens PA/initial-pose errors; stronger scales worsen
+  pose errors further. No clear overall benefit. Full96-pair control audit
+  passed; unguided outputs match joint CFG1 bitwise, recomputed text-CFG2
+  baselines differ slightly across batch packing. Use each sweep's baseline.
+- User clarification: generation quality, not MPJPE, is the objective. The
+  earlier image-only CFG experiment retained text; it is NOT image-only input.
+  `evaluate_generation_modalities.py` now compares actual image-only (empty
+  caption), text-only (no image), and image+text, all using the same native
+  unconditional T2M reference atCFG2/UniPC35/shift3. No GT motion conditioning.
+  Scratch2 operation `phase2_generation_modalities_20261028` preserves the
+  exact11892-case manifest and checkpoint/evaluator hashes; full-test FID,
+  R32, matching distance, diversity and contact metrics include measured GT.
+  Interpret image-only R32 as association with withheld captions, not prompt
+  compliance. Native T2M/TI2M layouts differ. Six fixed original diagnostic
+  cases provide GT/image/text/both previews with seeds0/1/2; these previews
+  are separate from full-test quantitative results. The retained2608785
+  coordinator publishes videos as ready and full metrics after completion
+  to the same Notion report. Live operation logs establish actual status.
+- Generation-input preview recovery: a cached legacy flat decoder lacks
+  `decode_transforms`; `render_motion.head_rotation_from_features` now prefers
+  its package-qualified sibling. On saved GT and all three generated modes,
+  old/sibling joint decodes matched bitwise and head rotations matched the
+  sibling transforms. Sampling/metrics are unchanged. `renderer_fix.json`
+  records the check. `recover_compute.sh` / `recovery.exit_code` are the active
+  preview/shard1/final-publication coordinator; original shard0 continues.
+  The original coordinator may record `0 1` for its failed preview branch;
+  use `final_summary_ready.json` and recovery status for completion.
+- At2026-10-28 14:23KST, all six generation-input preview cases completed with
+  three seeds and all three modalities. The first two four-panel seed0 MP4s
+  were uploaded and remotely hash-verified in Notion, section
+  `407d2a44-f44b-8196-9ad5-e630a5e6c7cf`. Full-test shard0 was advancing and
+  recovered shard1 was loading; full metrics were NOT complete at this snapshot.
+- Follow-up: user requested more informative examples and text CFG fixed at2
+  with varying image guidance. `evaluate_text2_image_cfg.py` uses
+  `u + 2*(t-u) + w*(both-t)`, w=0/0.5/1/2/3/5. Weight0 is exactly text-only
+  CFG2; weight2 is exactly joint CFG2. The image increment includes conditional
+  text/image interaction; native T2M/TI2M layouts differ. Guidance is applied
+  once; no training changes and no MPJPE ranking.
+  Scratch2 operation `phase2_text2_image_cfg_20261028` freezes eight original
+  diagnostic slots6,16,14,27,30,24,7,19 by action variety/GT motion before the
+  sweep, seeds0/1/2. Four actions (6,16,14,30) get both modality-comparison and
+  six-weight comparison videos in a new Notion page:
+  https://app.notion.com/p/407d2a44f44b817ba15ad37cef229360 . These are selected
+  illustrations, not aggregate evidence. A short preview shares PRO6000 job
+  2608784's spare VRAM with a20% process cap. `full_dispatch.sh` waits for both
+  ongoing full-test evaluations to finish, then runs all11892 cases × six
+  weights on retained2608785 and publishes GT/FID/R32/diversity/contact metrics.
+  `preview.exit_code`, `full.exit_code`, and `publication.json` establish status.
+- The action-diverse eight-case preview finished successfully at14:47KST;
+  all eight selected videos (four actions × modality/sweep views) were remotely
+  hash-verified. The full11892-case weight sweep remains independently queued.
+- User then requested long-root-travel and visible-object examples.
+  `operations/phase2_root_object_cfg_20261028` scans GT across all11892 cases
+  and adds four long-travel windows (source indices2706,10864,11747,4161;
+  paths5.44–6.82m, net5.12–6.67m over4.8s) and four object windows from
+  original slots26/9/12/31 (laptop, sliding door, vanity drawer, bag/chair).
+  Supplemental slots100–103/200–203 are interleaved and are distinct from
+  the earlier slot numbering. Selection uses GT travel/visible targets, not
+  generated quality or MPJPE. All use text2/image0,0.5,1,2,3,5 plus image-only,
+  seeds0/1/2. `visualize_conditioning_examples.py` delegates sampling unchanged
+  and adds raw world-XZ root plots and separate display-only target outlines.
+  Original RGB remains untouched. Outputs are added as toggles on the same
+  Notion follow-up page. This does not create a second full-test sweep.
+  The short supplemental preview shares retained PRO6000 job2608784; live
+  `preview/progress.json`, `exit_code`, and `publication.json` determine completion.
+- The long-root/object supplement completed successfully at15:15KST on
+  2026-10-28, all eight cases × three seeds. Its eight Notion toggles contain
+  sixteen remotely hash-verified MP4s and twelve verified figures (eight root
+  plots plus four input-object highlights). Original input hashes remained
+  unchanged; all guidance endpoint checks passed. `final_audit.json` records
+  the verification. These qualitative runs are complete; do not conflate
+  them with the still-pending full-test six-weight quantitative sweep.
+
 ## Foundary action/video projection ablation (2026-10-28)
 
 - User requested an additional model training video input/output projections
