@@ -307,6 +307,7 @@ class NativeRunContractTest(unittest.TestCase):
                     "config": {
                         "lora_enabled": config.model.config.lora_enabled,
                         "lora_target_modules": config.model.config.lora_target_modules,
+                        "rectified_flow_training_config": {},
                     },
                 },
                 "dataloader_train": {"dataloaders": config.dataloader_train.dataloaders},
@@ -336,6 +337,7 @@ class NativeRunContractTest(unittest.TestCase):
                             "q_proj_moe_gen,k_proj_moe_gen,"
                             "v_proj_moe_gen,o_proj_moe_gen"
                         ),
+                        "rectified_flow_training_config": {},
                     },
                 },
                 "dataloader_train": {"dataloaders": streams},

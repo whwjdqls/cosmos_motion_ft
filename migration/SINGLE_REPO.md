@@ -83,6 +83,32 @@ different server. A fresh environment/GPU acceptance run is still required.
 
 ### Foundary Conda environment
 
+#### sep-2 runtime profile
+
+On Foundary, install Miniforge in your own `/mnt/local/<user>/miniforge3`
+directory. Create the main Cosmos environment independently on each node:
+
+```bash
+export FOUNDRY_LOCAL_ROOT="/mnt/local/$(id -un)"
+bash migration/create_foundary_conda.sh
+source "$FOUNDRY_LOCAL_ROOT/miniforge3/etc/profile.d/conda.sh"
+conda activate "$FOUNDRY_LOCAL_ROOT/envs/cosmos"
+```
+
+This CPU-only installer uses `environment/foundary-cosmos-linux-64.explicit.txt`
+(the resolved Conda builds from `environment/foundary-cosmos.yml`) and
+`environment/foundary-cosmos-cu128.txt`, with package/model caches and temporary
+files on local NVMe. The Python package profile preserves the recorded
+training versions but excludes `jupyter-compare-view==0.2.4`, an optional notebook
+widget whose metadata requires Python below 3.13. `configure_foundary_runtime.py`
+adds relative library search paths to the environment's TorchCodec binaries for
+its CUDA 12 NPP and Conda FFmpeg libraries; project launchers clear
+`LD_LIBRARY_PATH`. No system libraries are changed. GPU acceptance and training
+require separately coordinated GPU access. UniEgoMotion and EgoAllo still need
+their separate recorded environments.
+
+#### sep-1 runtime profile
+
 Foundary sep-1 and sep-2 have independent `/mnt/local` volumes and shared GPUs.
 Install Miniforge, environments, package caches, build temporary files, and
 model caches in your own `/mnt/local/USER` directory. Initialize Conda in your

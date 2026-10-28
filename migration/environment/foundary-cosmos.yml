@@ -1,0 +1,13 @@
+# Python/system-library layer; install the recorded CUDA Python packages with
+# migration/create_foundary_conda.sh. Each node needs its own installation.
+# foundary-cosmos-linux-64.explicit.txt locks the solved Conda package builds.
+name: cosmos
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.13.18
+  - pip
+  - ffmpeg=7.1.1
+  - libstdcxx-ng
+  - patchelf=0.19.2
