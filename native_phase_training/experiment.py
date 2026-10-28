@@ -97,11 +97,13 @@ _NORMALIZE_LOSS_BY_ACTIVE = os.environ.get("NATIVEP1_NORMALIZE_LOSS_BY_ACTIVE", 
     "yes",
 }
 _ADAPTATION_MODE = os.environ.get("NATIVEP1_ADAPTATION_MODE", "global_lora").strip().lower()
-_ADAPTATION_MODES = frozenset({"global_lora", "action_only", "camera_kv_lora"})
+_ADAPTATION_MODES = frozenset({"global_lora", "action_only", "action_video_projections", "camera_kv_lora"})
 if _ADAPTATION_MODE not in _ADAPTATION_MODES:
     raise ValueError(
         f"NATIVEP1_ADAPTATION_MODE must be one of {sorted(_ADAPTATION_MODES)}, got {_ADAPTATION_MODE!r}"
     )
+if _ADAPTATION_MODE == "action_video_projections" and _MODEL_FAMILY != "edge":
+    raise ValueError("action_video_projections is supported only by the Edge model adapter")
 if _ADAPTATION_MODE in {"action_only", "camera_kv_lora"} and "image2video" in MODE_WEIGHTS:
     raise ValueError(
         f"{_ADAPTATION_MODE} has no trainable path for image2video. "
@@ -343,6 +345,8 @@ world_camera_nymeria_latent = LazyDict(
                 else (
                     ["action2llm", "llm2action", "action_modality_embed"]
                     if _ADAPTATION_MODE == "action_only"
+                    else ["action2llm", "llm2action", "action_modality_embed", "vae2llm", "llm2vae"]
+                    if _ADAPTATION_MODE == "action_video_projections"
                     else ["lora_A", "lora_B", "action2llm", "llm2action", "action_modality_embed"]
                 )
             ),
@@ -466,7 +470,7 @@ world_camera_nymeria_latent = LazyDict(
 
 world_camera_nymeria_latent["model"]["config"]["tokenizer"]["encode_exact_durations"] = [_NUM_FRAMES]
 world_camera_nymeria_latent["model"]["config"]["lora_enabled"] = (
-    not _FULL_FT and _ADAPTATION_MODE != "action_only"
+    not _FULL_FT and _ADAPTATION_MODE not in {"action_only", "action_video_projections"}
 )
 world_camera_nymeria_latent["model"]["config"]["lora_rank"] = 16
 world_camera_nymeria_latent["model"]["config"]["lora_alpha"] = 32

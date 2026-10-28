@@ -1,5 +1,106 @@
 # Shared Agent Context
 
+## Foundary action/video projection ablation (2026-10-28)
+
+- User requested an additional model training video input/output projections
+  alongside the action projections, matching the running Phase1 recipe on
+  idle GPUs. GPUs3,5 were rechecked empty and admitted; the existing action-only
+  run on6,7 remains active. New run initializes fresh from the same official
+  Edge base, with global32=2x16/accum1, prefix1, two tasks40:25, no captions,
+  exclude5,200k steps, LambdaLinear, EMA,15min/5k checkpoints and W&B previews.
+- New Edge-only mode `action_video_projections` trains exactly9,246,912
+  parameters: `action2llm`, `llm2action`, `action_modality_embed`, `vae2llm`
+  and `llm2vae`, including projection biases. Backbone/reasoner/VAE/timestep
+  parameters remain frozen; no LoRA. Existing LR policy is preserved: initial
+  effective action LR8e-5 and video LR2e-5,500-step plateau then linear decay.
+- Foundary launcher accepts `--adaptation action_video_projections`; the
+  separate shell wrapper enforces distinct naming. Train/inference contracts
+  persist the new mode and reject LoRA/Nano combinations. The four-update
+  distributed gate confirms finite nonzero gradients in all four projections
+  and no frozen-parameter gradients. Peak allocation34.30GiB per GPU.
+- Operations: `/mnt/local/jinhyung.kim/cosmos/operations/foundary_phase1_20261028T162949Z`.
+  W&B: `jungbinc-upenn/cosmos3_camera/q3qthues`. Production passed step50 at
+  roughly1.05s/update, and first validation completed in63.5s. All four videos
+  and four camera plots were verified remotely. Logs supersede this snapshot.
+  `recipe_verified.json` confirms the dataloader, scheduler and model config
+  match the action-only run; only adaptation/optimizer selection differs.
+  Twelve focused CPU tests passed, plus the real two-rank gradient/memory gate.
+
+## Foundary sep-1 Phase-2/3 data staging (2026-10-28)
+
+- User authorized copying the missing Nymeria assets from shared storage to
+  sep-1 NVMe. Completed9 snapshot archives plus1,479 video/source-sidecar files
+  and canonical evaluation-window JSONs; approximately359GB of staged payload.
+  Existing Phase1 latents, base models and authoritative video manifest were
+  reused. Shared sources were read serially with rsync capped at256MiB/s.
+- Dataset root: `/mnt/local/jinhyung.kim/cosmos/weka/nymeriaplus_kimodo_proportional`.
+  Packed motion, native-camera and floor18D caches live under
+  `/mnt/local/jinhyung.kim/cosmos/caches`. Archived frozen Edge Phase1/Phase2
+  specialists and fixed validation inputs are under local `weka/cosmos_motion_ft_runs`.
+  This is the camera/head-v1 Nymeria path; BONES and raw VRS are not staged.
+- Reproducible worker, receipts/inventories, environment helper and CPU report:
+  `/mnt/local/jinhyung.kim/cosmos/operations/stage_phase23_20261028`.
+  After activating the local cosmos environment, source its `environment.sh`
+  for the matching statistics, cache paths and frozen specialist paths. Pass
+  `--cache "$EDGE_PHASE3_CACHE"` and the appropriate camera/trajectory cache
+  flags to Phase3; these explicit helper variables do not override CLI defaults.
+- Verified archive SHA256, extracted sizes/nanosecond mtimes, unchanged cache
+  indices, all108760 cached latent identities,642 motion/camera sources,
+  112503 Phase3 rows and12 sampled windows. Phase2 has120929 T2M/112937 TI2M
+  windows; three samples per route passed CPU loading, including image decode.
+  All713 current manifest videos exist locally. No Phase2/3 GPU job was launched.
+- Phase3 identity/latent reads now resolve recognized archived paths through
+  `runtime_paths`, preserving fingerprints. Custom Phase2 restores explicitly
+  set `EDGE_ARTIFACT_SOURCE_SITE=yonsei` to select existing pinned metadata
+  hashes; strict weight/statistics/population checks remain. Correct-profile
+  acceptance and wrong-profile/changed-source rejection were checked.
+
+## Foundary sep-1 Phase-1 action-only launch (2026-10-27)
+
+- On2026-10-28 the user requested GPUs6,7 and explicitly retained global32:
+  two ranks at16 clips each, accumulation1. Both devices were rechecked empty
+  after stopping only our old trainer at committed checkpoint11672. The
+  four-update distributed gate passed on both ranks (~1.03s/update), and
+  production restored model/EMA, optimizer, scheduler and trainer at11672.
+  Current operations: `/mnt/local/jinhyung.kim/cosmos/operations/foundary_phase1_20261028T050711Z`.
+  Current W&B: `jungbinc-upenn/cosmos3_camera/hq0tnf0s`.
+  Resumed validation11673 uploaded all four videos/four camera plots. Production
+  averages about1.07s/update (roughly1.9x the prior single-GPU run); first new
+  rolling checkpoint12403 completed and training continued. Keep global32.
+  The single-GPU runs below are retained as provenance and are stopped.
+- User subsequently requested batch32. The batch64 run was stopped only after
+  checkpoint421 committed; GPU7 then passed the four-update batch32 gate
+  (40.81GiB peak allocated, finite gradients in both action projections).
+  Production resumed model/EMA, optimizer, scheduler and trainer at421 with
+  global32=1x32/accum1. The loader has no saved state and restarts its sampling.
+  The first resumed preview at422 completed in74.3s; all four videos and four
+  PNGs were verified remotely. Initial steady updates take about2s, versus4s
+  at batch64, with similar clips/second and half the samples per update.
+  Previous single-GPU W&B: `jungbinc-upenn/cosmos3_camera/8fds1lkr`.
+  Continuation evidence and source snapshot:
+  `/mnt/local/jinhyung.kim/cosmos/operations/foundary_phase1_20261027T222226Z`.
+  The original run below is retained as provenance, not an active trainer.
+- User authorized process-free GPUs:2x32 clips or1x64, global64, prefix1,
+  forward/inverse dynamics only, and W&B. They accepted the Yonsei action-only
+  selection including the2048-parameter modality embedding alongside both
+  action projections (8,458,240 trainable parameters total).
+- `native_phase_training/train_phase1_foundary.py` selects and rechecks empty
+  GPUs, records a live-parent admission, and runs a four-update memory/gradient
+  gate before fresh production. The Slurm launchers retain their2x16 defaults;
+  no fabricated Slurm ID is used for Foundary preview callbacks.
+- On sep-1 only GPU7 was empty. Its1x64 gate passed finite losses/gradients,
+  both action projections received gradients, and peak allocated memory was
+  53.84GiB. Production passed its first fixed four-case preview and continued
+  at roughly4s/update. W&B run:
+  `jungbinc-upenn/cosmos3_camera/rar9yvk0`; all four videos/four camera PNGs were
+  verified remotely. Live logs supersede this initial launch observation.
+- Operations and exact source snapshot:
+  `/mnt/local/jinhyung.kim/cosmos/operations/foundary_phase1_20261027T215005Z`.
+  The archived Yonsei run contract matches exactly; global batch64 differs
+  from Yonsei's32. LR remains LambdaLinear: action LR8e-5 for500 updates, then
+  linear decay to zero at200k. Data, model assets, outputs and checkpoints use
+  node-local NVMe. Rolling checkpoint cadence is15min, plus fixed saves every5k.
+
 ## Phase-1 action-only two-task ablation (2026-10-27)
 
 - `native_phase_training/train_phase1_edge_two_tasks_action_only.sh` reuses the

@@ -21,7 +21,7 @@ SCHEMA_VERSION = 4
 COSMOS_FRAMEWORK_EDGE_INFERENCE_SHIFT = 10.0
 
 ALL_TASKS = frozenset({"forward_dynamics", "inverse_dynamics", "policy", "image2video"})
-ADAPTATION_MODES = frozenset({"global_lora", "action_only", "camera_kv_lora"})
+ADAPTATION_MODES = frozenset({"global_lora", "action_only", "action_video_projections", "camera_kv_lora"})
 
 
 def _value(container: Any, key: str) -> Any:
@@ -107,10 +107,13 @@ class NativePhase1RunContract:
                 f"active/dropped modes do not partition {sorted(ALL_TASKS)}: "
                 f"active={sorted(active)} dropped={sorted(dropped)}"
             )
-        if self.adaptation_mode == "action_only" and self.lora_enabled:
-            raise ValueError("action_only contract cannot enable LoRA")
-        if self.adaptation_mode != "action_only" and not self.lora_enabled:
+        projection_only = self.adaptation_mode in {"action_only", "action_video_projections"}
+        if projection_only and self.lora_enabled:
+            raise ValueError(f"{self.adaptation_mode} contract cannot enable LoRA")
+        if not projection_only and not self.lora_enabled:
             raise ValueError(f"{self.adaptation_mode} contract must enable LoRA")
+        if self.adaptation_mode == "action_video_projections" and self.model_family != "edge":
+            raise ValueError("action_video_projections contract requires Edge")
         expected_targets = {
             "global_lora": {
                 "q_proj_moe_gen",

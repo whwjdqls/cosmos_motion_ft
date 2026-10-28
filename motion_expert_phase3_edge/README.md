@@ -7,6 +7,12 @@ the existing default loader and checkpoint keys are unchanged.
 
 ## Source specialists and architecture
 
+Restored caches keep their original indices, fingerprints and nanosecond file
+timestamps. Latent reads and source-identity checks use `runtime_paths` to map
+recognized archived paths onto the selected server's local roots. Size, mtime,
+shape and finite-value checks still apply to the restored files; do not rewrite
+cache indices to change their source paths.
+
 - Phase 1: EMA `iter_000200000` of the filtered Yonsei Edge camera/video run
   dated 20260905; native Edge base plus rank16/alpha32 generator LoRA and action
   heads. All 224 LoRA tensors must load. Action heads are retained but unused.

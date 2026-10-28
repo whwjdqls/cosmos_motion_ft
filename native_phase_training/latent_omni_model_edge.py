@@ -20,6 +20,7 @@ class LatentOmniMoTModelEdge(OmniMoTModel):
     """Cosmos3-Edge with optional precomputed Wan2.2 video latents."""
 
     _ACTION_MODULES = ("action2llm", "llm2action", "action_modality_embed")
+    _VIDEO_MODULES = ("vae2llm", "llm2vae")
 
     def __init__(
         self,
@@ -31,7 +32,7 @@ class LatentOmniMoTModelEdge(OmniMoTModel):
         self.model_family = str(model_family).lower()
         if self.model_family != "edge":
             raise ValueError(f"LatentOmniMoTModelEdge requires model_family='edge', got {model_family!r}")
-        if self.adaptation_mode not in {"global_lora", "action_only", "camera_kv_lora"}:
+        if self.adaptation_mode not in {"global_lora", "action_only", "action_video_projections", "camera_kv_lora"}:
             raise ValueError(f"unsupported Phase-1 adaptation mode: {self.adaptation_mode!r}")
         super().__init__(config)
 
@@ -54,12 +55,18 @@ class LatentOmniMoTModelEdge(OmniMoTModel):
             network = install_camera_token_lora(network)
         return network
 
+    def projection_modules(self) -> tuple[str, ...]:
+        return self._ACTION_MODULES + (
+            self._VIDEO_MODULES if self.adaptation_mode == "action_video_projections" else ()
+        )
+
     def install_attention_dispatch(self, net: torch.nn.Module) -> None:
         super().install_attention_dispatch(net)
         for name, parameter in net.named_parameters():
-            is_action = any(module in name for module in self._ACTION_MODULES)
+            is_projection = any(module in name.split(".") for module in self.projection_modules())
             is_lora = "lora_" in name
-            parameter.requires_grad_(is_action or (self.adaptation_mode != "action_only" and is_lora))
+            projection_only = self.adaptation_mode in {"action_only", "action_video_projections"}
+            parameter.requires_grad_(is_projection or (not projection_only and is_lora))
 
     def set_up_model(self) -> None:
         super().set_up_model()
@@ -71,12 +78,16 @@ class LatentOmniMoTModelEdge(OmniMoTModel):
         trainable_names = [name for name, _ in trainable]
         lora_names = [name for name, _ in named if "lora_" in name]
 
-        if self.adaptation_mode == "action_only":
+        if self.adaptation_mode in {"action_only", "action_video_projections"}:
             if lora_names:
-                raise RuntimeError(f"action_only unexpectedly instantiated LoRA parameters: {lora_names[:8]}")
+                raise RuntimeError(f"{self.adaptation_mode} unexpectedly instantiated LoRA parameters: {lora_names[:8]}")
             unexpected = [
-                name for name in trainable_names if not any(module in name for module in self._ACTION_MODULES)
+                name for name in trainable_names if not any(module in name.split(".") for module in self.projection_modules())
             ]
+            missing = [module for module in self.projection_modules()
+                       if not any(module in name.split(".") for name in trainable_names)]
+            if missing:
+                raise RuntimeError(f"{self.adaptation_mode} is missing trainable projections: {missing}")
         else:
             if not lora_names:
                 raise RuntimeError(f"{self.adaptation_mode} instantiated no LoRA parameters")

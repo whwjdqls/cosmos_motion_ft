@@ -1,0 +1,12 @@
+# Create under a user-owned /mnt/local prefix on each Foundary node.
+# bootstrap_conda_environment.sh installs cosmos-cu128.txt (excluding the
+# Python-incompatible optional Jupyter widget), plus the pinned Edge source.
+# This file supplies Python and the shared FFmpeg libraries for torchcodec.
+name: cosmos
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.13
+  - pip
+  - ffmpeg=7.1

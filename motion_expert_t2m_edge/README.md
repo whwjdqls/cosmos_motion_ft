@@ -69,6 +69,12 @@ Nano Phase-2 `.pt` files are evaluation baselines only.  The Edge checkpoint
 loader validates the model family, backbone geometry, motion-layer indices,
 representation, normalization hashes, base-DCP identity, and framework commit.
 
+On a custom server restoring the October Yonsei snapshot, set
+`EDGE_ARTIFACT_SOURCE_SITE=yonsei`. This selects the already pinned Yonsei DCP
+metadata and statistics-summary hashes; model weights, normalization arrays and
+population checks remain strict. It does not change the compute site or paths.
+The default custom-server profile retains the Grasp metadata pins.
+
 Launch all entry points through `run.sh`, which selects the pinned Edge framework
 and the camera-recanonicalized data paths.  A normal GPU verification sequence is:
 

@@ -2,7 +2,7 @@
 
 Invoke through the same Edge environment as run_latent_train.py. Native model,
 optimizer, EMA and training steps are unchanged. NATIVEP1_ADAPTATION_MODE must
-be action_only. The existing mode includes the action modality embedding.
+be action_only or action_video_projections. Both include the action modality embedding.
 """
 from __future__ import annotations
 
@@ -24,8 +24,10 @@ from native_phase_training.latent_omni_model_edge import LatentOmniMoTModelEdge
 ROOT = Path(os.environ["PHASE1_MEMORY_PROBE_DIR"])
 RANK = int(os.environ.get("RANK", "0"))
 STEPS = int(os.environ.get("PHASE1_MEMORY_PROBE_STEPS", "24"))
+GLOBAL_BATCH = int(os.environ.get("PHASE1_MEMORY_PROBE_GLOBAL_BATCH", "32"))
+ADAPTATION = os.environ.get("NATIVEP1_ADAPTATION_MODE", "action_only")
 STATE = {"rank": RANK, "stage": "imports_complete", "steps": [],
-         "adaptation": "action_only", "microbatch": int(os.environ["NATIVEP1_CLIPS_PER_GPU"])}
+         "adaptation": ADAPTATION, "microbatch": int(os.environ["NATIVEP1_CLIPS_PER_GPU"])}
 
 
 def memory():
@@ -50,7 +52,7 @@ def record(stage, **values):
 class MemoryProbe(Callback):
     def on_train_start(self, model, iteration=0):
         named = [(n, p) for n, p in model.net.named_parameters() if p.requires_grad]
-        assert named and all(any(k in n for k in model._ACTION_MODULES) for n, _ in named)
+        assert named and all(any(k in n.split(".") for k in model.projection_modules()) for n, _ in named)
         assert not any("lora_" in n for n, _ in model.net.named_parameters())
         self.grad_seen = set()
         record("training_ready", trainable={n: p.numel() for n, p in named},
@@ -96,6 +98,9 @@ class MemoryProbe(Callback):
             global_seen = {name for names in seen_by_rank for name in names}
             assert any("action2llm" in n for n in global_seen)
             assert any("llm2action" in n for n in global_seen)
+            if ADAPTATION == "action_video_projections":
+                assert any("vae2llm" in n.split(".") for n in global_seen)
+                assert any("llm2vae" in n.split(".") for n in global_seen)
             record("complete", completed_steps=iteration,
                    global_gradients_seen=sorted(global_seen))
             # Exit before the native trainer's unconditional final full DCP save.
@@ -106,7 +111,7 @@ class MemoryProbe(Callback):
 
 
 def main():
-    assert os.environ.get("NATIVEP1_ADAPTATION_MODE") == "action_only"
+    assert ADAPTATION in {"action_only", "action_video_projections"}
     assert os.environ.get("NATIVEP1_MODEL_FAMILY") == "edge"
     original_config = native.load_experiment_from_toml
 
@@ -117,8 +122,8 @@ def main():
         config.checkpoint.save_iter = 1000000000
         config.trainer.max_iter = STEPS + 1
         config.trainer.save_zero_checkpoint = False
-        assert STATE["microbatch"] * int(os.environ["WORLD_SIZE"]) * config.trainer.grad_accum_iter == 32
-        record("config_ready", global_batch=32,
+        assert STATE["microbatch"] * int(os.environ["WORLD_SIZE"]) * config.trainer.grad_accum_iter == GLOBAL_BATCH
+        record("config_ready", global_batch=GLOBAL_BATCH,
                shard_degree=config.model.config.parallelism.data_parallel_shard_degree,
                replicate_degree=config.model.config.parallelism.data_parallel_replicate_degree,
                accumulation=config.trainer.grad_accum_iter)

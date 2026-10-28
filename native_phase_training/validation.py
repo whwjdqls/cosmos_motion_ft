@@ -61,8 +61,8 @@ class FixedPhase1Validation(Callback):
 
     def on_train_start(self, model, iteration=0):
         from native_phase_training.run_contract import load_run_contract
-        if not os.environ.get("SLURM_JOB_ID") or any(x in os.uname().nodename for x in ("login", "cs-gpu-01", "node37")):
-            raise RuntimeError("Phase1 validation requires an owned compute allocation")
+        from native_phase_training.compute_admission import require_owned_compute
+        require_owned_compute()
         run = Path(str(self.config.job.path_local))
         contract = load_run_contract(run / "native_phase1_contract.json")
         if (contract.model_family, contract.model_resolution, contract.num_frames, contract.training_prefix_lengths) != ("edge", "256", 97, (1,)):

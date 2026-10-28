@@ -81,6 +81,47 @@ CUDA drivers/toolkit, ffmpeg and other system libraries remain server setup.
 Do not copy the old environment directory or its compiled extensions to a
 different server. A fresh environment/GPU acceptance run is still required.
 
+### Foundary Conda environment
+
+Foundary sep-1 and sep-2 have independent `/mnt/local` volumes and shared GPUs.
+Install Miniforge, environments, package caches, build temporary files, and
+model caches in your own `/mnt/local/USER` directory. Initialize Conda in your
+shell and set `CONDA_PKGS_DIRS`, `CONDA_ENVS_PATH`, `PIP_CACHE_DIR`,
+`UV_CACHE_DIR`, `HF_HOME`, `TORCH_HOME`, and `TMPDIR` there before installation.
+Do not install environments on `/home` or `/mnt/sep-50tb`.
+
+`environment/cosmos-conda.yml` supplies Python 3.13 and shared FFmpeg 7.1
+libraries. `environment/cosmos-conda-linux-64.lock.txt` records the exact
+Conda packages selected on sep-1; `environment/cosmos-cu128.txt` remains the
+Python/CUDA package snapshot. After restoring the pinned sources, recreate
+the same environment independently on each node with:
+
+```bash
+bash migration/bootstrap_conda_environment.sh /mnt/local/USER/cosmos/envs/cosmos
+conda activate /mnt/local/USER/cosmos/envs/cosmos
+```
+
+This user-local setup does not require Slurm and does not launch GPU work.
+The installer refuses an existing environment. Match `COSMOS_ENV_ROOT` in
+`.site.local.sh` to the environment prefix. Coordinate an available GPU before
+running CUDA acceptance tests or training; package installation alone does
+not validate GPU execution or the external model/data artifacts.
+
+The Foundary installer omits only the optional `jupyter-compare-view==0.2.4`
+widget, whose package metadata requires Python below 3.13. It does not change
+the pinned training libraries. Conda activation sets `LD_LIBRARY_PATH` to
+this environment's `lib` and its installed `nvidia/npp/lib` directory so that
+TorchCodec can load FFmpeg and NPP; deactivation restores the previous value.
+Some historical launchers explicitly clear `LD_LIBRARY_PATH`. A process that
+uses TorchCodec must retain these local library paths.
+
+Initial sep-1 installation on 2026-10-27 used Python 3.13.18 and
+PyTorch 2.10.0+cu128. All 424 retained snapshot packages matched their recorded
+versions or Git revisions, and the editable Edge framework was installed.
+Package consistency, core/compiled-extension imports, CPU tensor operations,
+and FFmpeg encode/TorchCodec CPU decode passed. No GPU execution or training
+acceptance test was run.
+
 ## Paths and entrypoints
 
 `COSMOS_SITE=custom` is explicit. It requires absolute `COSMOS_STORAGE_ROOT`

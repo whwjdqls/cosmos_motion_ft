@@ -25,18 +25,19 @@ from dataset import humanize_caption
 from nymeria_joint_dataset import NymeriaJointDataset, latent_path
 from uniego_layout import canonicalize_frame0, ground_features
 from native_phase_training.latent_cache_contract import load_latent_cache_contract
+from runtime_paths import resolve_legacy_path
 from motion_expert_phase3_edge.settings import (
     RECIPE, add_paths, atomic_json, digest_json, require_compute_node, sha256,
 )
 
 
 def identity(path):
-    st = Path(path).stat()
+    st = Path(resolve_legacy_path(path)).stat()
     return {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
 
 
 def read_latents(path):
-    with np.load(path, allow_pickle=False) as archive:
+    with np.load(resolve_legacy_path(path), allow_pickle=False) as archive:
         value = archive["latents"]
     if tuple(value.shape) != (48, 25, 16, 16) or value.dtype != np.float16:
         raise ValueError(f"Invalid latent shape/dtype: {path}: {value.shape}/{value.dtype}")

@@ -357,7 +357,14 @@ def validate_artifacts(*, include_bones: bool = False) -> dict[str, str]:
     }
     if EXPECTED_STATS_SUMMARY_SHA256 is not None:
         expected["motion_stats_summary"] = EXPECTED_STATS_SUMMARY_SHA256
-    if os.environ.get("COSMOS_SITE") == "yonsei":
+    artifact_site = os.environ.get("COSMOS_SITE")
+    if artifact_site == "custom":
+        # Restored archives retain the originating site's exact metadata bytes.
+        # Select known pins explicitly; never rewrite provenance to match a host.
+        artifact_site = os.environ.get("EDGE_ARTIFACT_SOURCE_SITE", "grasp")
+        if artifact_site not in {"grasp", "yonsei"}:
+            raise ValueError("EDGE_ARTIFACT_SOURCE_SITE must be grasp or yonsei")
+    if artifact_site == "yonsei":
         expected.update(
             (key, value)
             for key, value in EXPECTED_YONSEI_METADATA_SHA256.items()

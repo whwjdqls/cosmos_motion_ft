@@ -36,17 +36,13 @@ case "${COSMOS_SITE}" in
 esac
 
 HOST=$(hostname -s)
-if [[ -z "${SLURM_JOB_ID:-}" || "${HOST}" == *login* || "${HOST}" == cs-gpu-01 || "${HOST}" == node37 ]]; then
-  printf '%s\n' 'Run only on an owned compute allocation, not login/cs-gpu-01/node37.' >&2
-  exit 2
-fi
-if [[ "${SLURM_JOB_USER:-$(id -un)}" != "$(id -un)" ]]; then
-  printf '%s\n' 'The Slurm allocation must belong to the current user.' >&2
-  exit 2
-fi
+"${COSMOS_ENV_ROOT}/bin/python" "${REPO_ROOT}/native_phase_training/compute_admission.py"
+EXECUTION_ID=${SLURM_JOB_ID:-${NATIVEP1_EXECUTION_ID:?Foundary execution ID required}}
+NUM_GPUS=${NATIVEP1_NUM_GPUS:-2}
+case "$NUM_GPUS" in 1|2) ;; *) printf 'Expected one or two GPUs\n' >&2; exit 2;; esac
 
 export PATH="${COSMOS_ENV_ROOT}/bin:${CUDA_HOME:+${CUDA_HOME}/bin:}${PATH}"
-export LD_LIBRARY_PATH=
+export LD_LIBRARY_PATH=${NATIVEP1_LD_LIBRARY_PATH:-}
 export PYTHONPATH="${REPO_ROOT}:${REPO_ROOT}/nymeria_world:${COSMOS_FRAMEWORK_EDGE_ROOT}"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
@@ -55,7 +51,7 @@ export PYTHONUNBUFFERED=1 TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export WANDB_PROJECT=cosmos3_camera
 export WANDB_DATA_DIR="${IMAGINAIRE_OUTPUT_ROOT}/.wandb_runtime/data"
 export WANDB_CACHE_DIR="${IMAGINAIRE_OUTPUT_ROOT}/.wandb_runtime/cache"
-export TRITON_CACHE_DIR="${IMAGINAIRE_OUTPUT_ROOT}/.triton_phase1_${SLURM_JOB_ID}"
+export TRITON_CACHE_DIR="${IMAGINAIRE_OUTPUT_ROOT}/.triton_phase1_${EXECUTION_ID}"
 mkdir -p "${WANDB_DATA_DIR}" "${WANDB_CACHE_DIR}" "${TRITON_CACHE_DIR}"
 
 export EDGE_MODEL_ROOT="${WEKA_ROOT}/Cosmos3-Edge"
@@ -77,6 +73,12 @@ case "$NATIVEP1_ADAPTATION_MODE" in
       *) printf 'action_only requires a distinct action_only run name\n' >&2; exit 2 ;;
     esac
     ;;
+  action_video_projections)
+    case "${NATIVEP1_RUN_NAME:-}" in
+      *_action_video_projections_*) ;;
+      *) printf 'action_video_projections requires a distinct run name\n' >&2; exit 2 ;;
+    esac
+    ;;
   *) printf 'Unsupported two-task adaptation: %s\n' "$NATIVEP1_ADAPTATION_MODE" >&2; exit 2 ;;
 esac
 export NATIVEP1_PREFIX_LENGTHS=${NATIVEP1_PREFIX_LENGTHS:-1}
@@ -84,7 +86,8 @@ if [[ "${NATIVEP1_PREFIX_LENGTHS}" != 1 && -z "${NATIVEP1_RUN_NAME:-}" ]]; then
   printf '%s\n' 'A non-default prefix requires a distinct NATIVEP1_RUN_NAME.' >&2
   exit 2
 fi
-export NATIVEP1_CLIPS_PER_GPU=16
+export NATIVEP1_CLIPS_PER_GPU=${NATIVEP1_CLIPS_PER_GPU:-16}
+[[ "$NATIVEP1_CLIPS_PER_GPU" =~ ^[1-9][0-9]*$ ]] || { printf 'Invalid clips per GPU\n' >&2; exit 2; }
 export NATIVEP1_EXPECTED_LATENT_HW=16 NATIVEP1_EXPECTED_IMAGE_HW=256
 export NATIVEP1_REQUIRE_LATENT_CACHE_CONTRACT=1
 export NATIVEP1_LORA_LR=5e-5 NATIVEP1_ACTION_LR_MULT=4
@@ -121,14 +124,14 @@ for REQUIRED in "${LOAD_PATH}/model/.metadata" "${EDGE_MODEL_ROOT}/modular_model
   [[ -e "${REQUIRED}" ]] || { printf 'Missing training artifact: %s\n' "${REQUIRED}" >&2; exit 2; }
 done
 
-printf '[phase1-two-task] job=%s node=%s output=%s\n' "${SLURM_JOB_ID}" "${HOST}" "${RUN_DIR}"
-printf '[phase1-two-task] initialize=%s resume=%s global_batch=32 (2x16), accum=1\n' "${LOAD_PATH}" "${RESUME}"
+printf '[phase1-two-task] job=%s node=%s output=%s\n' "${EXECUTION_ID}" "${HOST}" "${RUN_DIR}"
+printf '[phase1-two-task] initialize=%s resume=%s global_batch=%s (%sx%s), accum=1\n' "${LOAD_PATH}" "${RESUME}" "$((NUM_GPUS * NATIVEP1_CLIPS_PER_GPU))" "$NUM_GPUS" "$NATIVEP1_CLIPS_PER_GPU"
 printf '[phase1-two-task] adaptation=%s; forward:inverse=40:25; exclude5; captions_disabled=%s.\n' "$NATIVEP1_ADAPTATION_MODE" "${NATIVEP1_DISABLE_CAPTIONS:-0}"
 printf '[phase1-two-task] forward RGB conditioning prefix=%s; inverse still observes all97 frames.\n' "${NATIVEP1_PREFIX_LENGTHS}"
 printf '%s\n' '[phase1-two-task] 200k steps; effective camera LR 8e-5 (LoRA LR 2e-5 when enabled), 500-step plateau then linear decay to zero.'
 printf '[phase1-two-task] checkpoint every5k plus rolling15min; in-process fixed W&B previews=%s.\n' "${NATIVEP1_WANDB_PREVIEWS:-0}"
 cd "${COSMOS_FRAMEWORK_EDGE_ROOT}"
-exec "${COSMOS_ENV_ROOT}/bin/torchrun" --standalone --nproc_per_node=2 \
+exec "${COSMOS_ENV_ROOT}/bin/torchrun" --standalone --nproc_per_node="${NUM_GPUS}" \
   "${REPO_ROOT}/native_phase_training/run_latent_train.py" \
   --sft-toml "${REPO_ROOT}/native_phase_training/world_camera_nymeria_latent_edge.toml" \
   job.name="${RUN_NAME}" job.wandb_mode=online \
@@ -140,6 +143,6 @@ exec "${COSMOS_ENV_ROOT}/bin/torchrun" --standalone --nproc_per_node=2 \
   checkpoint.keys_to_skip_loading="${SKIP_KEYS}" checkpoint.keys_not_to_resume='[]' \
   model.config.compile.enabled=false model.config.ema.enabled=true \
   model.config.parallelism.data_parallel_shard_degree=1 \
-  model.config.parallelism.data_parallel_replicate_degree=2 \
+  model.config.parallelism.data_parallel_replicate_degree="${NUM_GPUS}" \
   model.config.parallelism.context_parallel_shard_degree=1 \
   model.config.parallelism.cfg_parallel_shard_degree=1

@@ -12,7 +12,63 @@ This is not the motion-expert path. There is no motion expert and no modality br
 
 ## Cosmos3-Edge Phase 1
 
-### Two-task, one-frame action-only ablation
+### Foundary local-NVMe launcher
+
+After explicitly coordinating use of process-free GPUs on sep-1/sep-2, activate
+the node's `cosmos` environment, source `.site.local.sh`, and run:
+
+```bash
+python native_phase_training/train_phase1_foundary.py
+```
+
+This launcher rechecks process lists and GPU memory, selects two empty GPUs at
+32 clips each or one empty GPU at64 clips, and keeps global batch64 with no
+gradient accumulation. It follows the Yonsei action-only recipe: two tasks in
+the40:25 ratio, prefix1, no semantic captions, trainable action input/output
+projections plus the action modality embedding, a frozen backbone, FP32 EMA,
+the existing losses/LR and200k updates. The global batch differs from Yonsei's32.
+The older Slurm launchers retain their default2x16 batch.
+
+For an explicitly requested batch-size comparison, `--clips-per-gpu 32`
+overrides the automatic per-device choice. `--resume-from /local/path/iter_N`
+continues all model/EMA, optimizer, scheduler and trainer state in a new named
+W&B run, with the source checkpoint pinned by local hardlinks and provenance
+recorded in `continuation.json`. Stop the previous owned trainer after a
+committed checkpoint before launching its continuation on the same GPU.
+Use `--gpus 5 7` to require those exact two devices. Both must be process-free;
+the launcher fails rather than substituting another GPU if either is occupied.
+
+A four-update memory/gradient gate must pass before production starts fresh
+from the official Edge base. Production logs to the authenticated W&B entity's
+`cosmos3_camera` project and generates fixed held-out previews after the first
+update and every5k. Data, outputs, temporary checkpoints and operation logs are
+on local NVMe. Operations are recorded under
+`$COSMOS_STORAGE_ROOT/operations/foundary_phase1_<UTC timestamp>/`, including
+the GPU admission, exact source snapshot, recipe, probe results and
+`production.log`. The launcher uses a verifiable live-parent admission on
+Foundary; it does not fabricate Slurm job identifiers.
+
+### Two-task, one-frame projection ablations
+
+The additive `action_video_projections` ablation trains `vae2llm` and
+`llm2vae` as well as `action2llm`, `llm2action` and the action modality
+embedding. The transformer backbone, timestep embedder, VAE and reasoner
+remain frozen; LoRA is disabled. Use a separate fresh run from the official
+Edge base, with the same two tasks, prefix1 and global32. The existing LR
+policy gives action parameters an initial effective LR of8e-5 and pretrained
+video projections2e-5; both use the500-step plateau and200k linear decay.
+
+On Foundary, explicitly select coordinated process-free GPUs and run:
+
+```bash
+python native_phase_training/train_phase1_foundary.py \
+  --gpus 3 5 --clips-per-gpu 16 --adaptation action_video_projections
+```
+
+The four-update gate requires finite, nonzero gradients in all four projection
+modules and no gradients in frozen parameters before fresh production starts.
+The new adaptation mode is persisted in the train/inference contract and uses
+a distinct run name. The original `action_only` mode remains the default.
 
 `COSMOS_SITE=yonsei bash native_phase_training/train_phase1_edge_two_tasks_action_only.sh`
 starts a separate run from the official Edge base checkpoint inside an owned
