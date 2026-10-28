@@ -24,15 +24,18 @@ def atomic_json(path, value):
     tmp.replace(path)
 
 
-def make_batch(latent, action, mode):
+def make_batch(latent, action, mode, prefix_length=1):
     """Use the same native action formatter, padding, and masks as training."""
     from native_phase_training.latent_nymeria_dataset import (
         ActionPromptJsonFormatter, _format_prompt_for_mode,
-        build_sequence_plan_from_mode, pad_action_to_max_dim)
+        build_sequence_plan_from_mode, pad_action_to_max_dim, rgb_prefix_to_latent_frames)
     from cosmos_framework.data.generator.action.utils.action_processing import (
         ActionProcessingRecord, make_batched_action_processing_fields)
 
     plan = build_sequence_plan_from_mode(mode=mode, video_length=97, action_length=96, video_temporal_downsample=4)
+    latent_prefix = rgb_prefix_to_latent_frames(prefix_length, 97)
+    if mode == 'forward_dynamics':
+        plan.condition_frame_indexes_vision = list(range(latent_prefix))
     sample = dict(video=torch.empty((3, 97, 1, 1), dtype=torch.uint8),
                   image_size=torch.tensor([256., 256., 256., 256.]),
                   conditioning_fps=torch.tensor(20), ai_caption="", viewpoint="ego_view",
@@ -60,13 +63,17 @@ class FixedPhase1Validation(Callback):
             raise ValueError("Positive interval and unique fixed cases required")
 
     def on_train_start(self, model, iteration=0):
+        from native_phase_training.compute_access import require_compute_access
         from native_phase_training.run_contract import load_run_contract
-        from native_phase_training.compute_admission import require_owned_compute
-        require_owned_compute()
+        from native_phase_training.latent_nymeria_dataset import rgb_prefix_to_latent_frames
+        require_compute_access()
         run = Path(str(self.config.job.path_local))
         contract = load_run_contract(run / "native_phase1_contract.json")
-        if (contract.model_family, contract.model_resolution, contract.num_frames, contract.training_prefix_lengths) != ("edge", "256", 97, (1,)):
-            raise ValueError("This fixed preview recipe requires Edge/256/T97/prefix1")
+        if ((contract.model_family, contract.model_resolution, contract.num_frames) != ("edge", "256", 97)
+                or contract.training_prefix_lengths not in {(1,), (17,)}):
+            raise ValueError("This fixed preview recipe requires Edge/256/T97 and a fixed prefix of 1 or 17")
+        self.prefix_length = contract.training_prefix_lengths[0]
+        self.latent_prefix_length = rgb_prefix_to_latent_frames(self.prefix_length, 97)
         if os.environ.get("NATIVEP1_DISABLE_CAPTIONS") != "1":
             raise ValueError("This fixed preview recipe uses the no-caption two-task setting")
         if model.config.rectified_flow_inference_config.scheduler_type != "unipc":
@@ -90,7 +97,8 @@ class FixedPhase1Validation(Callback):
         self.label = contract.adaptation_mode
         config = dict(source=str(self.source), split_file=str(self.split_file), indices=self.indices, cases=self.rows,
                       every=self.every, preview_after_resume=self.on_resume, weights="EMA", sampler="native UniPC",
-                      steps=30, shift=self.shift, guidance=1., seed=0, observed_frames=[0], scored_frames=[1, 96],
+                      steps=30, shift=self.shift, guidance=1., seed=0,
+                      observed_frames=list(range(self.prefix_length)), scored_frames=[self.prefix_length, 96],
                       captions=False, fps=20, tasks=["forward_dynamics", "inverse_dynamics"],
                       purpose="Fixed test71 subset; monitoring only, no model selection or tuning")
         if dist.get_rank() == 0:
@@ -185,13 +193,14 @@ class FixedPhase1Validation(Callback):
                 self.cached[row["id"]] = (rgb, latent, action)
                 del pixels
             rgb, latent, action = self.cached[row["id"]]
-            batch = make_batch(latent, action, "forward_dynamics")
+            batch = make_batch(latent, action, "forward_dynamics", self.prefix_length)
             result = model.generate_samples_from_batch(batch, net=model.net, seed=[0], num_steps=30, shift=self.shift, guidance=1.)
             generated = result["vision"][0]
             reference = latent.to(generated.device)
             if generated.shape != reference.shape or not torch.isfinite(generated).all():
                 raise FloatingPointError("Invalid generated video latent")
-            prefix_error = float((generated[:, :, :1].float() - reference[:, :, :1].float()).abs().max())
+            prefix_error = float((generated[:, :, :self.latent_prefix_length].float()
+                                  - reference[:, :, :self.latent_prefix_length].float()).abs().max())
             if prefix_error > 1e-4:
                 raise RuntimeError(f"Sampler changed observed frame: {prefix_error}")
             if rank == 0:
@@ -203,7 +212,7 @@ class FixedPhase1Validation(Callback):
                     decoded[name] = ((pixels[0].float().clamp(-1, 1) + 1) * 127.5).round().byte().permute(1, 2, 3, 0).cpu().numpy()
                 metrics = {}
                 for name, predicted in (("model", decoded["model"]), ("VAE_GT", decoded["VAE_GT"]), ("GT", rgb)):
-                    values = _frame_metrics(rgb[1:], predicted[1:], perceptual)
+                    values = _frame_metrics(rgb[self.prefix_length:], predicted[self.prefix_length:], perceptual)
                     if not all(np.isfinite(v).all() for v in values.values()):
                         raise FloatingPointError("Non-finite validation video metric")
                     metrics[name] = _summarize_frame_metrics(values)
@@ -211,10 +220,11 @@ class FixedPhase1Validation(Callback):
                 write_mp4(rgb, str(gt_path), fps=20)
                 write_mp4(decoded["model"], str(pred_path), fps=20)
                 _make_video_comparison(gt_video=gt_path, generated_video=pred_path, output=pair_path,
-                                       label=f"{self.label} | image + camera | {iteration}", prefix_length=1)
+                                       label=f"{self.label} | {self.prefix_length} reference frames + camera | {iteration}",
+                                       prefix_length=self.prefix_length)
                 records.append(dict(id=row["id"], index=row["index"], observed_latent_max_abs_error=prefix_error, **metrics))
                 log_values[f"validation_preview/forward_case_{row['index']:02d}"] = wandb.Video(str(pair_path), format="mp4",
-                    caption="GT left; prediction right. Observed green, generated red. Fixed held-out test monitoring.")
+                    caption=f"GT left; prediction right. First {self.prefix_length} frames observed (green); remaining frames generated (red). Fixed held-out test monitoring.")
                 atomic_json(destination / "per_case.json", records)
             dist.barrier()
             inverse = model.generate_samples_from_batch(make_batch(latent, action, "inverse_dynamics"), net=model.net,

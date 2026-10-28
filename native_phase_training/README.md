@@ -12,6 +12,118 @@ This is not the motion-expert path. There is no motion expert and no modality br
 
 ## Cosmos3-Edge Phase 1
 
+The projection ablations have separate adaptation modes and checkpoint contracts:
+
+| Mode | Generator LoRA | Action projections/embedding | Video projections |
+| --- | --- | --- | --- |
+| `global_lora` | Q/K/V/O | Train | Frozen |
+| `global_lora_video_io` | Q/K/V/O | Train | Train |
+| `action_only` | Disabled | Train | Frozen |
+| `action_video_projections` | Disabled | Train | Train |
+
+Foundary validation accepts both the explicit GPU UUID launcher used on sep-2
+and the live-parent admission launcher used on sep-1. An explicit admission
+must pass its ownership, device and launcher-ancestry checks.
+
+### One-frame LoRA with trainable video projections
+
+`train_phase1_edge_video_io_foundary.sh` selects the opt-in
+`global_lora_video_io` adaptation mode and one observed RGB frame. It trains
+the existing Q/K/V/O LoRA16/alpha32, camera action heads/modality embedding,
+and the full weights and biases of `vae2llm` and `llm2vae`. The VAE remains
+frozen. Both projections start from their released pretrained values and use
+the LoRA learning rate (effective2e-5 initially); action heads retain8e-5.
+
+Set `FOUNDRY_GPU_INDICES=2,3`, `NATIVEP1_CLIPS_PER_GPU=16`, and a distinct
+`NATIVEP1_RUN_NAME` containing `video_io`. The two-task recipe retains
+forward:inverse40:25, no captions, exclude5, T97/20fps/256, native losses/noise,
+FP32 EMA, global32/accumulation1 and200k updates. It starts fresh from official
+Edge base unless a same-run `RESUME_CHECKPOINT` is explicitly supplied. The
+saved adaptation contract prevents mixing this run with standard LoRA.
+
+`VideoIOAudit` records trainability and both tasks' gradients separately on
+each rank, and verifies actual optimizer changes to all four video-projection
+tensors on forward-dynamics updates. The standard in-process EMA previews
+use one observed frame and score the generated suffix, with four videos and
+four camera plots in the training W&B run after launch/resume and every5k.
+Preparation and acceptance records are under
+`/mnt/local/jinhyung.kim/cosmos_storage/operations/phase1_video_io_p1_20261028`;
+live logs establish current launch status.
+
+The sep-2 production run is
+[LoRA + video I/O, prefix1](https://wandb.ai/jungbinc-upenn/cosmos3_camera/runs/51xcizf1),
+in tmux `cosmos_p1_video_io_p1_gpu2_3`. Before launch,57 CPU checks, both task
+audits on both GPU ranks, full checkpoint2 recovery/update3, and four video/
+camera previews passed. The projections add788672 trainable parameters;
+15669440 parameters train in total. `plan.json` records the exact run directory,
+and `phase1_video_io_current_ops.txt` selects its operations directory.
+Both tasks passed the production gradient/update audits on both ranks. All
+four initial videos and four camera plots were verified uploaded to W&B,
+followed by continuing updates at roughly1.15s/update. The verification
+snapshot is in `running_verified.json`; consult live logs for current status.
+
+### Foundary: assigned GPUs, configurable batch, 17 reference frames
+
+`train_phase1_edge_foundary.sh` runs on one or two explicitly assigned Foundary GPUs
+without pretending to have a Slurm allocation. Source `.site.local.sh` and set
+`FOUNDRY_GPU_INDICES` (for example `0,5`), `NATIVEP1_RUN_NAME`, and optionally
+`WANDB_ENTITY` before launching. The original single `FOUNDRY_GPU_INDEX` remains
+supported. It checks the hostname, exact GPU UUIDs, local input/output paths,
+GPU memory use, and per-user GPU/run locks. Resume requires a checkpoint inside
+the same run's output directory. `NATIVEP1_CLIPS_PER_GPU` selects the batch
+size per GPU (default64); set it to16 on two GPUs for global batch32.
+Both ranks replicate the model (`dp_replicate=2`, `dp_shard=1`). Config-only
+`--dryrun` uses one CPU process and does not reserve the selected GPUs.
+
+Occupied GPUs are rejected unless their exact resident PIDs are listed in
+`FOUNDRY_SHARED_GPU_PIDS` after sharing has been explicitly coordinated. This
+does not stop those processes; any unexpected resident PID still blocks launch.
+On2026-10-27 the user assigned GPUs0 and5 and confirmed sharing GPU5 with the
+GR00T server PID3036385. The two-GPU operation sets that PID explicitly.
+
+The recipe is Edge, T97/20fps/256, forward:inverse40:25, no captions, exclude5,
+global LoRA16/alpha32 and action heads, with the selected batch per GPU and
+`trainer.grad_accum_iter=1`. Forward dynamics observes17 RGB frames (five causal
+Wan latents); inverse dynamics observes all97 frames. The200k scheduler, losses,
+FP32 EMA, effective LoRA LR2e-5/action LR8e-5, and checkpoint policy remain the
+existing two-task recipe. Changing batch size does not automatically scale LR.
+
+Four fixed held-out test cases produce in-process EMA UniPC30 previews after
+launch/resume and every5k updates, in the same W&B run as training. Videos mark
+the observed prefix and generated suffix; video metrics score only frames17–96.
+Camera plots and metrics retain the existing inverse-dynamics evaluation.
+The callback also preserves the original prefix-one preview behavior.
+
+The initial2026-10-27 sep-2 launch used GPU0, W&B
+`jungbinc-upenn/cosmos3_camera/17u3iurd`, and local output under
+`/mnt/local/jinhyung.kim/cosmos_storage/runs/`. Its first two updates had finite
+losses, saved a complete native DCP, and synced four videos plus four camera
+plots. The full run resumes that same optimizer/scheduler/model state.
+`cosmos_storage/operations/phase1_current_ops.txt` points to the exact plan,
+launch scripts, startup/resume logs and verification records. Live logs establish
+current progress; the target is200k updates.
+
+The user subsequently requested batch32 on2026-10-27. The full step390 DCP
+was verified and resumed with `NATIVEP1_CLIPS_PER_GPU=32`, accumulation1 and
+the same W&B ID. The resolved runtime config differs only in batch size and
+resume-checkpoint path; all other hyperparameters are retained. W&B notes
+record that updates1–390 used64 clips and update391 onward uses32. The output
+directory retains its historical `1gpu_bs64` name. The operations pointer above
+selects the current launch and log.
+
+The user then requested GPUs0 and5 with32 clips total. The full step777 DCP was
+verified before stopping the single-GPU trainer, and both new ranks resumed
+that model/EMA/optimizer/scheduler/trainer state. From update778 the run uses
+two replicated ranks,16 clips per GPU and accumulation1. W&B's display name
+contains `2gpu_bs16_global32`; notes preserve both batch/layout transitions.
+The runtime config differs only in per-GPU batch, replica degree and resume
+path. The51 contract tests, four preview/access tests, CPU dryrun and two-rank
+training/resume-preview checks passed. Single-GPU batch32 averaged2.14s/update;
+the initial two-GPU updates measured about1.14s/update. Live logs supersede
+these startup measurements.
+
+### Two-task, one-frame action-only ablation
+
 ### Foundary local-NVMe launcher
 
 After explicitly coordinating use of process-free GPUs on sep-1/sep-2, activate
