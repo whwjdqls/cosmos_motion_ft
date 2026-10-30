@@ -1,5 +1,49 @@
 # Shared Agent Context
 
+## Two-task Phase1 final200k guided comparison (2026-10-29)
+
+- Follow-up16:10KST: user authorized releasing idle PRO6000s. Verified both
+  GPUs on node55 had no GPU processes/memory use and cancelled2608761 after
+  completed training/evaluation. All six other trainers were preserved.
+  `operations/status_idle_release_20261029` holds the queue snapshot and verified
+  Notion status report. Do not reuse the now-cancelled allocation.
+- `native_phase_training/TWO_TASK_GUIDANCE2_20261029.md` records the requested
+  final two-task/prefix1/no-text200k versus original200k comparison. Same71
+  windows, official EMA UniPC30/shift10. Forward uses cameraCFG2/textCFG1;
+  inverse keeps native guidance1. Both no-caption and original-caption
+  references are labeled separately; measured GT is included throughout.
+- Scratch2 operation `phase1_twotask200k_guidance2_20261029` reuses20 audited
+  guided original videos and71 inverse predictions, generates missing results,
+  and publishes tables plus fixed-index three-panel videos to Notion page
+  `408d2a44f44b80e882cfcc8d8f4b7869`. Completed all71 cases with no skips;
+  eight videos, two camera figures and quantitative ZIP remotely hash-verified.
+  `COMPLETE.json`, `publication.json=complete_verified` and
+  `publication_resume.exit_code=0` establish completion. Publication alone moved
+  to the faster login-network connection after ML work finished on node55;
+  the original coordinator's exit143 records that handoff, not inference failure.
+- Matched no-caption cameraCFG2: original/two-task PSNR19.284/19.751,
+  SSIM0.5979/0.6184, LPIPS0.2903/0.2789. Inverse rotation0.3606/0.3142deg,
+  scale-matched translation5.754/5.146mm, Sim3ATE3.623/3.164cm. Paired95%
+  intervals favor two-task; task mix and training caption policy both differ.
+
+## Joint-trained Phase3 matched V2M evaluation (2026-10-29)
+
+- `nymeria_baselines/JOINT_PHASE3_MATCHED71_20261029.md` documents evaluation of
+  the existing joint3/equal200k checkpoint against original200k on the Notion
+  Video2motion page. Same71 fixed windows, four video/caption × scale1/2 settings,
+  supplied neutral shapes, UniPC35/shift3, unchanged Body23 and Nymeria TMR.
+- The guidance reference disables whole bridges and retains captions; it is not
+  trained missing-video CFG. Joint training changes task exposure at equal200k.
+  This measures V2M performance, not joint-generation sample quality.
+- Scratch2 operation `phase3_joint_v2m_matched_20261029` contains configuration,
+  parity gates, per-case evidence and Notion receipts. Trust `COMPLETE.json` and
+  `notion_publication.json` (`published_verified`) for completion; do not infer it
+  from this launch note. No existing trainer or checkpoint was changed.
+- Completed08:03KST: all284 predictions, verified Notion tables and quantitative
+  ZIP. Caption/scale2 joint versus original: MPJPE13.98/14.13cm,
+  FID0.132200/0.140510, R@3 65.10/69.79% (GT70.83%). Native V2M error/FID
+  worsen; results are mixed, and paired MPJPE intervals cross zero.
+
 ## Standing experiment reporting preference (2026-10-28)
 
 - Always publish experiment/status reports and quantitative conclusions to the
