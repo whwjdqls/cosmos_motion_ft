@@ -1,5 +1,214 @@
 # Shared Agent Context
 
+## Phase2 one-GPU training benchmark (2026-10-31)
+
+- `motion_expert_t2m_edge/TRAINING_BENCHMARK_20261031.md` records the real
+  Self→cross/Knorm/caption-only recipe on the idle RTX4090 of2608785/node33.
+  Forty isolated updates, zero skipped updates, no production checkpoint changes.
+  Microbatch128: accum1 mean1.745s/median0.959s; accum2 global256
+  mean3.338s/median2.461s. Loader waits average0.783/1.460s respectively.
+- nvidia-smi peak22.484GiB; PyTorch peak allocated21.275GiB/reserved22.012GiB.
+  This short run does not establish exhaustive token-length capacity or DDP
+  throughput. The process exited0 and the card is idle again; the other card's
+  application remains untouched. Scratch2 Cosmos operation
+  `phase2_training_benchmark_20261031` has per-update timings and provenance.
+  Report: https://app.notion.com/p/409d2a44f44b81e5b4c7d2266be3e9c3 .
+
+## Full-test modality collision and generated-video motion evaluation (2026-10-30)
+
+- `nymeria_baselines/PHASE2_SCENE_EVALUATION_20261030.md` records two completed
+  inference-only evaluations. Both reuse the immutable11892caption/window
+  cases (11657physical windows,71recordings), frozen Self→cross/Knorm/
+  caption-only B256200k specialist, evaluator-specific statistics and measured
+  GT from `phase2_generation_modalities_20261028`. Exact checkpoint paths and
+  hashes come from saved configurations, not launcher defaults.
+- Direct GT/text-only/image-only/image+text regeneration preserves the original
+  four-case batches, noise and UniPC35/shift3/CFG2; its first saved batch matches
+  the original raw predictions bitwise. Retain raw features and per-frame
+  collision evidence. Original71fixed-window GT metrics are a different cohort.
+  Direct evaluation completed all11892cases with zero skips; Notion table
+  readback and quantitative ZIP/PNG SHA256 are verified (`COMPLETE.json`).
+  Collision-proxy frame rates:GT30.929%,text37.684%,image34.291%,both36.751%.
+  Both minus text:-0.933points, paired recording-bootstrap95%[-1.953,-0.054].
+  Image-only retrieval remains much poorer; overlap alone is not motion quality.
+- New condition: first image+caption generates video with the original frozen
+  Phase1EMA200k, bridges disabled, native UniPC30/shift10/guidance1. Decode to
+  lossless RGB, restore observed frame0 and Wan re-encode before original
+  Phase3baseline200k reconstructs motion with UniPC35/shift3/textCFG2. Both
+  CFG branches retain exactly the same generated video and enabled bridges;
+  there is no videoCFG, GTmotion or futureGTRGB input. Preflight passed.
+- Both evaluations completed all 11892 cases without skips on 2026-10-31.
+  The generated-video pipeline has collision-proxy frames 36.404%, R@3 87.562%,
+  FID 0.082044 and feet-above-5cm frames 20.910%. Direct image+text is
+  36.751%, 97.077%, 0.018421 and 15.458%, respectively. The collision
+  difference is -0.346 percentage points, recording-bootstrap 95% interval
+  [-1.684, 1.193]; there is no clear collision improvement. These compare
+  a Phase1→Phase3 pipeline against a Phase2 specialist, not just video input.
+  `full_completion_audit.json` verifies all cases' guidance, finite motions,
+  exact GT measurements/body flags/depths, checkpoint/source hashes and ZIP.
+  `publication_readback_audit.json` independently verifies both remote tables,
+  four quantitative uploads and all eight previously fully decoded videos.
+  One time-limit-interrupted MP4/audit at position11785 was repaired by replaying
+  the same official sampler/seed on PRO6000. Native and motion-input latents
+  reproduce bitwise; cached inference inputs, motions and scores are unchanged
+  (`interrupted_export_recovery.json`). Do not infer complete display exports
+  merely from an atomic generated-video NPZ. The inference source is frozen.
+  The 02:16 scheduled monitor tick verified completion and continued GPU/Notion
+  checks afterward (`post_completion_monitor_acceptance.json`). Retained active
+  allocations were preserved. Only unused pending replacement2649070 was
+  cancelled after the full acceptance passed; other requests were untouched.
+- Follow-up user authorization to cancel idle GPUs (2026-10-31, about03:00KST):
+  cancelled fully idle jobs2646811,2646945,2646946,2647359 and2648261,
+  releasing4RTX4090s and1RTXPRO6000. Slurm controller confirms CANCELLED
+  for all five (`idle_allocation_cleanup_20261031.json`). Job2608785 remains
+  because its other card, UUID8c3f840c, still serves the application; the
+  evaluation card UUID247c7e54 is idle. Pending PRO requests were untouched.
+  This user-authorized cleanup supersedes the earlier retention preference
+  for these five completed allocations. The30-minute monitor remains active.
+- Use approved SDK legacy clouds, fixed source-window transforms,16active
+  capsules excluding thighs/shins/feet,2cm metric voxels and connected support.
+  Shared scene support covers every compared trajectory. Never fit, recenter
+  or ground predictions. Source head/camera anatomical outliers are reported
+  without dropping cases or modifying poses; independent full-source/window
+  world reconstruction must still agree within0.1mm. The operation retains
+  the failing gate, diagnostic and corrected source snapshot.
+- Scratch2 Cosmos operations: `phase2_scene_collision_20261030` and
+  `phase2_generated_video_motion_20261030`. Trust each `COMPLETE.json` plus
+  verified Notion publication receipt for completion. Three direct scene
+  comparisons and two two-stage examples are already remotely hash-verified
+  on https://app.notion.com/p/407d2a44f44b81a5ad53dbb685cdbd9e .
+  Three further scene comparisons add generated-video motion as a fifth
+  method on the fixed prior71review cases0,1,3 (full-case indices0,138,407).
+  All eight published videos fully decode to97frames/20fps with uniform
+  timestamps; `published_video_acceptance.json` records this verification.
+  `handoff_output_audit.json` verifies the first345completed pipeline cases'
+  GT frame/body flags and intrusion depths against the direct sweep bitwise,
+  with finite outputs and the requested no-videoCFG/textCFG2 settings.
+  `source_qc_case_acceptance.json` also verifies filtered position6677 (the
+  original06703/Sherri Scott source-head outlier): completed, not skipped,
+  all10frames flagged and GT flags/body hits/depths bitwise equal to direct.
+  World roundtrip remains6.56e-8m. The final pipeline quantitative archive
+  includes these acceptance records and observed worker GPU metadata.
+- GPU workers during the completed evaluation (historical; query current Slurm):
+  2608785/node33/evaluation UUID247c7e54 only,
+  2646811/node40, 2646945/node39 and 2646946/node35. The latter started at
+  2026-10-31 00:30:48 KST and runs through November 3 with the same immutable
+  evaluation. Job2647359 started on node40 at 2026-10-31 01:14:23 KST with
+  one RTX4090, 8 CPUs, 64 GB and a full 3-day allocation. Both additional
+  requests exclude cs-gpu-01,node37,node31,node33.
+  Request2647359 permits a 2-hour minimum for earlier backfill, reduced from
+  8 hours at 2026-10-31 00:21 KST as the evaluation nears completion;
+  its maximum remains 3 days. Request2646946 retains a fixed 3-day request.
+  Controller readback and unchanged model settings are recorded in
+  `backfill_request_2647359.json` under the pipeline operation.
+  Follow-up:2648261 obtained one RTXPRO6000 on node56 with2CPUs/32GB,
+  fitting the otherwise idle GPU/2CPU capacity. It received an8hour backfill
+  allocation ending2026-10-31 04:24KST. The same frozen inference code is
+  advancing; `pro_first_case_acceptance.json` verifies finite motion, both
+  guidance branches, source identity and bitwise GT collision flag/depth
+  parity on an observed PRO-owned case. The second single-PRO request2648286
+  broadened to ASUS/Gigabyte and a4hour minimum; it obtained node55 for4hours,
+  ending2026-10-31 01:25:29KST, and is producing finite measured cases.
+  Single-PRO request2648659 obtained another node55 GPU at22:32:20KST for
+  4hours, ending2026-10-31 02:32:20KST, and is producing measured cases.
+  Its2CPU/32GB resources and4hour-minimum/3day-maximum request are unchanged.
+  Replacement2648691 started early on
+  node55 at21:59:55KST for4hours (ends2026-10-31 01:59:55KST) and is advancing
+  the same case queue. The22:16tick verified all six workers live (3RTX4090,
+  3RTXPRO6000),3663cases complete, zero errors, and Notion status readback.
+  Later status must come from current Slurm/process evidence.
+  The22:46tick verified seven live workers (3RTX4090+4RTXPRO6000),4634cases
+  complete and no errors. Backup2649070 was queued across ASUS/Gigabyte with
+  the same single-PRO resources, ready for a short allocation's expiry.
+  The 2026-10-31 00:46 scheduled tick verified eight live workers
+  (4 RTX4090 + 4 RTXPRO6000), 8815 completed cases, no worker errors and a
+  verified Notion status update. Current state still requires live evidence.
+  The 01:16 tick verified nine live workers (5 RTX4090 + 4 RTXPRO6000),
+  10004 completed cases and no worker errors. New worker2647359 subsequently
+  wrote measured cases; both requested extra RTX4090s are now in use.
+  Never restart a live worker from a stale
+  observation; case claims and saved video/motion outputs remain authoritative.
+  Inference used RTX4090 and RTXPRO6000. Node58 rebooted2026-10-26 after
+  the old anomaly; verify current CUDA if that requested allocation lands there.
+  Recent real outputs show~10.8s/PRO case and~12.6–12.8s/4090 case; these
+  are operational observations on different cases, not a hardware benchmark.
+  Recovery reads optional `allocations/JOB.cpus`, preserving the2CPU request.
+  Node33's other GPU belongs to the Habitat/application task; leave it alone.
+  For2608785 expose both allocated GPUs in the Slurm step, then select the
+  evaluation UUID explicitly: `--gres=gpu:1` selects the other GPU there.
+- User explicitly requested tracking every30minutes even after completion.
+  Tmux `eval_monitor_30min_20261030` persists that monitor and verifies a Notion
+  status update each tick. `live_gpu_health.py` checks actual owned GPU UUIDs,
+  compute PIDs and matching job-local evaluation processes. Unknown/timeout
+  observations never trigger a restart. A twice-verified idle allocation can
+  resume through `worker_resilient.sh`; healthy live workers remain untouched.
+  Its real cross-process flock acceptance verifies held cases are not stolen
+  and released unfinished cases become claimable, avoiding holes after expiry.
+  The wrapper also uses a per-allocation recovery lock and shared summary lock.
+  Newly started allocations have a120second startup grace. Completed direct
+  GPUs have transferred to the pipeline; check remaining allocation time.
+  Keep the explicit monitoring goal active until the user ends it.
+
+## Collision checks exclude thighs, shins and feet (2026-10-30)
+
+- User requested ignoring both thighs, shins and feet when checking collisions.
+  This is now the default `collision_body=exclude_thigh_shin_foot` in the scorer
+  and scene-review CLI. Keep hips, torso, head and arms:16active capsules.
+  Exclude the six leg capsules before union depths, connected-cluster support,
+  frame flags and body-part statistics. Keep the full skeleton for visual context.
+  Historical22-capsule reproduction requires `--collision-body full_body`.
+- `nymeria_baselines/rescore_gt_scene_collision.py` reused audited approved-cloud
+  geometry and recomputed all71windows/6887frames. All71full-body controls
+  reproduce the previous numeric metrics/hits exactly; reduced point IDs are
+  subsets and all excluded-capsule flags are false. No downloads or scene changes.
+- Current GT result:640/6887frames (9.29287%),25/71windows,1.89215% active
+  body-part/frames; pooled capsule intrusion mean/p95 4.46633/8.59478cm.
+  Prior full-body result30.65195% is historical. New artifacts:
+  Scratch2 Cosmos `operations/gt_scene_collision_test71_20261030/`
+  `metrics_legacy_test71_exclude_thigh_shin_foot`. Table readback and quantitative
+  ZIP/PNG SHA256 are verified on the existing Notion report. The proxies remain
+  distinct from validated physical collision labels.
+- Matching four-view overlays are regenerated under
+  `visual_review_legacy_exclude_thigh_shin_foot`; use their own `COMPLETE.json`
+  and publication receipts to establish visual completion.
+
+## Approved Nymeria scene visualization default (2026-10-30)
+
+- User confirmed the point cloud in the final legacy-filter review is correct
+  and explicitly requested using it from now on. Use
+  `nymeria_baselines/review_scene_viewer.py` and `scene_gl_renderer.py` as the
+  standard for future scene/body visualizations on Yonsei and Grasp.
+- Use head-map points in the matching SLAM graph with SDK confidence filtering:
+  inverse-distance std <0.0004 and distance std <0.02m. Round confidence fields
+  to SDK float32 storage, then compare as Python floats. Keep every finite
+  retained raw point; no count cap, spatial/ceiling cut or display voxelization.
+  Do not remove points based on overlap with GT.
+- Keep depth-buffered rendering, gray translucent points of radius0.008m,
+  GT RGB, two perspective views and a top view, frame-zero head axes and the
+  camera/head-derived/torso direction arrows. Preserve audited coordinates.
+- Reference artifacts: Scratch2 Cosmos
+  `operations/gt_scene_collision_test71_20261030/visual_review_legacy_allpoints_sdk`.
+  All four97-frame/20fps videos and PNGs are remotely hash-verified in Notion:
+  https://app.notion.com/p/409d2a44f44b81839675f2890d0245c6 .
+  See `nymeria_baselines/SCENE_COLLISION.md` for the protocol. Historical generic
+  scorer defaults and collision results are not the approved visualization
+  source. Follow-up: the user requested GT collision metrics with the approved
+  cloud. A fresh rerun is in the operation's `metrics_legacy_test71`, with
+  `cloud_filter=nymeria_legacy_sdk`, no mixing of historical cached scores,
+  original 2cm voxel/capsule definitions and independent clock/SLAM checks.
+  Completed71/71 windows and6887frames, no skips. All source/canonicalization,
+  independent clock/SLAM and graph checks passed. Fifty-nine missing head-clock
+  members were range-extracted with ZIP CRC checks; original12were reused.
+  GT:2111/6887frames flagged (30.65195%),50/71windows,4.03461% body-part/frames.
+  Foot/nonfoot frame flags15.27516/26.87672%. Pooled flagged-voxel capsule
+  intrusion mean/p95:3.64536/6.56335cm. With2cm margin, radius0.8/1.0/1.2 gives
+  17.77/30.65/42.40% frame flags. These remain capsule/cloud intrusion proxies,
+  not signed physical scene depth or validated true-collision labels.
+  `COMPLETE.json`, `final_publication.json=complete_verified`, both exit codes0,
+  remote table readback and PNG/quantitative ZIP SHA256 establish completion.
+  All per-window/per-frame data, protocol/source snapshot and four approved
+  RGB/scene videos are available on the same verified Notion report.
+
 ## Cross-server continuation handoff (2026-10-30)
 
 - `migration/RESUME_YONSEI_20261030.md` documents four unfinished runs:
