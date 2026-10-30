@@ -1,5 +1,22 @@
 # Shared Agent Context
 
+## Cross-server continuation handoff (2026-10-30)
+
+- `migration/RESUME_YONSEI_20261030.md` documents four unfinished runs:
+  control107793, hiddenFiLM92879, trajectoryFiLM63864, EgoControl91345.
+  Drive `gggdrive:cosmos_data/yonsei_resume_20261030` has verified documentation,
+  source and metadata; the separate checkpoint backup may still be in progress.
+  Trust remote `READY.json`, not this launch note, for final handoff readiness.
+- All three Phase3 contracts require the historical shared `data.py` hash
+  c21a7bb57e2276f668ea7fed5bfba35ea46756f3e9443003c6efce82ac985262.
+  A verified overlay from087ecbe2 is supplied only for a dedicated destination
+  checkout. Current Yonsei code is untouched. Start with Drive
+  `resume_addendum/RESUME.md`, which supersedes the initial bundled guide.
+- Operation: Scratch2 `cosmos/operations/server_resume_20261030`. Checkpoint
+  worker runs on retained2608785; tmux `server_resume_upload_20261030` monitors
+  it and updates Notion page409d2a44f44b817d8e81d32fbe18e99a after verification.
+  Destination paths/hardware have not been supplied or GPU-tested.
+
 ## Two-task Phase1 final200k guided comparison (2026-10-29)
 
 - Follow-up16:10KST: user authorized releasing idle PRO6000s. Verified both
