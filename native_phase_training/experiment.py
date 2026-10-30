@@ -97,11 +97,13 @@ _NORMALIZE_LOSS_BY_ACTIVE = os.environ.get("NATIVEP1_NORMALIZE_LOSS_BY_ACTIVE", 
     "yes",
 }
 _ADAPTATION_MODE = os.environ.get("NATIVEP1_ADAPTATION_MODE", "global_lora").strip().lower()
-_ADAPTATION_MODES = frozenset({"global_lora", "action_only", "action_video_projections", "camera_kv_lora"})
+_ADAPTATION_MODES = frozenset({"global_lora", "global_lora_video_io", "action_only", "action_video_projections", "camera_kv_lora"})
 if _ADAPTATION_MODE not in _ADAPTATION_MODES:
     raise ValueError(
         f"NATIVEP1_ADAPTATION_MODE must be one of {sorted(_ADAPTATION_MODES)}, got {_ADAPTATION_MODE!r}"
     )
+if _ADAPTATION_MODE == "global_lora_video_io" and (_MODEL_FAMILY != "edge" or _FULL_FT):
+    raise ValueError("global_lora_video_io requires Edge LoRA training")
 if _ADAPTATION_MODE == "action_video_projections" and _MODEL_FAMILY != "edge":
     raise ValueError("action_video_projections is supported only by the Edge model adapter")
 if _ADAPTATION_MODE in {"action_only", "camera_kv_lora"} and "image2video" in MODE_WEIGHTS:
@@ -348,6 +350,7 @@ world_camera_nymeria_latent = LazyDict(
                     else ["action2llm", "llm2action", "action_modality_embed", "vae2llm", "llm2vae"]
                     if _ADAPTATION_MODE == "action_video_projections"
                     else ["lora_A", "lora_B", "action2llm", "llm2action", "action_modality_embed"]
+                    + (["vae2llm", "llm2vae"] if _ADAPTATION_MODE == "global_lora_video_io" else [])
                 )
             ),
             lr=(_FULL_FT_LR if _FULL_FT else _LORA_LR),
@@ -479,6 +482,9 @@ world_camera_nymeria_latent["model"]["config"]["lora_target_modules"] = (
     if _ADAPTATION_MODE == "camera_kv_lora"
     else "q_proj_moe_gen,k_proj_moe_gen,v_proj_moe_gen,o_proj_moe_gen"
 )
+if _ADAPTATION_MODE == "global_lora_video_io":
+    from native_phase_training.video_io_audit import VideoIOAudit
+    world_camera_nymeria_latent.trainer.callbacks.video_io_audit = L(VideoIOAudit)()
 if _MODEL_FAMILY == "nano":
     # This compatibility field is supplied by the pinned Nano framework.  Edge
     # applies the same allowlist directly in LatentOmniMoTModelEdge before FSDP.

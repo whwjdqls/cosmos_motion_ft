@@ -21,7 +21,7 @@ SCHEMA_VERSION = 4
 COSMOS_FRAMEWORK_EDGE_INFERENCE_SHIFT = 10.0
 
 ALL_TASKS = frozenset({"forward_dynamics", "inverse_dynamics", "policy", "image2video"})
-ADAPTATION_MODES = frozenset({"global_lora", "action_only", "action_video_projections", "camera_kv_lora"})
+ADAPTATION_MODES = frozenset({"global_lora", "global_lora_video_io", "action_only", "action_video_projections", "camera_kv_lora"})
 
 
 def _value(container: Any, key: str) -> Any:
@@ -115,6 +115,9 @@ class NativePhase1RunContract:
         if self.adaptation_mode == "action_video_projections" and self.model_family != "edge":
             raise ValueError("action_video_projections contract requires Edge")
         expected_targets = {
+            "global_lora_video_io": {
+                "q_proj_moe_gen", "k_proj_moe_gen", "v_proj_moe_gen", "o_proj_moe_gen",
+            },
             "global_lora": {
                 "q_proj_moe_gen",
                 "k_proj_moe_gen",
@@ -143,6 +146,8 @@ class NativePhase1RunContract:
             raise ValueError(f"inference_shift must be positive, got {self.inference_shift}")
         if self.model_family not in {"nano", "edge"}:
             raise ValueError(f"unsupported model family: {self.model_family!r}")
+        if self.adaptation_mode == "global_lora_video_io" and self.model_family != "edge":
+            raise ValueError("global_lora_video_io is supported only for Edge")
         if self.conditioning_fps <= 0.0 or self.base_fps <= 0.0:
             raise ValueError(
                 f"FPS values must be positive: conditioning={self.conditioning_fps} base={self.base_fps}"

@@ -125,7 +125,7 @@ def main():
     sources = ops / 'source'
     sources.mkdir()
     hashes = {}
-    for filename in ('train_phase1_foundary.py', 'compute_admission.py',
+    for filename in ('train_phase1_foundary.py', 'compute_admission.py', 'compute_access.py',
                      'train_phase1_edge_two_tasks_action_only.sh', 'train_phase1_edge_two_tasks_no_text.sh',
                      'train_phase1_edge_two_tasks_action_video_projections.sh', 'run_contract.py',
                      'train_phase1_edge_two_tasks.sh', 'probe_action_memory.py', 'validation.py',

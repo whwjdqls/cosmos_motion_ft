@@ -32,7 +32,7 @@ class LatentOmniMoTModelEdge(OmniMoTModel):
         self.model_family = str(model_family).lower()
         if self.model_family != "edge":
             raise ValueError(f"LatentOmniMoTModelEdge requires model_family='edge', got {model_family!r}")
-        if self.adaptation_mode not in {"global_lora", "action_only", "action_video_projections", "camera_kv_lora"}:
+        if self.adaptation_mode not in {"global_lora", "global_lora_video_io", "action_only", "action_video_projections", "camera_kv_lora"}:
             raise ValueError(f"unsupported Phase-1 adaptation mode: {self.adaptation_mode!r}")
         super().__init__(config)
 
@@ -57,7 +57,7 @@ class LatentOmniMoTModelEdge(OmniMoTModel):
 
     def projection_modules(self) -> tuple[str, ...]:
         return self._ACTION_MODULES + (
-            self._VIDEO_MODULES if self.adaptation_mode == "action_video_projections" else ()
+            self._VIDEO_MODULES if self.adaptation_mode in {"action_video_projections", "global_lora_video_io"} else ()
         )
 
     def install_attention_dispatch(self, net: torch.nn.Module) -> None:
@@ -77,6 +77,7 @@ class LatentOmniMoTModelEdge(OmniMoTModel):
         trainable = [(name, parameter) for name, parameter in named if parameter.requires_grad]
         trainable_names = [name for name, _ in trainable]
         lora_names = [name for name, _ in named if "lora_" in name]
+        allowed_modules = self.projection_modules()
 
         if self.adaptation_mode in {"action_only", "action_video_projections"}:
             if lora_names:
@@ -94,13 +95,14 @@ class LatentOmniMoTModelEdge(OmniMoTModel):
             unexpected = [
                 name
                 for name in trainable_names
-                if "lora_" not in name and not any(module in name for module in self._ACTION_MODULES)
+                if "lora_" not in name and not any(module in name.split(".") for module in allowed_modules)
             ]
         if unexpected:
             raise RuntimeError(f"unexpected trainable Phase-1 parameters: {unexpected}")
 
         expected_targets = {
             "global_lora": ("q_proj_moe_gen", "k_proj_moe_gen", "v_proj_moe_gen", "o_proj_moe_gen"),
+            "global_lora_video_io": ("q_proj_moe_gen", "k_proj_moe_gen", "v_proj_moe_gen", "o_proj_moe_gen"),
             "camera_kv_lora": ("k_proj_moe_gen", "v_proj_moe_gen"),
         }
         if self.adaptation_mode in expected_targets:
@@ -115,6 +117,11 @@ class LatentOmniMoTModelEdge(OmniMoTModel):
             ]
             if invalid:
                 raise RuntimeError(f"camera_kv_lora has non-K/V adapters: {invalid[:8]}")
+        if self.adaptation_mode == "global_lora_video_io":
+            expected_video = {f"{module}.{part}" for module in self._VIDEO_MODULES for part in ("weight", "bias")}
+            actual_video = {name for name in trainable_names if any(module in name.split(".") for module in self._VIDEO_MODULES)}
+            if actual_video != expected_video:
+                raise RuntimeError(f"Expected both complete video projections: {actual_video}")
 
         total_count = sum(parameter.numel() for _, parameter in named)
         trainable_count = sum(parameter.numel() for _, parameter in trainable)

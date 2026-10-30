@@ -44,6 +44,167 @@
   FID0.132200/0.140510, R@3 65.10/69.79% (GT70.83%). Native V2M error/FID
   worsen; results are mixed, and paired MPJPE intervals cross zero.
 
+## Foundary Phase1 LoRA plus video projections (2026-10-28)
+
+- User assigned sep-2 GPUs2/3 to a separate two-task Phase1 run with one
+  initial RGB frame, LoRA, and trainable video input/output projections.
+  Use `native_phase_training/train_phase1_edge_video_io_foundary.sh` and
+  adaptation mode `global_lora_video_io`. The usual action modules and
+  global Q/K/V/O LoRA16/alpha32 train, plus the full weights/biases of
+  `vae2llm` and `llm2vae`. The VAE and remaining backbone stay frozen.
+- Video projections retain pretrained initialization and use the LoRA rate:
+  effective2e-5 initially, while action modules retain8e-5. Preserve the
+  prefix1/no-caption/exclude5 forward:inverse40:25 recipe, T97/20fps/256,
+  native loss/noise, FP32 EMA, global32=2×16, accumulation1, and200k updates.
+  Initialize from official Edge base with a fresh optimizer and distinct W&B
+  run. Never initialize production from the disposable acceptance checkpoint.
+- The mode is recorded in the existing run contract and rejects resume as
+  standard LoRA. The Foundary launcher accepts explicit prefix1/17 and mode
+  overrides while preserving its former prefix17/global_lora defaults.
+- 57 CPU tests passed (six Edge trainability/optimizer/contract/preview checks
+  and51 existing Nano contract regressions). Config comparison against the
+  one-frame baseline has identical model/data/noise/loss/scheduler settings;
+  only adaptation mode and optimizer selection add the video projections.
+  Two-GPU forward/inverse audits passed with finite gradients and actual
+  updates to all four new tensors. They add788672 parameters, for15669440
+  total trainable parameters. Full checkpoint2 restored successfully; update3
+  changed both video projections and produced four97-frame/20fps video
+  comparisons plus four camera plots on the fixed held-out cases.
+- Operational plan, source snapshot, tests, probe/resume and production logs
+  are in `cosmos_storage/operations/phase1_video_io_p1_20261028` on sep-2.
+  Live logs and acceptance records establish preview/production status.
+  Existing camera GPUs0/5 and naeive adaptation GPUs1/7 remain separate.
+- Production launched with W&B `jungbinc-upenn/cosmos3_camera/51xcizf1`,
+  tmux `cosmos_p1_video_io_p1_gpu2_3`. The model/optimizer/scheduler match
+  the accepted test; production restores normal40:25 task sampling, uses
+  fresh official base loading and the full200k horizon. The operations
+  pointer is `cosmos_storage/operations/phase1_video_io_current_ops.txt`.
+- Production passed both task audits on both ranks, with nonzero gradients
+  and optimizer updates to all four video-projection tensors. All four initial
+  video comparisons and four camera plots were verified uploaded to W&B.
+  Training continued beyond step33 at roughly1.15s/update. See
+  `running_verified.json` for the evidence snapshot; live logs supersede it.
+
+## Foundary two-GPU resumes (2026-10-28 afternoon)
+
+- User requested two GPUs per experiment and authorized any unoccupied GPUs.
+  Resume existing camera Phase1 on sep-2 GPUs0/5 and revised x0 naeive
+  adaptation on GPUs1/7. Each uses global32=2×16, accumulation1, unchanged
+  objectives/optimizer/LR schedule and its original200k horizon and W&B ID.
+- Verified complete model/EMA, optimizer, scheduler and trainer DCP components
+  at camera checkpoint20048 and motion checkpoint6237. The motion log reports
+  SIGKILL on2026-10-28 at08:57UTC; the cause is not established. Camera logs
+  end at08:54UTC. Neither previous trainer nor tmux session was still running.
+- Operations are `cosmos_storage/operations/resume_two_gpus_each_20261028`,
+  with `camera/` and `motion/` plans, scripts, saved prior configurations and
+  logs. `phase1_current_ops.txt` and `naeive_adaptation_current_ops.txt` select
+  the current respective operations directories. Live logs establish status.
+- Motion launcher now accepts two GPU indices. Global batch accounts for
+  replica/shard degrees, preserving the saved contract at16 clips per rank.
+  Only rank0 writes the contract and preview configuration/media; task audit
+  files are separate per rank. Both ranks participate in EMA sampling.
+  Nine CPU regression checks and the two-GPU config/contract check passed.
+- tmux sessions: `cosmos_p1_p17_gpu0_5` and
+  `cosmos_naeive_adaptation_x0_gpu1_7`. W&B IDs remain `17u3iurd` and `m8owvunc`.
+  The native loader restores existing RNG entries; the new motion rank has no
+  saved rank1 RNG and retains initialized RNG. Do not claim bit-identical replay.
+- Both two-GPU trainers recovered their complete checkpoints and continued
+  updates after resumed EMA previews on both ranks. Both motion ranks passed
+  all four task gradient audits. `running_verified.json` in each operations
+  subdirectory records the evidence. W&B previews are held until the resumed
+  step catches up to committed history (camera20288, motion6605 before stop);
+  this prevents overwriting history when replaying unsaved updates.
+
+## Foundary naeive adaptation and Phase2 staging (2026-10-28)
+
+- User assigned sep-2 GPU7 to the separate **naeive adaptation** ablation in
+  `native_motion_phase1/`. It replaces native camera actions with the existing
+  normalized camera/head-aligned283-D Nymeria motion and trains global LoRA16/
+  alpha32 plus fresh action heads. No Phase2 expert or Phase3 bridge is present.
+- User selected equal25% text→motion, text+image→motion, video→motion and
+  motion→video, with one reference RGB frame for motion→video. Batch32 on GPU7,
+  accumulation1, T97/20fps/256 and200k updates. Use the same112503 validated
+  Phase3 cache windows. See `native_motion_phase1/README.md` for the neutral
+  shape prefix, fixed zero visual placeholder for T2M, and loss-masked padding
+  from283 to288 channels required by native BF16 grouped GEMM.
+- The original velocity acceptance included five native packing/loss tests, four-task batch32 GPU backward,
+  complete checkpoint save/resume, and four native EMA qualitative previews
+  passed. Production starts fresh from official Edge base. Exact plan, launcher,
+  acceptance evidence and live logs are under node-local
+  `cosmos_storage/operations/native_motion_phase1`. Live logs establish status.
+  Existing camera Phase1 on GPUs0/5 must stay untouched.
+- The original native-velocity run, W&B `jungbinc-upenn/cosmos3_camera/h4r7mobn`,
+  is stopped. Its complete step600 model/EMA/optimizer/scheduler/trainer
+  checkpoint and original source snapshot are preserved. The user requested
+  keeping shared native motion/video noising while changing the motion target
+  and loss to match Phase2/3. Use the separate revised objective
+  `MOTIONP1_OBJECTIVE=x0_reconstruction_shared_waver_v1`; the compatibility
+  default `native_velocity` still reproduces the original run.
+- Revised motion predicts direct clean x0 with the exact Phase2/3 loss:
+  feature1, centered decoded joints1, temporal displacement5, contact0.05,
+  planted-foot velocity1 and foot height10, with no additional multiplier.
+  Video remains native velocity with scale10. Native WAVER shift3 is unchanged;
+  `independent_action_schedule=False` keeps the configured action logit-normal
+  distribution inactive. Sampling converts only motion x0 to velocity using
+  actual UniPC integration sigma, preserving observed shape/padding masks.
+- Revised run operations are in `cosmos_storage/operations/naeive_adaptation_x0_20261028`.
+  Nine CPU tests passed, including exact Phase2/3 loss/gradient parity, native
+  video loss/gradient parity and actual-sigma sampler conversion. All four
+  GPU7 batch32 backward tasks passed. Full checkpoint4 restored and update5
+  passed; live logs and acceptance records establish preview/production status.
+  The production recipe starts fresh from official Edge base, with a separate
+  W&B run and contract that rejects resuming the old velocity objective.
+- Revised x0 production launched on sep-2 GPU7 in tmux
+  `cosmos_naeive_adaptation_x0_gpu7`, W&B `jungbinc-upenn/cosmos3_camera/m8owvunc`,
+  displayed as `naeive adaptation | x0 + motion losses | Edge | batch32`.
+  Full save/resume and all four97-frame/20fps EMA previews passed before launch;
+  production model/optimizer/scheduler and source hashes match the accepted test.
+  All four initial production videos and individual motion-loss metrics were
+  verified in W&B, with continuing updates and the four-task gradient audit passed.
+  Use the new operations `plan.json` and `training.log` for current progress.
+- Nymeria RGB staging is complete on sep-2:1479files/728MP4s/297149670906bytes,
+  source-stream and local SHA256 match for every file. Destination is
+  `/mnt/local/jinhyung.kim/cosmos_storage/weka/nymeriaplus_kimodo_proportional/video`.
+  All713 indexed recordings are local;12 real Phase2 T2M/TI2M samples across
+  train/test passed without skipped-window fallback. Receipts/readiness are in
+  `cosmos_storage/operations/stage_phase2_nymeria`. Phase2 itself is not launched.
+
+## Foundary Edge Phase1, prefix17 / global32 on GPUs0 and5 (2026-10-27)
+
+- User assigned sep-2 GPUs0 and5 to Cosmos3-Edge two-task Phase1 with17
+  reference RGB frames, global batch32 and no accumulation. Use
+  `native_phase_training/train_phase1_edge_foundary.sh`; it selects exact GPU
+  UUIDs and checks node-local paths without fabricating a Slurm allocation.
+- No captions, exclude5, forward:inverse40:25, T97/20fps/256, global LoRA16/alpha32
+  plus action heads; retain the existing losses, LR schedule/EMA and200k horizon.
+  Set `FOUNDRY_GPU_INDICES=0,5`, `NATIVEP1_CLIPS_PER_GPU=16`, replicate degree2,
+  shard degree1 and `grad_accum_iter=1`; do not add accumulation or more GPUs.
+  User requested W&B qualitative previews like
+  EgoControl, inside the training process and the same training W&B run.
+- `validation.py` supports fixed prefix1 or17. The17-frame path conditions five
+  Wan latents, checks their preservation and scores generated RGB frames17–96.
+  Four fixed held-out test cases produce video comparisons and camera plots
+  after launch/resume and every5k, with RNG and training modes restored.
+- First two updates, full native checkpoint and four videos/four camera plots
+  passed; training resumes the same run's complete state toward200k. W&B:
+  `jungbinc-upenn/cosmos3_camera/17u3iurd`. Exact local plan/logs/verification:
+  `/mnt/local/jinhyung.kim/cosmos_storage/operations/phase1_current_ops.txt`.
+  Live logs establish current state. Only GPUs0 and5 are assigned to this task.
+- The batch32 continuation restores the same run's full step390 checkpoint.
+  Its native model/inference contract is unchanged; LR and200k update horizon
+  are retained. Record the batch change in the same W&B run because its first390
+  updates used64 clips. The historical output directory still contains `bs64`.
+- The user then assigned GPUs0 and5, explicitly selected global32 (16 clips per
+  GPU, accumulation1), and confirmed coordinated sharing of GPU5 with the GR00T
+  server PID3036385. Leave that server untouched. The launcher supports
+  `FOUNDRY_GPU_INDICES=0,5`, `NATIVEP1_CLIPS_PER_GPU=16`, and the explicit
+  `FOUNDRY_SHARED_GPU_PIDS=3036385` exception. It still rejects unexpected PIDs.
+  Two-GPU operations are `phase1_p17_bs32_2gpu_20261027T222100Z`, selected by the
+  active operations pointer. Full native checkpoint777 was verified and loaded;
+  update778 onward uses two replicas. Model/inference contract, optimizer and
+  scheduler are unchanged. Single-GPU batch32 averaged2.14s/update; both ranks
+  passed training and the resume preview. Live logs establish current speed.
+
 ## Standing experiment reporting preference (2026-10-28)
 
 - Always publish experiment/status reports and quantitative conclusions to the
