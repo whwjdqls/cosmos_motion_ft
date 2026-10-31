@@ -9,13 +9,14 @@ import numpy as np
 import torch
 
 import config
+import ablation_settings as phase2_ablation
 from checkpoint import configure_attention_from_checkpoint, load_checkpoint
 from data import build_phase2_dataset
-from decode_uniego_torch import decode_joints
+from feature_runtime import decode_joints, head_rotation_from_features, feature_statistics
 from flow import sample_x0_unipc
 from model import EdgePhase2MotionExpert
 from render_motion import (
-    head_rotation_from_features, render_conditioned_motion_mp4, render_motion_mp4,
+    render_conditioned_motion_mp4, render_motion_mp4,
 )
 
 
@@ -100,11 +101,13 @@ def main() -> None:
         guidance=args.guidance,
         device=device,
         generator=generator,
+        prediction_type=phase2_ablation.OBJECTIVE,
     )
     if not torch.isfinite(generated).all():
         raise FloatingPointError("sample contains non-finite values")
-    mean = torch.from_numpy(np.load(config.MOTION_STATS_MEAN)).to(device)
-    std = torch.from_numpy(np.load(config.MOTION_STATS_STD)).to(device)
+    mean_array, std_array = feature_statistics()
+    mean = torch.from_numpy(mean_array).to(device)
+    std = torch.from_numpy(std_array).to(device)
     generated_features = generated * std + mean
     generated_joints = decode_joints(generated_features).cpu().numpy()[0]
     gt_normalized = row["motion"][valid_gt].unsqueeze(0).to(device)
@@ -161,6 +164,7 @@ def main() -> None:
         "guidance": args.guidance,
         "seed": args.seed,
         "finite": True,
+        "phase2_ablation": phase2_ablation.contract(),
     }
     (args.out / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n"

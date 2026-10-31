@@ -10,6 +10,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import ablation_settings as phase2_ablation
+
 
 REPO_ROOT = Path(os.environ.get("REPO_ROOT", Path(__file__).resolve().parents[1]))
 WEKA_ROOT = Path(os.environ.get("WEKA_ROOT", "/mnt/projects/ll/jungbinc/weka"))
@@ -35,7 +37,7 @@ NUM_LAYERS = 28
 NUM_ATTENTION_HEADS = 16
 NUM_KEY_VALUE_HEADS = 8
 HEAD_DIM = 128
-MOTION_DIM = 283
+MOTION_DIM = phase2_ablation.motion_dim()
 NUM_JOINTS = 30
 MOTION_INTERMEDIATE_SIZE = 3072
 MOTION_LAYER_STRIDE = 4
@@ -392,7 +394,7 @@ def validate_artifacts(*, include_bones: bool = False) -> dict[str, str]:
 
 def architecture_contract() -> dict[str, Any]:
     hashes = validate_artifacts()
-    return {
+    result = {
         "schema_version": CONTRACT_SCHEMA_VERSION,
         "phase": 2,
         "tasks": ["text2motion", "textimg2motion"],
@@ -451,6 +453,22 @@ def architecture_contract() -> dict[str, Any]:
         "edge_model_root": str(EDGE_MODEL_ROOT),
         **hashes,
     }
+    extra = phase2_ablation.contract()
+    if extra is not None:
+        result["phase2_ablation"] = extra
+    if phase2_ablation.CODEC == "kimodo369_v1":
+        summary = phase2_ablation.stats_manifest()
+        result.update(source_motion_representation=MOTION_REPRESENTATION,
+                      source_motion_mean=hashes['motion_mean'], source_motion_std=hashes['motion_std'],
+                      source_motion_stats_summary=hashes.get('motion_stats_summary'),
+                      motion_representation='kimodo369_camhead_v1',
+                      motion_stats_mean=str(Path(phase2_ablation.STATS_DIR)/'mean.npy'),
+                      motion_stats_std=str(Path(phase2_ablation.STATS_DIR)/'std.npy'),
+                      motion_stats_summary_path=str(Path(phase2_ablation.STATS_DIR)/'summary.json'),
+                      motion_mean=summary['mean_sha256'], motion_std=summary['std_sha256'],
+                      motion_stats_summary=phase2_ablation.sha(Path(phase2_ablation.STATS_DIR)/'summary.json'),
+                      motion_stats_population=summary['population'])
+    return result
 
 
 __all__ = [name for name in globals() if name.isupper()] + [

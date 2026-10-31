@@ -19,6 +19,8 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 import config
+import ablation_settings as phase2_ablation
+from feature_runtime import feature_statistics
 from checkpoint import (
     capture_rng_state,
     latest_checkpoint,
@@ -27,7 +29,7 @@ from checkpoint import (
     save_checkpoint,
 )
 from data import build_phase2_dataset, collate_joint, normalize_task_weights
-from flow import add_noise_x0_masked, sample_training_sigma
+from flow import add_noise_x0_masked, add_noise_velocity_masked, sample_training_sigma
 from losses import t2m_reconstruction_loss
 from model import EdgePhase2MotionExpert
 from train_visualization import (
@@ -90,6 +92,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--allow-tf32", type=int, choices=(0, 1), default=1)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--cfg-dropout", type=float, default=0.1)
+    parser.add_argument("--ti2m-cfg-dropout", type=float, default=None,
+                        help="TI2M text dropout only; None preserves the historical shared dropout")
+    parser.add_argument("--objective", choices=("x0", "velocity"), default=phase2_ablation.OBJECTIVE)
     parser.add_argument("--w-feat", type=float, default=1.0)
     parser.add_argument(
         "--w-global-rot", type=float, default=0.0,
@@ -326,6 +331,13 @@ def initialize_wandb(
 def main() -> None:
     global _RECOVERY_SIGNAL_RECEIVED
     args = parse_args()
+    if "EDGE_PHASE2_OBJECTIVE" in os.environ and args.objective != phase2_ablation.OBJECTIVE:
+        raise ValueError("--objective conflicts with EDGE_PHASE2_OBJECTIVE")
+    phase2_ablation.OBJECTIVE = args.objective
+    phase2_ablation.validate()
+    for dropout in (args.cfg_dropout, args.ti2m_cfg_dropout):
+        if dropout is not None and not 0 <= dropout <= 1:
+            raise ValueError("Caption dropout must be in [0,1]")
     signal.signal(signal.SIGUSR1, _request_recovery_checkpoint)
     rank, world, local_rank = distributed_context()
     device = torch.device("cuda", local_rank)
@@ -436,6 +448,7 @@ def main() -> None:
         task_weights=task_weights,
         bones_frac=args.bones_frac,
         cfg_dropout=args.cfg_dropout,
+        ti2m_cfg_dropout=args.ti2m_cfg_dropout,
         reasoner_image_size=args.reasoner_image_size,
         max_samples=args.max_samples,
         seed=args.seed + rank,
@@ -530,6 +543,9 @@ def main() -> None:
             ("loss_guard", "strict"),
             ("adam_beta2", 0.95),
             ("allow_tf32", 1),
+            ("objective", "x0"),
+            ("cfg_dropout", 0.1),
+            ("ti2m_cfg_dropout", None),
         ):
             if saved_args.get(key, legacy_default) != getattr(args, key):
                 raise RuntimeError(
@@ -615,8 +631,9 @@ def main() -> None:
             flush=True,
         )
 
-    mean = torch.from_numpy(np.load(config.MOTION_STATS_MEAN)).to(device=device, dtype=torch.float32)
-    std = torch.from_numpy(np.load(config.MOTION_STATS_STD)).to(device=device, dtype=torch.float32)
+    mean_array, std_array = feature_statistics()
+    mean = torch.from_numpy(mean_array).to(device=device, dtype=torch.float32)
+    std = torch.from_numpy(std_array).to(device=device, dtype=torch.float32)
     effective_batch = args.batch_size * args.grad_accum * world
     if rank == 0:
         print(
@@ -928,7 +945,12 @@ def main() -> None:
             pad = batch["motion_pad_mask"].to(device=device, non_blocking=True)
             neutral = batch["neutral_joints"].to(device=device, non_blocking=True)
             sigma = sample_training_sigma(x0.shape[0], device)
-            x_sigma, sigma, target, noised = add_noise_x0_masked(x0, pad, sigma)
+            feature_overrides = {}
+            if args.objective == "velocity":
+                x_sigma, sigma, velocity_target, noised = add_noise_velocity_masked(x0, pad, sigma)
+                target = x0
+            else:
+                x_sigma, sigma, target, noised = add_noise_x0_masked(x0, pad, sigma)
             reasoner_inputs = model.prepare_conditions(
                 batch["caption"],
                 modes=batch["mode"],
@@ -949,8 +971,12 @@ def main() -> None:
                     neutral_joints=neutral,
                     motion_pad_mask=pad,
                 )
+                clean_prediction = prediction
+                if args.objective == "velocity":
+                    clean_prediction = x_sigma - sigma[:, None, None] * prediction
+                    feature_overrides = dict(feature_prediction=prediction, feature_target=velocity_target)
                 loss, terms = t2m_reconstruction_loss(
-                    prediction,
+                    clean_prediction,
                     target,
                     noised,
                     mean,
@@ -968,6 +994,7 @@ def main() -> None:
                     modes=batch["mode"],
                     reduction=args.loss_reduction,
                     decoded_nonfinite=("skip" if args.loss_guard == "nano" else "raise"),
+                    **feature_overrides,
                 )
                 if args.loss_guard == "nano":
                     raw_loss = float(loss.detach())

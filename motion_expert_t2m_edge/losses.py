@@ -5,7 +5,7 @@ from collections.abc import Sequence
 
 import torch
 
-from decode_uniego_torch import decode_joints
+from feature_runtime import decode_joints
 from motion_losses import contact_aware_losses
 
 
@@ -37,6 +37,8 @@ def t2m_reconstruction_loss(
     modes: Sequence[str] | None = None,
     reduction: str = "pooled",
     decoded_nonfinite: str = "raise",
+    feature_prediction: torch.Tensor | None = None,
+    feature_target: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     """Decode once, reduce each active task, then weight by its sample count.
 
@@ -100,7 +102,11 @@ def t2m_reconstruction_loss(
     terms = {key: prediction.new_zeros(()) for key in weights}
     for mask, fraction in groups:
         local = {key: prediction.new_zeros(()) for key in weights}
-        local["feature"] = masked_mse(prediction, target, mask)
+        if (feature_prediction is None) != (feature_target is None):
+            raise ValueError('Feature prediction/target overrides must be supplied together')
+        local["feature"] = masked_mse(
+            prediction if feature_prediction is None else feature_prediction,
+            target if feature_target is None else feature_target, mask)
         # Retain the original ablation denominator: +10 is 11x per global
         # coordinate with w_feat=1, not 10x a separately averaged feature group.
         if w_global_rot > 0.0:
@@ -127,7 +133,10 @@ def t2m_reconstruction_loss(
                 )
             if any(w > 0.0 for w in (w_contact, w_foot_vel, w_foot_height)):
                 local["contact"], local["foot_vel"], local["foot_height"] = contact_aware_losses(
-                    prediction, target, joints_hat, mask, mean, std, fps=fps
+                    prediction, target, joints_hat, mask, mean, std, fps=fps,
+                    **(dict(contact_slice=slice(365,369),
+                            foot_y_indices=tuple(6+3*j for j in (24,25,28,29)))
+                       if prediction.shape[-1] == 369 else {})
                 )
         for key, value in local.items():
             terms[key] = terms[key] + fraction * value

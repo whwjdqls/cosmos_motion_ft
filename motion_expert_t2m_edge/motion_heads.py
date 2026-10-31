@@ -10,17 +10,27 @@ import config
 
 
 class MotionHeads(nn.Module):
-    def __init__(self, hidden_size: int = config.HIDDEN_SIZE) -> None:
+    def __init__(
+        self,
+        hidden_size: int = config.HIDDEN_SIZE,
+        *,
+        motion_dim: int | None = None,
+    ) -> None:
         super().__init__()
         self.hidden_size = int(hidden_size)
-        self.motion2llm = nn.Linear(config.MOTION_DIM, hidden_size)
+        # Resolve the default at construction: checkpoint configuration can
+        # select the output codec after this module has already been imported.
+        self.motion_dim = int(config.MOTION_DIM if motion_dim is None else motion_dim)
+        if self.motion_dim <= 0:
+            raise ValueError("motion_dim must be positive")
+        self.motion2llm = nn.Linear(self.motion_dim, hidden_size)
         self.shape2llm = nn.Sequential(
             nn.Linear(config.NUM_JOINTS * 3, hidden_size),
             nn.GELU(),
             nn.LayerNorm(hidden_size),
             nn.Linear(hidden_size, hidden_size),
         )
-        self.llm2motion = nn.Linear(hidden_size, config.MOTION_DIM)
+        self.llm2motion = nn.Linear(hidden_size, self.motion_dim)
         self.motion_modality_embed = nn.Parameter(torch.zeros(hidden_size))
         self.shape_type_embed = nn.Parameter(torch.zeros(hidden_size))
 

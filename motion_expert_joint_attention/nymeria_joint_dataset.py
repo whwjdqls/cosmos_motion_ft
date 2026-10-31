@@ -748,7 +748,7 @@ class NymeriaJointDataset(Dataset):
 # case once the trainer groups by mode; mixed batches keep the per-sample lists so the model
 # can pack each sample's present modalities independently).
 # ============================================================================
-def collate_joint(batch: List[dict]) -> dict:
+def collate_joint(batch: List[dict], *, motion_dim: int = FEAT_DIM) -> dict:
     """Pad each present modality to the batch max; keep mode/source/caption as per-sample lists.
 
     Output keys (per-sample lists unless noted):
@@ -788,7 +788,7 @@ def collate_joint(batch: List[dict]) -> dict:
     if any(b.get("motion") is not None for b in batch):
         lens = [b["motion"].shape[0] if b.get("motion") is not None else 0 for b in batch]
         Tmax = max(lens)
-        motion = torch.zeros((B, Tmax, FEAT_DIM), dtype=torch.float32)
+        motion = torch.zeros((B, Tmax, motion_dim), dtype=torch.float32)
         pad_mask = torch.ones((B, Tmax), dtype=torch.bool)
         nj = torch.zeros((B, N_NEUTRAL_JOINTS, 3), dtype=torch.float32)
         for i, b in enumerate(batch):

@@ -62,6 +62,18 @@ def native_inference_schedule(
     return sigmas, timesteps
 
 
+def add_noise_velocity_masked(x0, condition_mask, sigma):
+    """Identical flow marginal/masks, direct velocity target noise-minus-clean."""
+    sigma = sigma.to(device=x0.device, dtype=x0.dtype)
+    noise = torch.randn_like(x0)
+    noised = ~condition_mask.bool()
+    gate = noised.to(x0.dtype)
+    while gate.dim() < x0.dim():
+        gate = gate.unsqueeze(-1)
+    effective = sigma.view(-1, *([1]*(x0.dim()-1))) * gate
+    return (1-effective)*x0 + effective*noise, sigma, noise-x0, noised
+
+
 @torch.no_grad()
 def sample_x0_unipc(
     predict,
@@ -78,7 +90,15 @@ def sample_x0_unipc(
     initial_noise: torch.Tensor | None = None,
     shift: float = NATIVE_SHIFT,
     num_train_timesteps: int = NUM_TRAIN_TIMESTEPS,
+    prediction_type: str | None = None,
 ) -> torch.Tensor:
+    if prediction_type is None:
+        # Historical evaluation callers also use this sampler. Resolve the
+        # loaded checkpoint objective rather than silently treating v as x0.
+        from ablation_settings import OBJECTIVE
+        prediction_type = OBJECTIVE
+    if prediction_type not in {'x0','velocity'}:
+        raise ValueError('Unsupported motion prediction type')
     from cosmos_framework.model.generator.diffusion.samplers.fm_solvers_unipc import (
         FlowUniPCMultistepScheduler,
     )
@@ -103,7 +123,7 @@ def sample_x0_unipc(
             x0_null = predict_null(x, model_sigma).float()
             x0_hat = x0_null + guidance * (x0_hat - x0_null)
         sigma = scheduler.sigmas[index].to(device=device).float().clamp(min=1e-6)
-        velocity = (x.float() - x0_hat) / sigma
+        velocity = (x.float() - x0_hat) / sigma if prediction_type == 'x0' else x0_hat
         x = scheduler.step(
             model_output=velocity,
             timestep=timestep,
@@ -118,6 +138,7 @@ __all__ = [
     "NATIVE_SHIFT",
     "NUM_TRAIN_TIMESTEPS",
     "add_noise_x0_masked",
+    "add_noise_velocity_masked",
     "native_inference_schedule",
     "sample_training_sigma",
     "sample_x0_unipc",

@@ -21,10 +21,11 @@ import torch
 
 import config
 from data import build_phase2_dataset
-from decode_uniego_torch import decode_joints
+from feature_runtime import decode_joints, head_rotation_from_features, feature_statistics
+import ablation_settings as phase2_ablation
 from flow import sample_x0_unipc
 from render_motion import (
-    head_rotation_from_features, render_conditioned_motion_mp4, render_motion_mp4,
+    render_conditioned_motion_mp4, render_motion_mp4,
 )
 
 
@@ -70,6 +71,7 @@ def _suite_contract(
     return {
         "schema_version": FIXED_SUITE_SCHEMA,
         "motion_representation": config.MOTION_REPRESENTATION,
+        **({"phase2_ablation": phase2_ablation.contract()} if phase2_ablation.contract() else {}),
         "T": int(T),
         "ti2m_frames": int(min(ti2m_frames, T)),
         "reasoner_image_size": int(reasoner_image_size),
@@ -346,10 +348,11 @@ def render_fixed_suite(
         raise ValueError("sampling_steps and frame_stride must be positive")
     step_dir = Path(output_root) / "visualizations" / f"step_{int(step):09d}"
     step_dir.mkdir(parents=True, exist_ok=True)
-    mean = torch.from_numpy(np.load(config.MOTION_STATS_MEAN)).to(
+    mean_array, std_array = feature_statistics()
+    mean = torch.from_numpy(mean_array).to(
         device=device, dtype=torch.float32
     )
-    std = torch.from_numpy(np.load(config.MOTION_STATS_STD)).to(
+    std = torch.from_numpy(std_array).to(
         device=device, dtype=torch.float32
     )
     records: list[dict[str, Any]] = []
@@ -419,6 +422,7 @@ def render_fixed_suite(
                 predict_null=predict(null),
                 T=frames,
                 motion_dim=config.MOTION_DIM,
+                prediction_type=phase2_ablation.OBJECTIVE,
                 steps=sampling_steps,
                 guidance=guidance,
                 batch=len(task_items),

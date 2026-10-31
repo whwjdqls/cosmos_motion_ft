@@ -6,14 +6,30 @@ from collections.abc import Mapping
 
 import config
 from caption_policy import ORIGINAL_POLICY, normalize_bones_caption
-from nymeria_joint_dataset import NymeriaJointDataset, collate_joint
+from nymeria_joint_dataset import NymeriaJointDataset, collate_joint as _collate_joint
+from feature_runtime import convert_source_row
 
 
 PHASE2_TASKS = frozenset(("text2motion", "textimg2motion"))
 
 
+def collate_joint(batch):
+    # The shared historical collator has a fixed 283-channel allocation.
+    # Its new optional width leaves every existing caller unchanged.
+    return _collate_joint(batch, motion_dim=config.MOTION_DIM)
+
+
 class EdgePhase2Dataset(NymeriaJointDataset):
     """Keep data/CFG routing intact; opt in to BONES actor wording at read time."""
+
+    def _apply_caption_policy(self, mode, caption):
+        dropout = getattr(self, '_ti2m_cfg_dropout', None)
+        if mode == 'textimg2motion' and dropout is not None:
+            from nymeria_joint_dataset import humanize_caption
+            if self._train and self._active_rng().random() < dropout:
+                return ''
+            return humanize_caption(caption)
+        return super()._apply_caption_policy(mode, caption)
 
     def __getitem__(self, index):
         row = super().__getitem__(index)
@@ -22,7 +38,7 @@ class EdgePhase2Dataset(NymeriaJointDataset):
             and config.BONES_CAPTION_SUBJECT_POLICY != ORIGINAL_POLICY
         ):
             row["caption"] = normalize_bones_caption(row["caption"]).caption
-        return row
+        return convert_source_row(row)
 
 
 def normalize_task_weights(task_weights: Mapping[str, float] | None = None) -> dict[str, float]:
@@ -48,6 +64,7 @@ def build_phase2_dataset(
     task_weights: Mapping[str, float] | None = None,
     bones_frac: float = config.BONES_TEXT2M_FRAC,
     cfg_dropout: float = 0.1,
+    ti2m_cfg_dropout: float | None = None,
     reasoner_image_size: int = config.REASONER_IMAGE_SIZE,
     max_samples: int | None = None,
     seed: int = 0,
@@ -96,6 +113,9 @@ def build_phase2_dataset(
         max_samples=max_samples,
         seed=seed,
     )
+    if ti2m_cfg_dropout is not None and not 0 <= ti2m_cfg_dropout <= 1:
+        raise ValueError('ti2m_cfg_dropout must be in [0,1]')
+    dataset._ti2m_cfg_dropout = ti2m_cfg_dropout
     if dataset._modes != list(weights):
         raise RuntimeError(
             f"Phase-2 task contract drifted: live={dataset._modes} expected={list(weights)}"

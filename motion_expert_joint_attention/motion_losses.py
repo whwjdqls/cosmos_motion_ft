@@ -24,6 +24,8 @@ def contact_aware_losses(
     *,
     fps: float = 20.0,
     contact_logit_scale: float = 2.0,
+    contact_slice: slice = FOOT_SLICE,
+    foot_y_indices: tuple = FOOT_Y_IDX,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Return balanced contact BCE, planted-foot velocity, and foot-height losses.
 
@@ -40,10 +42,10 @@ def contact_aware_losses(
             f"contact_logit_scale must be positive, got {contact_logit_scale}"
         )
 
-    contact_mean = mean[FOOT_SLICE]
-    contact_std = std[FOOT_SLICE]
-    contacts_hat = x0_hat[..., FOOT_SLICE] * contact_std + contact_mean
-    contacts_gt = (x0[..., FOOT_SLICE] * contact_std + contact_mean).clamp(0.0, 1.0)
+    contact_mean = mean[contact_slice]
+    contact_std = std[contact_slice]
+    contacts_hat = x0_hat[..., contact_slice] * contact_std + contact_mean
+    contacts_gt = (x0[..., contact_slice] * contact_std + contact_mean).clamp(0.0, 1.0)
     contacts_gt_binary = (contacts_gt > 0.5).to(x0_hat.dtype)
 
     logits = contact_logit_scale * (contacts_hat - 0.5)
@@ -76,7 +78,7 @@ def contact_aware_losses(
     features_hat = x0_hat * std + mean
     features_gt = x0 * std + mean
     height_error = (
-        features_hat[..., FOOT_Y_IDX] - features_gt[..., FOOT_Y_IDX]
+        features_hat[..., foot_y_indices] - features_gt[..., foot_y_indices]
     ).square()
     loss_foot_height = _masked_mean(height_error, contact_mask)
     return loss_contact, loss_foot_velocity, loss_foot_height

@@ -10,6 +10,7 @@ import numpy as np
 import torch
 
 import config
+import ablation_settings as phase2_ablation
 
 
 SCHEMA_VERSION = config.CONTRACT_SCHEMA_VERSION
@@ -70,6 +71,8 @@ def configure_attention_from_checkpoint(path: str | Path) -> dict[str, Any]:
     """Resolve inference architecture before construction; reject explicit drift."""
     payload = torch.load(path, map_location="cpu", weights_only=False, mmap=True)
     contract = _contract_without_validation(payload)
+    phase2_ablation.configure_checkpoint(contract.get('phase2_ablation'))
+    config.MOTION_DIM = phase2_ablation.motion_dim()
     fields = (
         ("motion_attention_mode", "MOTION_ATTENTION_MODE", "EDGE_MOTION_ATTENTION_MODE", "joint"),
         ("motion_io_dtype", "MOTION_IO_DTYPE", "EDGE_MOTION_IO_DTYPE", "bfloat16"),
@@ -154,6 +157,8 @@ def validate_checkpoint_contract(payload: dict[str, Any]) -> None:
     for key, value in config.attention_mode_contract("joint").items():
         saved.setdefault(key, value)
     live = config.architecture_contract()
+    if saved.get('phase2_ablation') != live.get('phase2_ablation'):
+        raise RuntimeError('Checkpoint output codec/objective/statistics mismatch')
     mismatches = {
         key: (saved.get(key), value)
         for key, value in live.items()

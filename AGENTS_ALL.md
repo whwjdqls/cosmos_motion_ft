@@ -1,5 +1,96 @@
 # Shared Agent Context
 
+## Central Phase2 A0–A3 implementation (2026-10-31)
+
+- A2 follow-up: full Kimodo369 stats completed and hashes/counts verified:
+  120929windows/11888119frames,642recordings, non-limited train split. Shared
+  path `/scratch2/whwjdqls99/cosmos/stats/kimodo369_camhead_v1` is readable by
+  groupys_ms (including minsu); export PHASE2_KIMODO_STATS_DIR to that path.
+  Actual A2 training-source Nymeria+BONES rows,369-D collation and physical-loss
+  backward pass with the completed stats passed on cnode01/job2653025.
+  Evidence `phase2_heads_fix_20261031/a2_runtime_ready.json`. Ready for GPU
+  smoke/capacity acceptance; no full frozen-Edge GPU test/production start is
+  claimed by whw. The first diagnostic incorrectly used train=False, selecting
+  BONES validation; the corrected check uses actual training sources. This
+  does not certify completeness of every held-out BONES file.
+- Historical velocity clarification: commit890eec6 (2026-07-02, "update bs_
+  scripts for v prediction") implements direct v=eps−x0 feature MSE plus decoded
+  clean-pose/smooth losses in bs_train.py. Its loop uses gradient clipping and
+  nonfinite checks, with no max(50,25*EMA) batch guard; no planted-foot penalty
+  appears in that commit. This supports the user's recollection that velocity
+  could learn. The exact historical learned checkpoint has not been identified.
+  Do not generalize the limited new A1 initialization probes into a claim that
+  velocity prediction itself cannot learn. The proposed EMA-bootstrap change
+  remains unapplied; no A0 process or allocation was changed.
+
+- Follow-up fix: A3's minsu GPU preflight failed before training because the
+  Edge-local `motion_heads.MotionHeads` did not accept the new `motion_dim`
+  keyword. Fixed that actual wrapper, preserving283-D initialization/state/
+  outputs bit-for-bit. Added real local-head constructors,369-D forward/
+  backward/reload and production model-constructor coverage to the CPU check.
+  All15 targeted checks pass on cnode01/job2653025. This is CPU constructor
+  acceptance, not a successful full frozen-Edge GPU preflight. A0 was not
+  restarted and no allocation was changed. Evidence:
+  `/scratch2/whwjdqls99/cosmos/operations/phase2_heads_fix_20261031`.
+  Each smoke/capacity retry now uses a fresh timestamped output, preserving
+  failed evidence and avoiding stale-source/finished-checkpoint reuse. The
+  production resume source-fingerprint guard remains strict.
+
+- Read `motion_expert_t2m_edge/ABLATIONS_PRO6000_20261031.md` for the current
+  implementation, minsu thin wrapper, exact conditioning partition and acceptance.
+  Central entrypoint: `motion_expert_t2m_edge/run_ablation.sh`; no production
+  trainer was launched. Existing allocations/requests are retained.
+- User explicitly chose historical BONES double dropout (19% effective) for
+  all four runs. A3 is T2M/TI2M50/50, BONES75% within T2M, Nymeria T2M dropout10%,
+  TI2M dropout30%. Expected totals: text41.625%, image+text35%, image-only15%,
+  text/image-null8.375%. Null still receives shape and valid length.
+- A1 is direct flow velocity, physical losses on reconstructed clean motion.
+  Default x0/UniEgo checkpoint contracts are unchanged; new output objective/
+  codec/stat identity is explicit and strictly checked. Do not treat A1's raw
+  output as x0. High-noise zero-head A1 CPU examples trigger the unchanged Nano
+  loss guard; full-batch GPU acceptance must verify actual nonzero updates.
+  Follow-up CPU batch256 initialization probe (three seeds; two real windows
+  repeated at the reference source/task proportions) measured A1 losses
+  90.3778/93.3365/92.6937, all above the initial guard50. A0 was0.64435.
+  These are not representative training batches, but the guard would zero all
+  three probes, with foot velocity dominating the A1 losses. A1 is not cleared
+  for production; do not equate optimizer-step counters with nonzero updates.
+  Evidence: `phase2_heads_fix_20261031/a1_guard_probe.json` in scratch2 operations.
+- A2 uses the existing SOMA30 Kimodo369 layout with original contact labels,
+  the same calibrated windows/shapes and source UniEgo guard. Its own train-only
+  stats use the original120929-window/11888119-frame Nymeria population. Do not
+  feed369 features into283-only evaluation drivers without the proper adapter.
+- CPU job2653025/cnode01: new objective/codec/dropout plus historical regression
+  checks pass (30 unique tests); real BONES/Nymeria positional roundtrip errors
+  below3e-8m and exact contacts. No GPU/account acceptance under minsu is claimed.
+  Limited statistics smoke:172windows/17134frames; not production-valid.
+- Full A2 statistics preparation completed on the four-CPU allocation retained
+  by tmux `p2_ablation_cpu_20261031`, under
+  `/scratch2/whwjdqls99/cosmos/stats/kimodo369_camhead_v1`. Its complete manifest,
+  counts and hashes were verified; see the completion note above. Evidence:
+  `/scratch2/whwjdqls99/cosmos/operations/phase2_ablation_impl_20261031`.
+  Notion report: https://app.notion.com/p/409d2a44f44b81ff9d2cd1efaedd666e .
+
+## Shared source across Yonsei accounts (2026-10-31)
+
+- Execution for the new Phase2 ablations is assigned to minsu1206. The user's
+  explicit follow-up says **do not cancel the existing allocations**. Preserve
+  whw-owned requests2650571–2650574 and other allocations; no cancellation
+  occurred when this destination decision was recorded.
+- User wants the implementation kept in `/home/whwjdqls99/cosmos_motion_ft`.
+  Under `minsu1206`, keep only thin launch scripts invoking this checkout;
+  do not fork/copy the training implementation into that account.
+- `minsu1206` exists and shares group `ys_ms`. The central checkout, framework,
+  environment and inspected base-model/stat metadata have readable/traversable
+  permissions. This is a permissions inspection, not a minsu-account GPU test.
+- Launch jobs under their real owning account. Checkpoints, logs, W&B state,
+  mutable caches and build caches should use that account's writable storage.
+  Some current Yonsei launchers force whwjdqls99 paths; configure/adjust those
+  centrally before reuse rather than assuming a copied wrapper is sufficient.
+  Preserve data/model/stat identities and record the source revision per run.
+- `/home/minsu1206` is private (0700); install its thin launch scripts from
+  that account. Do not broaden home permissions or copy credentials.
+
 ## Phase2 one-GPU training benchmark (2026-10-31)
 
 - `motion_expert_t2m_edge/TRAINING_BENCHMARK_20261031.md` records the real

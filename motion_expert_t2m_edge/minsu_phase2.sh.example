@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Copy only this small wrapper into the minsu1206 account. Central code stays shared.
+set -euo pipefail
+export PHASE2_ABLATION_STORAGE_ROOT=/scratch2/minsu1206/cosmos
+# Own W&B login is required; no credentials are copied from whwjdqls99.
+export WANDB_ENTITY=jungbinc-upenn
+# Optional tested fallback: microbatch128, accumulation2 (global256).
+# export PHASE2_ABLATION_MICROBATCH=128 PHASE2_ABLATION_GRAD_ACCUM=2
+exec bash /home/whwjdqls99/cosmos_motion_ft/motion_expert_t2m_edge/run_ablation.sh "$@"

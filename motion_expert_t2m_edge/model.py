@@ -92,7 +92,7 @@ class EdgePhase2MotionExpert(nn.Module):
                 for index, base_layer in enumerate(self.backbone.layers)
             ]
         )
-        self.heads = MotionHeads(geometry.hidden_size)
+        self.heads = MotionHeads(geometry.hidden_size, motion_dim=config.MOTION_DIM)
         self.norm_moe_motion = _fresh_norm_like(self.backbone.norm, geometry.hidden_size)
         self.layers.to(device=self.device, dtype=dtype)
         # Only parameter storage changes. Edge RMSNorm performs its reduction
