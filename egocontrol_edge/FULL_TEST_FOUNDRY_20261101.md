@@ -73,6 +73,15 @@ not completed GPU acceptance or evaluation. Isolated metric additions are in
 `/mnt/local/jinhyung.kim/cosmos/envs/egocontrol_metrics`; the live training
 environment was not changed.
 
+CPU preflight against native EMA195k confirms867 EMA keys and the seven expected
+pose blocks. The standalone metrics venv initially failed native framework
+imports because Transformer Engine searched the venv prefix for cuDNN. The
+launcher now uses the original Conda Python with only the isolated metrics
+site-packages added to its import path. The same CPU config preflight passes;
+GPU loading/sampling remain pending. A four-process CPU worker prepares
+lossless RGB windows with the native decode/spatial transform and stores video
+identities plus RGB checksums; inference validates cached inputs before use.
+
 Verified preparation report:
 https://app.notion.com/p/40bd2a44f44b8185b567d54f0e5be3b8 .
 Phase2 no-shape preparation report:
