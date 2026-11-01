@@ -25,6 +25,9 @@ mapping mirrors the scene (a right turn reads as a left turn). We therefore nega
 entry of every render function ("display frame", exactly kimodo's ``_to_display``), then remap
 display (x, y, z) -> mplot3d's Z-up plot (x, z, y). This SUPERSEDES the previous renderer here,
 which did the Z-up swap only (no X negation, no floor, per-clip auto-zoom).
+The COMPLETE map ``(x,y,z) -> (-x,z,y)`` has determinant +1 and preserves
+handedness. Screen left/right is not the actor's instantaneous left/right after
+a turn; the camera tracks translation but does not rotate with the body.
 
 Entry points:
   * ``render_sidebyside(gt_joints, gen_joints, ...)``  -> (T, H, W, 3) uint8 frames
@@ -37,6 +40,7 @@ Entry points:
 from __future__ import annotations
 
 from typing import List, Optional, Sequence, Tuple
+import textwrap
 
 import numpy as np
 import matplotlib
@@ -65,7 +69,7 @@ DEFAULT_GRID_SPACING = 1.0
 # Geometry helpers (kimodo render_hml3d verbatim)
 # -----------------------------------------------------------------------------
 def _to_display(joints: np.ndarray) -> np.ndarray:
-    """World -> display frame. Negates X so character-right ends up on screen right."""
+    """Negate X before the Y/Z plot swap; preserve the full map's handedness."""
     out = np.asarray(joints, dtype=np.float32).copy()
     out[..., 0] = -out[..., 0]
     return out
@@ -319,6 +323,23 @@ def _frame_indices(T: int, max_frames: Optional[int], frame_stride: int) -> List
     return idx
 
 
+def _caption_top(fig, caption: str, width: int, height: int, dpi: int) -> float:
+    """Display the whole instruction, including later turns, above the plots.
+
+    Truncating at100 characters hid clauses such as 'Then, she turns right'.
+    This affects presentation only; model conditioning uses the full caption.
+    """
+    if not caption:
+        return 0.88
+    font_size = 10
+    columns = max(25, int((width - 30) / (font_size * dpi / 72 * 0.65)))
+    lines = textwrap.wrap(caption, width=columns, break_long_words=False,
+                          break_on_hyphens=False)
+    fig.suptitle("\n".join(lines), fontsize=font_size, y=0.985)
+    title_height = len(lines) * font_size * dpi / 72 * 1.3 + 15
+    return min(0.88, 1.0 - title_height / height)
+
+
 # -----------------------------------------------------------------------------
 # Top-level renderers
 # -----------------------------------------------------------------------------
@@ -387,9 +408,8 @@ def render_sidebyside(
             _draw_skel(ax_gen, gen_joints[t], joint_parents, "tab:red", skip_joints=skip_joints)
             _draw_head_reference(ax_gen, gen_joints[0], gen_head_rotation0)
 
-            if caption:
-                fig.suptitle(caption[:100], fontsize=10)
-            fig.subplots_adjust(left=0.04, right=0.98, top=0.88, bottom=0.04, wspace=0.08)
+            top = _caption_top(fig, caption, width, height, dpi)
+            fig.subplots_adjust(left=0.04, right=0.98, top=top, bottom=0.04, wspace=0.08)
             fig.canvas.draw()
             img = np.asarray(fig.canvas.buffer_rgba())[..., :3].copy()
             frames.append(img)
@@ -436,9 +456,8 @@ def render_single(
             _draw_trajectory(ax, trail, t, color)
             _draw_skel(ax, joints[t], joint_parents, color, skip_joints=skip_joints)
             _draw_head_reference(ax, joints[0], head_rotation0)
-            if caption:
-                fig.suptitle(caption[:100], fontsize=10)
-            fig.subplots_adjust(left=0.04, right=0.98, top=0.88, bottom=0.04)
+            top = _caption_top(fig, caption, width, height, dpi)
+            fig.subplots_adjust(left=0.04, right=0.98, top=top, bottom=0.04)
             fig.canvas.draw()
             img = np.asarray(fig.canvas.buffer_rgba())[..., :3].copy()
             frames.append(img)

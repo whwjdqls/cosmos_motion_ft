@@ -1,5 +1,46 @@
 # Server Migration
 
+## Two-task prefix1 Phase1 and Phase2/3 training handoff (2026-10-31)
+
+The additive upload is at
+`gggdrive:cosmos_data/phase1_twotask_prefix1_phase23_20261031`.
+Local operation: `/scratch2/whwjdqls99/cosmos/operations/phase123_drive_20261031`.
+Trust its remotely verified `READY.json` for completion, not a launch note.
+The new archive contains the full native two-task/prefix1/no-text200k Phase1
+checkpoint and contract; the October27 shared backup had only142474 steps.
+The handoff verifies and references31required existing shared archives and
+adds Phase2 manifests/fixed samples, source, and validation evaluators. BONES
+UniEgo and Nymeria RGB source trees use their established Drive locations,
+with additive checksum copies and one-way verification. Credentials are excluded.
+
+Phase2 uses the frozen Edge reasoner rather than Phase1 generator LoRA.
+Fresh Phase3 combines the new Phase1 checkpoint with the selected Phase2
+specialist. Pass both paths explicitly and run the normal loading/gradient
+preflight before production. Old Phase3 bridge checkpoints remain tied to
+their original Phase1 source. Read the uploaded `RESTORE.md`, `PLAN.json`,
+`SHARED_ASSETS.json`, `DATA_TREES.json` and receipts for restoration details.
+
+For the selected Phase2 recipe, explicitly set
+`SELF_CROSS_TEXT_PACKING=nano_caption_only`,
+`SELF_CROSS_BATCH_SIZE=128`, and `SELF_CROSS_GRAD_ACCUM=1` before calling
+`motion_expert_t2m_edge/train_self_cross_knorm_ddp.sh` on two GPUs. Set a new
+`SELF_CROSS_RUN_NAME` and set `FIXED_VIZ_SOURCE` to the restored selected
+Phase2 run's `visualizations/fixed_samples` (included in archive002); the
+launcher's historical default points to a different run. Set `WANDB_ENTITY`
+for the destination account. Authenticate W&B rather than copying tokens.
+
+For fresh baseline Phase3, use `motion_expert_phase3_edge/run.sh` with
+`torch.distributed.run --standalone --nproc-per-node=2` and the entrypoint
+`motion_expert_phase3_edge/train.py`. Explicitly supply `--phase1` (new
+two-task200k DCP), `--phase2` (selected200k motion PT), `--cache` (restored
+full Phase3 motion cache), and a new `--out`. `--microbatch 16` gives global32
+with accumulation1 on two GPUs, subject to the destination memory preflight.
+First run the same command with `--preflight`; production requires
+`--acceptance NEW_OUT/acceptance.json` from that successful preflight.
+Camera-conditioned variants use their corresponding modules and the matching
+native-camera or floor-aware trajectory caches. These are restore directions,
+not a claim that the new server or new specialist combination was GPU-tested.
+
 For the October 2026 Edge/Phase3/baseline code and a new server, start with
 [`SINGLE_REPO.md`](SINGLE_REPO.md). The older archive contract below remains
 useful for the original datasets and Nano reference artifacts.

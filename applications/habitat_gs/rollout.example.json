@@ -1,0 +1,16 @@
+{
+  "profile": "${APP_STORAGE}/evaluation_profile.json",
+  "camera": "${APP_STORAGE}/camera_rays_fisheye.npz",
+  "habitat_python": "${APP_STORAGE}/env/bin/python",
+  "scene": "${APP_STORAGE}/assets/val/interior_0516_840045/interior_0516_840045.gs.ply",
+  "navmesh": "${APP_STORAGE}/assets/val/interior_0516_840045/interior_0516_840045.navmesh",
+  "output": "${APP_STORAGE}/runs/video_rollout_smoke",
+  "prompt": "The camera wearer walks slowly forward through the room while looking ahead.",
+  "segments": 2,
+  "seed": 0,
+  "scene_units_per_meter": 1.0,
+  "initial_camera_height_m": 1.5,
+  "start_pose": null,
+  "cube_face_size": 384,
+  "allow_pinhole_approximation": false
+}

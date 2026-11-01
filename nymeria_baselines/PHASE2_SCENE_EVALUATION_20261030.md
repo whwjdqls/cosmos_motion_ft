@@ -155,6 +155,11 @@ idle twice with no GPU processes; controller terminal states are recorded in
 `idle_allocation_cleanup_20261031.json`. Shared job2608785 remains because
 its second card still hosts the application. Its evaluation card is idle.
 Other pending requests and the persistent30-minute monitor were preserved.
+The independent tmux monitor continues after foreground evaluation work is
+closed; goal bookkeeping does not stop its loop. Keep that service running
+until the user requests ending the monitoring. Its current state and verified
+Notion-update time remain in the direct operation's `monitor_status.json`
+and `monitor_publication.json`.
 
 ## Code, artifacts and operations
 
