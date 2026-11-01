@@ -82,6 +82,21 @@ GPU loading/sampling remain pending. A four-process CPU worker prepares
 lossless RGB windows with the native decode/spatial transform and stores video
 identities plus RGB checksums; inference validates cached inputs before use.
 
+The EMA195k GPU compatibility probe passes strict loading, native UniPC35,
+both CFG branches, prefix preservation, decoding and metric feature extraction
+in `probe_195k/PASSED.json`. It is excluded from the final200k results.
+Denoising takes7.09s for the checked window. Batch2/4/8 fails the predefined
+batch1 output-parity tolerance; production remains batch1 for every window.
+
+Seven CPU protocol/aggregation tests pass. They include rank-deficient400-D
+Fréchet identity, known translation/scaling distances, complete-cohort coverage,
+and rejecting non-input failures as exclusions. Fréchet uses the mathematically
+equivalent nuclear norm of the product of covariance square roots, in float64,
+to avoid negative identity distances from roundoff in the sandwich formulation.
+Final aggregation reads persisted per-frame arrays, verifies96 frames and6×400
+features per scored window, and writes completion only after cohort coverage
+and all required metrics validate. See `FVD_NUMERICS_AUDIT.json` in operations.
+
 Verified preparation report:
 https://app.notion.com/p/40bd2a44f44b8185b567d54f0e5be3b8 .
 Phase2 no-shape preparation report:
