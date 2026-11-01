@@ -9,6 +9,7 @@ from pathlib import Path
 CODEC = os.environ.get("EDGE_PHASE2_FEATURE_CODEC", "uniego283")
 OBJECTIVE = os.environ.get("EDGE_PHASE2_OBJECTIVE", "x0")
 STATS_DIR = os.environ.get("PHASE2_KIMODO_STATS_DIR")
+SHAPE_CONDITIONING = os.environ.get("EDGE_PHASE2_SHAPE_CONDITIONING", "neutral_joints")
 
 
 def validate():
@@ -16,6 +17,8 @@ def validate():
         raise ValueError(f"unsupported Phase2 feature codec: {CODEC}")
     if OBJECTIVE not in {"x0", "velocity"}:
         raise ValueError(f"unsupported Phase2 objective: {OBJECTIVE}")
+    if SHAPE_CONDITIONING not in {"neutral_joints", "none"}:
+        raise ValueError(f"unsupported Phase2 shape conditioning: {SHAPE_CONDITIONING}")
 
 
 def motion_dim():
@@ -62,10 +65,12 @@ def stats_manifest():
 
 def contract():
     validate()
-    if CODEC == "uniego283" and OBJECTIVE == "x0":
+    if CODEC == "uniego283" and OBJECTIVE == "x0" and SHAPE_CONDITIONING == "neutral_joints":
         return None
     data = stats_manifest()
     result = dict(version=1, feature_codec=CODEC, objective=OBJECTIVE)
+    if SHAPE_CONDITIONING != "neutral_joints":
+        result['shape_conditioning'] = SHAPE_CONDITIONING
     if data:
         result.update(stats_dir=str(Path(STATS_DIR)), mean_sha256=data["mean_sha256"],
                       std_sha256=data["std_sha256"], summary_sha256=sha(Path(STATS_DIR)/"summary.json"),
@@ -75,14 +80,15 @@ def contract():
 
 def configure_checkpoint(saved):
     """Resolve codec before heads construction; explicit conflicting flags fail."""
-    global CODEC, OBJECTIVE, STATS_DIR
+    global CODEC, OBJECTIVE, STATS_DIR, SHAPE_CONDITIONING
     saved = saved or dict(feature_codec="uniego283", objective="x0")
     if 'version' in saved and saved['version'] != 1:
         raise RuntimeError('Unsupported Phase2 ablation contract version')
     for env, name, default in [("EDGE_PHASE2_FEATURE_CODEC", "CODEC", "uniego283"),
                                ("EDGE_PHASE2_OBJECTIVE", "OBJECTIVE", "x0"),
+                               ("EDGE_PHASE2_SHAPE_CONDITIONING", "SHAPE_CONDITIONING", "neutral_joints"),
                                ("PHASE2_KIMODO_STATS_DIR", "STATS_DIR", None)]:
-        key = {"CODEC":"feature_codec", "OBJECTIVE":"objective", "STATS_DIR":"stats_dir"}[name]
+        key = {"CODEC":"feature_codec", "OBJECTIVE":"objective", "STATS_DIR":"stats_dir", "SHAPE_CONDITIONING":"shape_conditioning"}[name]
         if name == 'STATS_DIR' and CODEC != 'kimodo369_v1':
             continue
         value = saved.get(key, default)

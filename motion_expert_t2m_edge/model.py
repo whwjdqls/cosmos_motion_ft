@@ -8,6 +8,7 @@ from conditioning_cache import prefetch_frozen_image_conditions
 import torch.nn as nn
 
 import config
+import ablation_settings as phase2_ablation
 from attention import build_layout
 from edge_loader import FrozenEdgeReasoner
 from layer import EdgeTextMotionLayer, _fresh_norm_like
@@ -93,6 +94,10 @@ class EdgePhase2MotionExpert(nn.Module):
             ]
         )
         self.heads = MotionHeads(geometry.hidden_size, motion_dim=config.MOTION_DIM)
+        self.shape_conditioning = phase2_ablation.SHAPE_CONDITIONING
+        if self.shape_conditioning == "none":
+            self.heads.shape2llm.requires_grad_(False)
+            self.heads.shape_type_embed.requires_grad_(False)
         self.norm_moe_motion = _fresh_norm_like(self.backbone.norm, geometry.hidden_size)
         self.layers.to(device=self.device, dtype=dtype)
         # Only parameter storage changes. Edge RMSNorm performs its reduction
@@ -187,7 +192,7 @@ class EdgePhase2MotionExpert(nn.Module):
         reasoner_inputs: Sequence[dict],
         x_sigma: torch.Tensor,
         sigma: torch.Tensor,
-        neutral_joints: torch.Tensor,
+        neutral_joints: torch.Tensor | None,
         motion_pad_mask: torch.Tensor,
     ) -> None:
         batch, frames, features = x_sigma.shape
@@ -195,10 +200,10 @@ class EdgePhase2MotionExpert(nn.Module):
             raise ValueError(f"motion feature width must be {config.MOTION_DIM}, got {features}")
         if len(reasoner_inputs) != batch or tuple(sigma.shape) != (batch,):
             raise ValueError("reasoner-condition and sigma batch sizes must match motion")
-        if tuple(neutral_joints.shape) != (batch, config.NUM_JOINTS, 3):
+        if self.shape_conditioning != "none" and (neutral_joints is None or tuple(neutral_joints.shape) != (batch, config.NUM_JOINTS, 3)):
             raise ValueError(
                 f"neutral_joints must be {(batch, config.NUM_JOINTS, 3)}, "
-                f"got {tuple(neutral_joints.shape)}"
+                f"got {None if neutral_joints is None else tuple(neutral_joints.shape)}"
             )
         if tuple(motion_pad_mask.shape) != (batch, frames):
             raise ValueError(
@@ -213,7 +218,7 @@ class EdgePhase2MotionExpert(nn.Module):
         reasoner_inputs: Sequence[dict],
         x_sigma: torch.Tensor,
         sigma: torch.Tensor,
-        neutral_joints: torch.Tensor,
+        neutral_joints: torch.Tensor | None,
         motion_pad_mask: torch.Tensor,
     ) -> torch.Tensor:
         self._validate_inputs(reasoner_inputs, x_sigma, sigma, neutral_joints, motion_pad_mask)
@@ -223,9 +228,8 @@ class EdgePhase2MotionExpert(nn.Module):
         valid = ~pad
         x_sigma = x_sigma.to(device=device)
         sigma = sigma.to(device=device, dtype=torch.float32)
-        neutral_joints = neutral_joints.to(device=device)
-
-        shape_hidden = self.heads.encode_shape(neutral_joints)
+        shape_tokens = 0 if self.shape_conditioning == "none" else 1
+        shape_hidden = self.heads.encode_shape(neutral_joints.to(device=device)) if shape_tokens else None
         frame_hidden = self.heads.encode_motion(x_sigma, sigma, valid)
         packed_parts: list[torch.Tensor] = []
         position_parts: list[torch.Tensor] = []
@@ -246,9 +250,9 @@ class EdgePhase2MotionExpert(nn.Module):
                     f"reasoner position_ids must be [3,L], got {tuple(text_positions.shape)}"
                 )
             frame_index = torch.nonzero(valid[sample], as_tuple=False).flatten()
-            motion = torch.cat(
-                (shape_hidden[sample], frame_hidden[sample].index_select(0, frame_index)), dim=0
-            )
+            motion = frame_hidden[sample].index_select(0, frame_index)
+            if shape_tokens:
+                motion = torch.cat((shape_hidden[sample], motion), dim=0)
             packed_parts.extend((text, motion))
             text_length = int(text.shape[0])
             motion_length = int(motion.shape[0])
@@ -260,7 +264,8 @@ class EdgePhase2MotionExpert(nn.Module):
                 condition.get("next_position_id", int(text_positions.max().item()) + 1)
             )
             position_parts.extend(
-                (text_positions, _motion_positions(motion_length - 1, next_position, device))
+                # Preserve every frame's baseline position; omit only the shape row.
+                (text_positions, _motion_positions(len(frame_index), next_position, device)[:, 1 - shape_tokens:])
             )
 
         packed = torch.cat(packed_parts, dim=0).to(self.compute_dtype)
@@ -283,7 +288,7 @@ class EdgePhase2MotionExpert(nn.Module):
         for sample, motion_length in enumerate(motion_lengths):
             sample_rows = motion_rows[offset : offset + motion_length]
             offset += motion_length
-            decoded = self.heads.decode(sample_rows[1:])
+            decoded = self.heads.decode(sample_rows[shape_tokens:])
             prediction[sample].index_copy_(0, valid_indices[sample], decoded)
         return prediction
 
