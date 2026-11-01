@@ -1,5 +1,19 @@
 # Phase2 without an external shape condition
 
+Production is running on sep-1 GPUs0/4 from2026-11-01, after EgoControl finished
+200k and the full two-rank update/save/reload/update gate passed. The run starts
+fresh, uses global256=2×128, and records online W&B at
+https://wandb.ai/jungbinc-upenn/cosmos-motion-ft/runs/76z5wieq . Remote API checks
+confirm `shape_conditioning=none`, `resume=None`, both tasks and the original
+mixture, with continuing finite losses. Gate/audit evidence and live status are
+in `/mnt/local/jinhyung.kim/cosmos/operations/phase2_no_shape_after_ego_20261101`.
+The target remains200k; running is not a claim that this new training is finished.
+
+All142,231 BONES files pass content verification. The native read-only motion
+cache is complete (142,948 entries/38,996,813,576 bytes), with bitwise parity
+against original NPZ values for nine checked windows across Nymeria and BONES
+train/validation sources. Dataset paths and caches are node-local.
+
 `EDGE_PHASE2_SHAPE_CONDITIONING=none` removes the neutral-joint shape token from
 the packed motion sequence and freezes the unused shape encoder/type embedding.
 It retains each motion frame's original mRoPE coordinates and the original

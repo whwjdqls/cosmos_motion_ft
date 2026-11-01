@@ -4,10 +4,14 @@ User-selected scope: **every eligible native aligned97-frame test window**,
 after EgoControl finishes200k and the original-recipe Phase2 no-shape ablation
 successfully starts. Do not replace this scope with the fixed71-case cohort.
 
-Prepared on sep-1, 2026-11-01. **Queued; GPU acceptance, production inference,
-and final metrics are pending.** The evaluation monitor waits for verified
-Phase2 production and then claims GPU2 only if it remains empty. It preserves
-all existing training processes and GPU1's unrelated process.
+On sep-1, 2026-11-01, EgoControl finished200k successfully and the full native
+model/optimizer/scheduler/trainer checkpoint was verified. Phase2 no-shape passed
+its full two-rank gate and started fresh with online W&B. The finalEMA200k
+evaluation then started on GPU2 at12:18UTC, after a fresh idle-process/memory
+check and exclusive admission. It preserves all other training processes and
+GPU1's unrelated process. **Full-set inference/metrics are running; final results
+remain pending.** All11,677 RGB input windows prepared without decode failures;
+the first/middle/last fixture checksums match independent native decoding.
 
 ## Cohort
 
