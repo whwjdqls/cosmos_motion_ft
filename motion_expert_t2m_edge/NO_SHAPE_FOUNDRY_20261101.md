@@ -43,3 +43,10 @@ not changed to adopt this ablation. BONES is required: a missing source must
 fail instead of silently falling back to Nymeria-only. CPU checks pass32 tests
 under the explicit Yonsei artifact profile, including new shape invariance,
 shape trainability and checkpoint-mode tests.
+
+The verified preparation report is
+https://app.notion.com/p/40bd2a44f44b8187850ac41dd36ef75c . After verified
+production starts, a separate idle-GPU monitor launches the final EgoControl
+EMA200k evaluation on every eligible native test window; see
+`egocontrol_edge/FULL_TEST_FOUNDRY_20261101.md`. Its readiness is not a claim
+that either production workload has started.
