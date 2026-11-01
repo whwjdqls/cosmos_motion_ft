@@ -50,3 +50,11 @@ production starts, a separate idle-GPU monitor launches the final EgoControl
 EMA200k evaluation on every eligible native test window; see
 `egocontrol_edge/FULL_TEST_FOUNDRY_20261101.md`. Its readiness is not a claim
 that either production workload has started.
+
+The actual launcher environment/artifact checks pass on CPU. Its parsed
+production CLI matches the selected original `step_000200000.pt` scientific
+arguments, and architecture contracts differ only in the shape-conditioning
+contract and relocated paths. Evidence is `CONFIG_CPU_ACCEPTANCE.json` and
+`RECIPE_PARITY.json` in the operation directory. Tracking/output identity and
+fresh-versus-resume launch are operational differences; the original200k
+checkpoint is a reference, not an initialization. GPU acceptance is pending.
