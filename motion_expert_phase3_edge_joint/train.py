@@ -400,6 +400,9 @@ def main():
                            "video_loss": values[2] / max(values[4], 1),
                            "video_weighted": 10 * values[2] / max(values[4], 1),
                            "motion_samples": values[3], "video_samples": values[4], "joint_samples": values[5],
+                           "task_samples": {"video2motion": values[3] - values[5],
+                                            "motimg2video": values[4] - values[5],
+                                            "joint": values[5]},
                            "grad_norm": norm.item(), "seconds": time.monotonic() - before,
                            "peak_gib": torch.cuda.max_memory_allocated() / 2**30}
                 print("[phase3/train] " + json.dumps(metrics), flush=True)

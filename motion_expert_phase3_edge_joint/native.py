@@ -25,6 +25,16 @@ def dcp_directory(path):
     raise FileNotFoundError(f"No DCP metadata under {path}")
 
 
+def phase1_delta_prefixes(contract):
+    mode = contract.get("adaptation_mode", "global_lora")
+    if mode not in {"global_lora", "global_lora_video_io"}:
+        raise ValueError(f"Unsupported frozen Phase-1 adaptation mode: {mode}")
+    prefixes = ("action2llm.", "llm2action.", "action_modality_embed")
+    if mode == "global_lora_video_io":
+        prefixes += ("vae2llm.", "llm2vae.")
+    return prefixes
+
+
 def load_selected_dcp(net, path, prefix, select):
     from torch.distributed.checkpoint import FileSystemReader, load_state_dict
 
@@ -120,11 +130,15 @@ class FullFrozenEdge(FrozenEdgeReasoner):
         net.time_embedder.float()
         net.time_embedder._init_weights(buffer_device=self.device)
         base_keys = load_selected_dcp(net, base, "net.", lambda name: "lora_" not in name)
-        select_delta = lambda name: "lora_" in name or name.startswith(
-            ("action2llm.", "llm2action.", "action_modality_embed"))
+        delta_prefixes = phase1_delta_prefixes(contract)
+        select_delta = lambda name: "lora_" in name or name.startswith(delta_prefixes)
         delta_keys = load_selected_dcp(net, phase1, "net_ema.", select_delta)
         if sum("lora_" in name for name in delta_keys) != 224:
             raise RuntimeError("Expected all 224 phase-1 EMA LoRA tensors")
+        video_keys = {"net_ema." + name for name in (
+            "vae2llm.weight", "vae2llm.bias", "llm2vae.weight", "llm2vae.bias")}
+        if contract.get("adaptation_mode") == "global_lora_video_io" and not video_keys <= set(delta_keys):
+            raise RuntimeError("Missing trained Phase-1 EMA video input/output projections")
         net.eval().requires_grad_(False)
         self.net, self.backbone = net, net.language_model.model
         self.geometry = EdgeGeometry(2048, 28, 16, 8, 128)
@@ -143,6 +157,7 @@ class FullFrozenEdge(FrozenEdgeReasoner):
             "phase1_contract": contract, "base_tensors": len(base_keys),
             "phase1_delta_tensors": len(delta_keys), "phase2": str(phase2),
             "phase2_contract": self.motion_contract,
+            "phase1_video_projection_tensors": sorted(video_keys & set(delta_keys)),
         }
 
     def pack_video(self, captions, modes, latents, sigma):
