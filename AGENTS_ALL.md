@@ -1,5 +1,45 @@
 # Shared Agent Context
 
+## Phase2 left/right audit, exact A2 sample (2026-11-01)
+
+- User flagged step25000 Nymeria `ti2m_001135_1340b22562f6` (full seed21310939).
+  Located in minsu A2 Kimodo369 run; see
+  `motion_expert_t2m_edge/LEFT_RIGHT_AUDIT_20261101.md` and scratch2 operation
+  `phase2_leftright_audit_20261101`. This is one example, not an all-data audit.
+- Source annotation S02/20230725_s1_julie_taylor_act4_iemk0l,2330:2430;
+  TI2M first97frames. Source image equals fixed conditioning pixels exactly;
+  fixed GT and normalization roundtrips exact;369 decode error<1.8e-7m;
+  source UniEgo positions match after grounding within0.000143m, no horizontal
+  reflection/rotation fit. No caption left/right replacement or joint swap.
+- Not a simple reversal: GT/pred head left peaks29.96/34.45deg, final head
+  yaw−141.44/−10.69deg; peak-to-end right turns171.40/45.14deg. Initial
+  body yaw−69.94/−2.74deg while head0≈0/1.80deg. Model starts body nearly
+  head-aligned and under-turns later; canonical head does not imply forward body.
+- Full render map(-X,Z,Y) has det+1. Fixed an actual presentation bug:
+  caption[:100] hid 'Then, she turns right...'. Shared single/side-by-side
+  renderer now wraps full text and reserves title space. Model input, predictions,
+  normalization, training and checkpoint contents unchanged. Renderer-only
+  source fingerprint change must not be bypassed on future guarded resumes.
+- New full-caption and fixed top-down diagnostic videos preserve the original
+  MP4/NPZ. Actual rerender and caption regression inspected on node24 short jobs
+ 2655586/2655588; no login data/model workload. Only redundant new CPU request
+ 2655576 was cancelled; all pre-existing requests retained. Notion follow-up is
+  appended to https://app.notion.com/p/409d2a44f44b81ff9d2cd1efaedd666e ; require
+  operation NOTION_COMPLETE.json for remote publication completion.
+
+## Original Edge Phase3 final200k upload (2026-10-31)
+
+- Original20260924 two-task V2M/M2V baseline final200k is uploaded and remotely
+  verified at `gggdrive:cosmos_data/phase1_twotask_prefix1_phase23_20261031/original_phase3_200k`.
+- Drive: https://drive.google.com/drive/folders/1jRLJ-Sn5FBByIi5QJ-qBaE6WrKSeXYQB . Archive includes full bridge/optimizer/RNG
+  state and exact contracts. Eight existing dependencies are verified/referenced;
+  use original four-task Phase1EMA200k archive030, not the new two-task Phase1.
+- Read `migration/ORIGINAL_PHASE3_200K_DRIVE_20261031.md` and uploaded RESTORE.md.
+  Phase2 timestamp drift is recorded; contents match the prior verified archive.
+  No original source file/contract, active allocation or training run was changed.
+- Evidence: `/scratch2/whwjdqls99/cosmos/operations/original_phase3_drive_20261031`. CPU transfer/validation only; no destination GPU
+  acceptance or extra training is claimed.
+
 ## Central Phase2 A0–A3 implementation (2026-10-31)
 
 - A2 follow-up: full Kimodo369 stats completed and hashes/counts verified:
@@ -90,6 +130,97 @@
   Preserve data/model/stat identities and record the source revision per run.
 - `/home/minsu1206` is private (0700); install its thin launch scripts from
   that account. Do not broaden home permissions or copy credentials.
+
+## Two-task prefix1 Phase1 and Phase2/3 Drive handoff (2026-10-31)
+
+- Completed and independently verified at09:30KST:
+  `gggdrive:cosmos_data/phase1_twotask_prefix1_phase23_20261031`.
+  Drive folder: https://drive.google.com/drive/folders/1lV5ZcHVxnFZvwUyJ7sOTLFKUkYQDsds4 .
+- Full native two-task/prefix1/no-text200k Phase1 DCP and configs, Phase2
+  manifests/fixed samples, source, BONES/Nymeria evaluators are uploaded;
+  four new archives total30.564GB.31required existing shared archives were
+  reverified and referenced, with no duplicate data upload needed. BONES
+  proportional UniEgo and Nymeria RGB trees both pass checksum checks.
+- `READY.json` and `FINAL_VERIFICATION.json` were read back from Drive.
+  CPU job2651414 on cnode01 completed successfully; no GPU was allocated.
+  Local operation: `/scratch2/whwjdqls99/cosmos/operations/phase123_drive_20261031`.
+  Read uploaded `RESTORE.md` and `TRAINING_ENTRYPOINTS.md`; migration README
+  documents the same handoff. Credentials and environment directories are excluded.
+- Phase2 uses the frozen base Edge reasoner, not Phase1 generator LoRA.
+  New Phase3 must initialize fresh with the new Phase1 path explicitly and
+  the selected Phase2 checkpoint. Old bridge checkpoints retain their original
+  specialist identity. Destination environment/GPU acceptance is not claimed.
+
+## Queued Nano/Edge camera-gain10 follow-up (2026-10-31)
+
+- User requested an A6000 and regenerated examples on existing Notion page
+ 409d2a44f44b80899b2bec1fc10ba9bc with zero-shot translation x10 plus Nano.
+  See `native_phase_training/ZERO_SHOT_NANO_EDGE_GAIN10_20261031.md` and
+  `compare_edge_nano_gain10.py`; no training changes.
+- Srun2651408:1xA6000,8CPUs,128GB host RAM,3days, suma/gigabyte partitions,
+  exclude cs-gpu-01,node37,node29. Tmux `zs_nano_edge_a6000_20261031` holds it.
+  Pending Priority at08:23KST; estimated12:28 is not a guarantee. Initial
+  default all-node RAM reservation was corrected on the same queued job.
+- Scratch2 operation `edge_nano_camera_gain10_20261031` has READY/run.sh and
+  automatic prepare/infer/metrics/render/Notion publication after allocation.
+ 36 new camera clips (Edge/Nano x10, CFG1/1.5/2, six matched cases),10 new Nano
+  text+image clips,16 comparison videos. Reuse previous two-task gain1 and
+  text/image references after hash checks. Translation only; rotations unchanged.
+  Official CLI/samplers; scale1 parity and CFG branch-count acceptance checks.
+- Queue status is already published in an appended Notion section. Do not
+  report evaluation complete until VERIFIED/METRICS_COMPLETE/MEDIA_COMPLETE
+  and COMPLETE/publication=complete_verified exist. Failures update status and
+  retain artifacts. Allocation stays open after workflow. No other jobs changed.
+
+## Edge zero-shot camera CFG and text/image comparisons (2026-10-31)
+
+- `native_phase_training/ZERO_SHOT_CAMERA_TEXT_20261031.md` records the
+  completed matched diagnostic on fixed71 indices0,7,14,28,42,63. Camera:
+  untouched HF Edge versus two-task/prefix1/no-text EMA200k, cameraCFG1/1.5/2,
+  original camera units (gain1), empty text, seed0, UniPC30/shift10/T97/256.
+  Both models pass first-case scale1 native latent parity bit-for-bit; guidance
+  branch counts and runtime LoRA flags are verified. Thirty new camera clips,
+  six exact reuse; prior October14 gain10 outputs are a different comparison.
+- Camera PSNR/SSIM/LPIPS: GT100/1/0; zero-shotCFG1
+  15.6191/.45213/.47872; zero-shotCFG2 14.9282/.42778/.48035;
+  two-taskCFG1 20.0775/.62922/.27824; two-taskCFG2
+  20.0358/.63279/.26226. Stronger CFG does not fix zero-shot average error.
+- Ten text+first-image comparisons add zero-shot to the prior original/two-task
+ 200k study (six captions plus left/right pairs; same native UniPC35/CFG6/shift10).
+  Six-caption PSNR/SSIM/LPIPS: zero12.7174/.36594/.56303,
+  original15.1166/.45773/.54657, two-task15.3715/.46869/.52460.
+  Two-task retains directional response; all models still hallucinate geometry,
+  people or hands. Pixel metrics are not prompt-adherence scores.
+- Scratch2 operation `edge_zeroshot_camera_cfg_20261031` has COMPLETE.json,
+  publication.json=complete_verified, all16 videos plus evidence ZIP remotely
+  SHA256 verified at https://app.notion.com/p/binne/409d2a44f44b80899b2bec1fc10ba9bc .
+  Local `gallery/index.html` includes green observed/red generated borders and
+  prompts. Model inference exited0 on2608785/node33; the other GPU's Habitat
+  application was preserved. Read live allocations before reusing the freed GPU.
+  Initial HF config and reporting-only failures are documented; successful
+  outputs were preserved and validated on recovery. No training changes.
+
+## Two-task Phase1 retained text/image-to-video check (2026-10-31)
+
+- `native_phase_training/TWO_TASK_I2V_20261031.md` records original200k versus
+  two-task/prefix1/no-text200k. Six fixed71 indices0,7,14,28,42,63 plus left/right
+  prompts on images0/14; identical images, seed0 and native EMA I2V
+  UniPC35/CFG6/shift10/T97/20fps/256. No camera actions or training changes.
+- All20 predictions passed exact input checks. Six-case GT/original/two-task:
+  PSNR100/15.1166/15.3715, SSIM1/.45773/.46869, LPIPS0/.54657/.52460.
+  Two-task directional response survives on both tested images; both models
+  still distort hands and hallucinate geometry/people. This one-seed diagnostic
+  does not establish general superiority, prompt accuracy or body-motion quality.
+- Scratch2 `cosmos/operations/phase1_twotask_i2v_20261031` has COMPLETE.json
+  and publication.json=complete_verified: ten prompt-labeled comparisons plus
+  an evidence ZIP remotely SHA256 verified at
+  https://app.notion.com/p/binne/409d2a44f44b80059af9df4535fd8897 .
+  Final videos end `_labeled.mp4`; presentation-only rerender corrected prompt
+  wrapping. The first publisher was deliberately stopped (wrapper exit143);
+  publication_final.log and COMPLETE.json establish final success.
+- Used UUID247c7e54 in2608785/node33 after the benchmark exited, preserving
+  the application on UUID8c3f840c. Pending2650401 was cancelled unused.
+  Consult live processes before reusing either card.
 
 ## Phase2 one-GPU training benchmark (2026-10-31)
 
@@ -238,7 +369,9 @@
   The wrapper also uses a per-allocation recovery lock and shared summary lock.
   Newly started allocations have a120second startup grace. Completed direct
   GPUs have transferred to the pipeline; check remaining allocation time.
-  Keep the explicit monitoring goal active until the user ends it.
+  Keep the independent monitor running until the user ends it, including
+  after the evaluation work and foreground goal are complete. Closing goal
+  bookkeeping must not stop the tmux monitor or its30-minute Notion updates.
 
 ## Collision checks exclude thighs, shins and feet (2026-10-30)
 
