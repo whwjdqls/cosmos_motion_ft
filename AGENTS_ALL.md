@@ -1,5 +1,125 @@
 # Shared Agent Context
 
+## Foundary sep-1 local cleanup (2026-11-01)
+
+- User authorized deleting excessive local files and old checkpoints. Removed
+  78 superseded native checkpoint directories, four disposable FiLM roundtrip
+  weights and four redundant downloaded archives under our local Cosmos tree.
+  Reclaimed approximately2.00TiB; free space252.67→2296.36GiB (2.24TiB).
+- Preserved active recovery pointers/recent saves,100k milestones, both native
+  Phase1 final200k specialists, Phase2 selected200k, stopped projection finals
+  174064/125764 and their120k evaluated snapshots, original EgoControl91345,
+  all active FiLM state and pinned150k/130k evaluation weights. Datasets,
+  environments, logs and published evaluation artifacts are unchanged.
+- All three trainers continue without restart/config changes. Shared storage
+  and other users' files were untouched. This was one-time pruning, not a new
+  automatic retention policy. Historical disposable probe weights and local
+  archive paths may now be absent; scientific/source metadata remains.
+- See `migration/FOUNDRY_LOCAL_CLEANUP_20261101.md` and local operation
+  `cosmos/operations/cleanup_local_20261101`: deletion manifests/journal,
+  retained DCP completeness checks, archive parity and final health evidence.
+
+## Foundary camera-FiLM text follow-up (2026-10-31)
+
+- Completed on sep-1 GPU2: same pinned hidden-state150k/trajectory130k and
+  exact71 cases/seeds/shapes/sampler as the completed comparison below.
+  Reuse284 text+video predictions; add568 text+camera/text+camera+video
+  predictions at bridge scales1/2. All568 new/284 reused predictions,29 rows
+  and12 new videos passed checks. New remote tables and all13 artifact hashes
+  are verified; previous results and all three training jobs are preserved.
+  GPU2 is released. Operation COMPLETE.json is published_verified.
+- Original, joint and both FiLM Phase3 checkpoints were all trained without
+  text. Caption-conditioned inference is the same intervention across all
+  four models using the frozen specialists' existing text capability; it is
+  not a FiLM-specific training limitation. Text reaches both reasoner paths.
+- Operation `cosmos/operations/eval_camera_film_text_matched71_20261031`
+  contains the live coordinator/status files. First-case previous-prediction,
+  zero-template and absent-video checks are bitwise exact. Only native scale1
+  has matched no-text camera controls. Scale2 retains captions in both branches
+  and disables whole bridges in its reference; do not call it text CFG.
+- Results and12 fixed-case videos append to the same Notion camera-FiLM page.
+  See `nymeria_baselines/CAMERA_FILM_TEXT_MATCHED71_20261031.md`.
+  Trust operation `COMPLETE.json` and `notion_publication.json=published_verified`
+  for final completion, not this launch/progress note.
+- Native text+camera+video MPJPE: hidden14.51cm, trajectory11.03cm (versus
+  no-text18.90/12.21), with paired intervals favoring text. Camera-only improves
+  trajectory15.53→12.50cm; hidden23.43→28.00cm has an interval spanning zero.
+  FID/R@3 improve with text in all six native comparisons. Trajectory scale2
+  text+camera+video reaches9.44cm; this guidance is not text CFG.
+
+## Foundary camera-FiLM matched test71 evaluation (2026-10-31)
+
+- Completed852 predictions on idle sep-1 GPU2 using fixed hidden-state150k and
+  trajectory130k snapshots:71 cases × six conditions per model. All input bundles
+  match the original evaluation hashes. Native/zero-target/no-video-leakage and
+  active-FiLM checks passed; exact floor-clean completion/evaluator identities
+  and GT scores were verified. All three existing trainers continue unchanged.
+- Published full original200k/joint200k comparisons,21 rows,12 videos and a
+  quantitative ZIP to Notion40ad2a44f44b808c8a6eedd4ab2d13c2. Every remote table
+  row and all13 uploaded media/artifact hashes were verified. GPU2 is released.
+- Native video MPJPE: original20.56cm, joint22.53, hidden26.19, trajectory31.00.
+  Camera+video: hidden18.90 and trajectory12.21cm, with additional measured input.
+  These are interim, different-task-exposure snapshots; do not label them200k
+  or an input-matched FiLM architectural win. See
+  `nymeria_baselines/CAMERA_FILM_MATCHED71_20261031.md` and local operation
+  `cosmos/operations/eval_camera_film_matched71_20261031` for complete evidence.
+
+## Foundary final two-task Phase1 checkpoint (2026-10-31)
+
+- Downloaded the final Yonsei two-task/prefix1/no-text LoRA200k checkpoint from
+  Drive `cosmos_data/phase1_twotask_prefix1_phase23_20261031`. The older October27
+  backup was only142474. This is the standard global-LoRA model, separate from
+  the stopped local action-only and action+video projection ablations.
+- Shared archive `001_two_task_prefix1_full200k.tar` is retained in that same
+  directory under `/mnt/sep-50tb/jinhyung.kim/cosmos/cosmos_data`. SHA256
+  `66730f0eb2123922a08d8953d812fae491c86113fa3e0957a9c5e226dc602b57` and MD5 match.
+  The full native200k checkpoint is staged on sep-1 under local
+  `weka/cosmos_motion_ft_runs/cosmos3_camera/camera_world_edge/edge_phase1_T97_20fps_2gpu_bs16_lora_exclude5_fd_invdyn_no_text_p1_200k_yonsei_20261017/checkpoints/iter_000200000`.
+- Operation `cosmos/operations/download_phase1_twotask_200k_20261031` under local
+  storage records all14 files, exact PAX mtimes, complete model/EMA/optimizer/
+  scheduler/trainer DCP checks and trainer iteration200000. No existing files
+  differed or were overwritten. Only this checkpoint archive was downloaded
+  from the new handoff; `LOCAL_DOWNLOAD.json` records destination scope.
+  No new training was launched. Existing FiLM jobs retain their original Phase1;
+  a new Phase3 experiment with this specialist must start fresh.
+
+## Foundary sep-1 EgoControl continuation (2026-10-30)
+
+- User authorized staging the uploaded EgoControl checkpoint and resuming on
+  two idle GPUs. Original91345 is staged and archive-SHA256/DCP verified on
+  local NVMe; the production launcher uses GPUs0,4, global32=2x16, unchanged
+  native Phase1-style LambdaLinear recipe and original W&B8bw3hujd.
+- Dedicated source checkout `cosmos/repos/egocontrol_resume_20261030` retains
+  every contracted EgoControl Python/TOML hash. Host execution adapters and
+  strict two-GPU save/reload/update/EMA-preview evidence live in
+  `cosmos/operations/resume_egocontrol_20261030` under local storage. The gate
+  restored91345, saved/reloaded91347 and updated/saved91348; production starts
+  again from original91345. Never use disposable probe weights for production.
+- See `migration/FOUNDRY_EGOCONTROL_RESUME_20261030.md`. Live production logs
+  supersede this launch note. Production passed91563 at1.14s/update; W&B
+  confirmed new iteration91550 after replay caught up with old history91508.
+  `running_verified.json` records the23:40UTC acceptance snapshot. Preserve
+  the two existing FiLM jobs and all other users' GPU processes.
+
+## Foundary sep-1 FiLM continuation (2026-10-30)
+
+- User explicitly requested stopping both local Phase1 projection ablations as
+  soon as FiLM resume readiness passed, superseding waiting for200k. Full durable
+  checkpoints174064(action-only) and125764(action+video projections) are pinned
+  under local `operations/resume_film_20261030/phase1_preserved`; both trainers
+  were stopped after complete DCP validation. Do not describe them as200k-complete.
+- Hidden-state camera FiLM resumes original92879 on GPUs6,7; trajectory FiLM
+  resumes original63864 on GPUs3,5. Both passed one-GPU and exact two-rank
+  global32=2x16 save/reload/update gates, then production advanced. Preserve each
+  run's original frozen specialists, optimizer/schedule/RNG/cursor, task ratios,
+  loss and validated FP32 mask cache; no new warmup or TF32. Original W&B IDs are
+  p3-eff9fe58905591a19d96 and p3-e75dd21f3b540efbe1c8.
+- See `migration/FOUNDRY_FILM_RESUME_20261030.md` for isolation, execution source,
+  strict audited path translation and live evidence. Dedicated historical-source
+  checkout: `/mnt/local/jinhyung.kim/cosmos/repos/phase3_resume_20261030`.
+  The current checkout remains on master; hashed scientific packages are unchanged.
+  Never infer current progress from this launch snapshot; consult local logs.
+
 ## Central Phase2 A0–A3 implementation (2026-10-31)
 
 - A2 follow-up: full Kimodo369 stats completed and hashes/counts verified:
