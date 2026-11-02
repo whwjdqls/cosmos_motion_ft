@@ -25,11 +25,33 @@ def task_probabilities(value=None):
     if not isinstance(supplied, dict) or set(supplied) != set(default):
         raise ValueError("Joint task weights must specify video2motion, motimg2video and joint")
     weights = {key: float(supplied[key]) for key in default}
-    if any(not math.isfinite(v) or v <= 0 for v in weights.values()):
-        raise ValueError("Joint task probabilities must be finite and positive")
+    if any(not math.isfinite(v) or v < 0 for v in weights.values()):
+        raise ValueError("Joint task probabilities must be finite and nonnegative")
     if not math.isclose(sum(weights.values()), 1.0, rel_tol=0, abs_tol=1e-9):
         raise ValueError("Joint task probabilities must sum to one")
-    return weights
+    return {key: weight for key, weight in weights.items() if weight > 0}
+
+
+def configure_conditioning(attention, clean_motion_timestep):
+    if attention not in {"directional", "bidirectional"}:
+        raise ValueError("Unknown bridge conditioning attention")
+    if clean_motion_timestep not in {"omit", "zero"}:
+        raise ValueError("Unknown clean motion timestep policy")
+    RECIPE["conditioning_attention"] = attention
+    RECIPE["clean_motion_timestep"] = clean_motion_timestep
+
+
+def configure_checkpoint_conditioning(payload, *, attention=None, clean_motion_timestep=None):
+    saved = payload.get("scheduler", {}).get("recipe", {})
+    expected_attention = saved.get("conditioning_attention", "directional")
+    expected_time = saved.get("clean_motion_timestep", "omit")
+    if attention is not None and attention != expected_attention:
+        raise ValueError("Requested conditioning attention conflicts with checkpoint")
+    if clean_motion_timestep is not None and clean_motion_timestep != expected_time:
+        raise ValueError("Requested clean motion timestep conflicts with checkpoint")
+    configure_conditioning(expected_attention, expected_time)
+    if "tasks" in saved:
+        RECIPE["tasks"] = saved["tasks"].copy()
 
 
 RECIPE = {
@@ -97,6 +119,10 @@ def require_compute_node():
 
 
 def add_paths(parser: argparse.ArgumentParser):
+    parser.add_argument("--conditioning-attention", choices=["directional", "bidirectional"],
+                        default=os.environ.get("PHASE3_CONDITIONING_ATTENTION", "directional"))
+    parser.add_argument("--clean-motion-timestep", choices=["omit", "zero"],
+                        default=os.environ.get("PHASE3_CLEAN_MOTION_TIMESTEP", "omit"))
     weka = Path(os.environ.get("WEKA_ROOT", "/lustre/whwjdqls99/cosmos/weka"))
     runs = Path(os.environ.get("RUN_ROOT", weka / "cosmos_motion_ft_runs"))
     scratch = (Path("/scratch2/whwjdqls99/cosmos") if os.environ.get("COSMOS_SITE") == "yonsei"

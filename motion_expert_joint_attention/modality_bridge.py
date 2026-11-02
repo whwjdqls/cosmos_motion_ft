@@ -38,8 +38,12 @@ class LocalModalityBridge(nn.Module):
     zero-initialized so the bridge is an exact no-op at initialization.
     """
 
-    def __init__(self, hidden: int, num_heads: int, head_dim: int):
+    def __init__(self, hidden: int, num_heads: int, head_dim: int,
+                 conditioning_attention: str = "directional"):
         super().__init__()
+        if conditioning_attention not in {"directional", "bidirectional"}:
+            raise ValueError("Unknown bridge conditioning attention")
+        self.conditioning_attention = conditioning_attention
         self.hidden = int(hidden)
         self.num_heads = int(num_heads)
         self.head_dim = int(head_dim)
@@ -93,6 +97,12 @@ class LocalModalityBridge(nn.Module):
             mask[ng:, ng:] = True
 
         local = self._source_interval_pair_mask(meta)
+        if self.conditioning_attention == "bidirectional":
+            # Reverse the same physical-time edges, including clean queries.
+            # The non-temporal shape token exchanges information globally.
+            mask[:ng, ng:] |= local | (meta.motion_frame < 0)[None, :]
+            mask[ng:, :ng] |= local.T | (meta.motion_frame < 0)[:, None]
+            return mask
         gen_noisy_rows = ~meta.gen_clean.bool()
         motion_noisy_rows = (~meta.motion_clean.bool()) & (meta.motion_frame >= 0)
         motion_frame_rows = meta.motion_frame >= 0
