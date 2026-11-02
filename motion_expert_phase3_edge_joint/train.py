@@ -118,12 +118,18 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
     # Exact causal-Wan interval and directional masks, independently of training.
     for mode in RECIPE["tasks"]:
         meta = bridge_meta(mode, device)
-        bridge = LocalModalityBridge(8, 2, 4).to(device)
+        bridge = LocalModalityBridge(8, 2, 4,
+            conditioning_attention=RECIPE.get("conditioning_attention", "directional")).to(device)
         mask = bridge._attention_mask(meta)
         assert meta.gen_source_start[64].item() == 1
         assert meta.gen_source_end[-1].item() == 96
         assert bridge._source_interval_pair_mask(meta)[-1, -1].item()
-        if mode == "video2motion":
+        bidirectional = bridge.conditioning_attention == "bidirectional"
+        if bidirectional:
+            assert torch.equal(mask, mask.T)
+            assert mask[:1600, 1600:][meta.gen_clean].any()
+            assert mask[1600:, :1600][meta.motion_clean].any()
+        elif mode == "video2motion":
             assert not mask[:1600, 1600:].any()
         elif mode == "motimg2video":
             assert not mask[1600:, :1600].any()
@@ -139,7 +145,14 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
             g = torch.randn(1600, 8, device=device)
             m = torch.randn(98, 8, device=device)
             ga, ma = bridge(g, m, meta)
-            if mode == "joint":
+            perturb_m = m.clone(); perturb_m[:, 0] += 2
+            perturb_g = g.clone(); perturb_g[:, 0] += 2
+            if bidirectional:
+                gb, _ = bridge(g, perturb_m, meta)
+                _, mb = bridge(perturb_g, m, meta)
+                assert (ga[meta.gen_clean] - gb[meta.gen_clean]).abs().max().item() > 0
+                assert (ma[meta.motion_clean] - mb[meta.motion_clean]).abs().max().item() > 0
+            elif mode == "joint":
                 gb, _ = bridge(g, m + 1, meta)
                 _, mb = bridge(g + 1, m, meta)
                 torch.testing.assert_close(ga[meta.gen_clean], gb[meta.gen_clean], rtol=0, atol=0)
@@ -149,7 +162,7 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
                 torch.testing.assert_close(ga if mode == "video2motion" else ma,
                                            gb if mode == "video2motion" else mb, rtol=0, atol=0)
         del bridge, mask
-    checks.append("causal_Wan_intervals_and_clean_cross_modal_isolation")
+    checks.append("causal_Wan_intervals_and_" + RECIPE.get("conditioning_attention", "directional") + "_conditioning_attention")
     rows = [dataset[(i, (rank * args.microbatch + i) % len(dataset))] for i in range(args.microbatch)]
     batch = collate(rows)
     versions = frozen_versions(model)
@@ -159,6 +172,17 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
             batch["modes"] = [mode] * len(rows)
             batch["captions"] = ["" if mode == "video2motion" else "The camera wearer walks forward."] * len(rows)
             inputs, target = noise_batch(batch, device)
+            if mode == "motimg2video" and RECIPE.get("clean_motion_timestep") == "zero":
+                assert (inputs["motion_sigma"] == 0).all()
+                heads = model.motion.heads
+                ones = torch.ones(len(rows), 97, dtype=torch.bool, device=device)
+                zeros = torch.zeros_like(ones)
+                encode_reference = getattr(heads, "_phase3_reference_encode", heads.encode_motion)
+                timed = encode_reference(inputs["motion"], inputs["motion_sigma"], ones)
+                plain = encode_reference(inputs["motion"], inputs["motion_sigma"], zeros)
+                expected_time = heads.time_embedder(inputs["motion_sigma"].float()).float()
+                torch.testing.assert_close(timed, plain + expected_time[:, None], rtol=0, atol=0)
+                assert expected_time.abs().max().item() > 0
             actual = model(**inputs)
             if mode in {"video2motion", "joint"}:
                 baseline = model.motion(
@@ -266,6 +290,8 @@ def main():
     parser.add_argument("--acceptance", type=Path)
     parser.add_argument("--resume", default="auto")
     args = parser.parse_args()
+    from motion_expert_phase3_edge_joint.settings import configure_conditioning
+    configure_conditioning(args.conditioning_attention, args.clean_motion_timestep)
     require_compute_node()
     rank, local_rank, world = (int(os.environ.get(k, default)) for k, default in
                               (("RANK", "0"), ("LOCAL_RANK", "0"), ("WORLD_SIZE", "1")))
@@ -400,6 +426,9 @@ def main():
                            "video_loss": values[2] / max(values[4], 1),
                            "video_weighted": 10 * values[2] / max(values[4], 1),
                            "motion_samples": values[3], "video_samples": values[4], "joint_samples": values[5],
+                           "task_samples": {"video2motion": values[3] - values[5],
+                                            "motimg2video": values[4] - values[5],
+                                            "joint": values[5]},
                            "grad_norm": norm.item(), "seconds": time.monotonic() - before,
                            "peak_gib": torch.cuda.max_memory_allocated() / 2**30}
                 print("[phase3/train] " + json.dumps(metrics), flush=True)

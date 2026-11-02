@@ -26,7 +26,7 @@ from nymeria_joint_dataset import NymeriaJointDataset, latent_path
 from uniego_layout import canonicalize_frame0, ground_features
 from native_phase_training.latent_cache_contract import load_latent_cache_contract
 from motion_expert_phase3_edge_joint.settings import (
-    RECIPE, add_paths, atomic_json, digest_json, require_compute_node, sha256,
+    RECIPE, add_paths, atomic_json, digest_json, require_compute_node, sha256, sample_task,
 )
 
 
@@ -184,15 +184,7 @@ class Phase3Dataset(Dataset):
             self.arrays.popitem(last=False)
         motion, neutral = self.arrays[array]
         rng = random.Random(RECIPE["seed"] + 1000003 * (draw + 1))
-        task_draw = rng.random()
-        names, weights = zip(*RECIPE["tasks"].items())
-        cumulative = 0.0
-        mode = names[-1]
-        for name, weight in zip(names, weights):
-            cumulative += weight / sum(weights)
-            if task_draw < cumulative:
-                mode = name
-                break
+        mode = sample_task(rng)
         caption = "" if mode == "video2motion" or rng.random() < 0.1 else row["caption"]
         return {"motion": torch.from_numpy(motion[row["row"]].copy()),
                 "neutral": torch.from_numpy(neutral.copy()),

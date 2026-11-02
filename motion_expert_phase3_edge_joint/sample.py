@@ -104,10 +104,15 @@ def main():
     args = parser.parse_args()
     require_compute_node()
     torch.cuda.set_device(0)
-    model = EdgePhase3(args.phase1, args.phase2, device="cuda", activation_checkpointing=False)
     payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False, mmap=True)
     if payload.get("schema") != 1:
         raise RuntimeError("Not a phase-3 bridge checkpoint")
+    from motion_expert_phase3_edge_joint.settings import configure_checkpoint_conditioning
+    import sys
+    configure_checkpoint_conditioning(payload,
+        attention=args.conditioning_attention if "--conditioning-attention" in sys.argv else None,
+        clean_motion_timestep=args.clean_motion_timestep if "--clean-motion-timestep" in sys.argv else None)
+    model = EdgePhase3(args.phase1, args.phase2, device="cuda", activation_checkpointing=False)
     saved = payload["sources"]
     if (saved["phase1_metadata_sha256"] != model.provenance["phase1_metadata_sha256"]
             or saved["phase2_contract"] != model.provenance["phase2_contract"]):
