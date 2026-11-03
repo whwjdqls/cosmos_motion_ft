@@ -13,8 +13,11 @@ import torch
 import torch.nn.functional as F
 
 
-def attention_bias(meta, device):
-    saved = getattr(meta, "_phase3_fp32_bias_v1", None)
+def attention_bias(meta, device, conditioning_attention="directional"):
+    if conditioning_attention not in {"directional", "bidirectional"}:
+        raise ValueError("Unknown bridge conditioning attention")
+    cache_key = "_phase3_fp32_bias_v1" if conditioning_attention == "directional" else "_phase3_fp32_bias_bidirectional_v1"
+    saved = getattr(meta, cache_key, None)
     if saved is not None:
         if saved.device != device:
             raise RuntimeError("Bridge metadata moved devices after its mask was cached")
@@ -30,12 +33,16 @@ def attention_bias(meta, device):
     motion_noisy = (~meta.motion_clean.bool()) & (meta.motion_frame >= 0)
     # Unconditional unions equal the original conditional unions, including
     # empty/false rows, and avoid CUDA-to-host any()/bool() synchronization.
-    allowed[ng:, :ng] |= local.T & motion_noisy[:, None]
-    allowed[:ng, ng:] |= local & gen_noisy[:, None] & (meta.motion_frame >= 0)[None, :]
-    allowed[:ng, ng:] |= gen_noisy[:, None] & (meta.motion_frame < 0)[None, :]
+    if conditioning_attention == "bidirectional":
+        allowed[ng:, :ng] |= local.T | (meta.motion_frame < 0)[:, None]
+        allowed[:ng, ng:] |= local | (meta.motion_frame < 0)[None, :]
+    else:
+        allowed[ng:, :ng] |= local.T & motion_noisy[:, None]
+        allowed[:ng, ng:] |= local & gen_noisy[:, None] & (meta.motion_frame >= 0)[None, :]
+        allowed[:ng, ng:] |= gen_noisy[:, None] & (meta.motion_frame < 0)[None, :]
     bias = torch.zeros_like(allowed, dtype=torch.float32)
     bias.masked_fill_(~allowed, torch.finfo(torch.float32).min)
-    meta._phase3_fp32_bias_v1 = bias
+    setattr(meta, cache_key, bias)
     return bias
 
 
@@ -47,7 +54,7 @@ def bridge_forward(self, gen, motion, meta):
     q = self.q(h).view(-1, self.num_heads, self.head_dim).transpose(0, 1)
     k = self.k(h).view(-1, self.num_heads, self.head_dim).transpose(0, 1)
     v = self.v(h).view(-1, self.num_heads, self.head_dim).transpose(0, 1)
-    bias = attention_bias(meta, x.device)
+    bias = attention_bias(meta, x.device, self.conditioning_attention)
     attn = torch.matmul(q.float(), k.float().transpose(-2, -1)) * (self.head_dim ** -0.5)
     attn = F.softmax(attn + bias.unsqueeze(0), dim=-1)
     y = torch.matmul(attn, v).transpose(0, 1).reshape(x.shape[0], -1)

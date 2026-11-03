@@ -45,7 +45,8 @@ class EdgePhase3(nn.Module):
         self.motion.load_motion_state_dict(payload["motion_state"], strict=True)
         self.motion.requires_grad_(False).eval()
         self.bridges = nn.ModuleDict({
-            str(index): LocalModalityBridge(2048, 16, 128).to(device=device, dtype=torch.float32)
+            str(index): LocalModalityBridge(2048, 16, 128,
+                conditioning_attention=RECIPE.get("conditioning_attention", "directional")).to(device=device, dtype=torch.float32)
             for index in RECIPE["bridge_layers"]
         })
         self.activation_checkpointing = bool(activation_checkpointing)
@@ -68,7 +69,15 @@ class EdgePhase3(nn.Module):
         ])
         noisy = torch.tensor([mode != "motimg2video" for mode in modes], device=device)[:, None].expand(batch, 97)
         shape = self.motion.heads.encode_shape(neutral)
-        frames = self.motion.heads.encode_motion(motion, sigma, noisy)
+        # Clean M2V motion has sigma=0. Adding E_M(0) is separate from its
+        # clean/target role in the bridge mask and does not affect V2M sigma.
+        embedding_mask = noisy
+        if RECIPE.get("clean_motion_timestep", "omit") == "zero":
+            clean_samples = torch.tensor([mode == "motimg2video" for mode in modes], device=device)
+            if (sigma[clean_samples] != 0).any():
+                raise ValueError("Clean M2V motion must use sigma zero")
+            embedding_mask = torch.ones_like(noisy)
+        frames = self.motion.heads.encode_motion(motion, sigma, embedding_mask)
         parts, positions, lengths = [], [], []
         for i, text in enumerate(condition):
             emb = text["inputs_embeds"].to(torch.bfloat16)
