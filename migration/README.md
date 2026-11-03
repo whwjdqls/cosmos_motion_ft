@@ -1,5 +1,15 @@
 # Server Migration
 
+## Foundary side-conversation handoff (2026-11-02)
+
+Read [the consolidated handoff](FOUNDRY_SIDE_CONVERSATION_HANDOFF_20261102.md)
+and [audit snapshot](FOUNDRY_SIDE_CONVERSATION_HANDOFF_20261102.snapshot.json)
+for the three active sep-1 runs, camera/scratch packages published with the
+2026-11-03 master integration,
+completed FiLM-only50k training/evaluation, downloaded original/joint200k archives,
+exact checkpoint formats, source validation, W&B links and outstanding caveats.
+It is also linked at the top of `AGENTS_ALL.md` for the main conversation agent.
+
 ## Two-task prefix1 Phase1 and Phase2/3 training handoff (2026-10-31)
 
 The additive upload is at

@@ -1,5 +1,23 @@
 # Shared Agent Context
 
+## Foundary side-conversation handoff (2026-11-02)
+
+- Read `migration/FOUNDRY_SIDE_CONVERSATION_HANDOFF_20261102.md` first for the
+  consolidated side-work handoff; its adjacent `.snapshot.json` records the
+  documentation-time audit. Older allocation/launch notes below are historical.
+- Three active sep-1 jobs: image-joint baseline0,4; native camera-prediction
+  ablation2,3; scratch-motion camera ablation5,6. All global32/target200k.
+  Camera/scratch packages and handoff documentation are published with the
+  2026-11-03 master integration; jobs use pinned node-local source exports.
+- Camera ablation trains bridges only; scratch trains fresh motion+bridges.
+  Both feed noisy GT camera tokens to native attention with no camera loss.
+  Separate original200k+trajectory-FiLM-only50k is complete and routes camera
+  only to FiLM. Its426-output matched71/text evaluation is complete locally,
+  with an unresolved historical-original baseline discrepancy documented in full.
+- No-shape was stopped by the user; old camera idle queue has exited. Preserve
+  existing jobs and do not restart either from stale receipts. The handoff lists
+  exact checkpoints, loaders, W&B links, source provenance and remaining caveats.
+
 ## Foundary sep-1 local cleanup (2026-11-01)
 
 - User authorized deleting excessive local files and old checkpoints. Removed
