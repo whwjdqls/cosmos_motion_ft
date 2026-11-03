@@ -1,5 +1,19 @@
 # Shared Agent Context
 
+## Both Edge Phase3 final200k checkpoints on Drive (2026-11-02)
+
+- Original September24 two-task and October2 joint-generation final200k are both
+  uploaded and verified. Original: https://drive.google.com/drive/folders/1jRLJ-Sn5FBByIi5QJ-qBaE6WrKSeXYQB .
+- Joint: https://drive.google.com/drive/folders/1bXbbtDaLu_rteP6h8pn5hbXHMk3rYCLI . New archive joint_phase3_edge_200k.tar;
+  three equal tasks V2M/M2V/joint(first image+text), matching frozen specialists.
+- Read migration/PHASE3_CHECKPOINTS_200K_DRIVE_20261102.md and the two-model
+  index in the parent Drive handoff. Both archives passed full downloaded SHA256;
+  sizes/Drive MD5 were rechecked. Model/optimizer/RNG/contracts are included;
+  frozen Phase1/2 dependencies are referenced separately. Use original Phase1,
+  not the newer two-task model. The original archive was not uploaded again.
+- Evidence: /scratch2/whwjdqls99/cosmos/operations/joint_phase3_drive_20261102. New CPU upload allocation only; pre-existing GPU requests
+  and active training are untouched. Destination GPU acceptance is not claimed.
+
 ## Phase2 left/right audit, exact A2 sample (2026-11-01)
 
 - User flagged step25000 Nymeria `ti2m_001135_1340b22562f6` (full seed21310939).
