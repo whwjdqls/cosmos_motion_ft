@@ -61,6 +61,118 @@
   existing jobs and do not restart either from stale receipts. The handoff lists
   exact checkpoints, loaders, W&B links, source provenance and remaining caveats.
 
+## Both Edge Phase3 final200k checkpoints on Drive (2026-11-02)
+
+- Original September24 two-task and October2 joint-generation final200k are both
+  uploaded and verified. Original: https://drive.google.com/drive/folders/1jRLJ-Sn5FBByIi5QJ-qBaE6WrKSeXYQB .
+- Joint: https://drive.google.com/drive/folders/1bXbbtDaLu_rteP6h8pn5hbXHMk3rYCLI . New archive joint_phase3_edge_200k.tar;
+  three equal tasks V2M/M2V/joint(first image+text), matching frozen specialists.
+- Read migration/PHASE3_CHECKPOINTS_200K_DRIVE_20261102.md and the two-model
+  index in the parent Drive handoff. Both archives passed full downloaded SHA256;
+  sizes/Drive MD5 were rechecked. Model/optimizer/RNG/contracts are included;
+  frozen Phase1/2 dependencies are referenced separately. Use original Phase1,
+  not the newer two-task model. The original archive was not uploaded again.
+- Evidence: /scratch2/whwjdqls99/cosmos/operations/joint_phase3_drive_20261102. New CPU upload allocation only; pre-existing GPU requests
+  and active training are untouched. Destination GPU acceptance is not claimed.
+
+## Foundary current Phase3 and completed evaluation (2026-11-03)
+
+- The active sep-2 runs are the fresh 50/50 V2M/M2V directional and
+  bidirectional comparison on GPUs1/7 and0/3. Both add learned E_M(0) to
+  clean motion, use global32 with accumulation1, and freeze the selected
+  Phase1 video-projection EMA200k and Phase2 cross-caption200k specialists.
+  They have no camera-action tokens, camera decoder call or camera loss;
+  the controlled arm difference is bridge conditioning attention direction.
+- Actual training checkout is the isolated
+  `worktrees/phase3_videoio_joint4020_20261101/cosmos_motion_ft`, branch
+  `foundary/sep2-p3-5050-conditioning-20261102`. Its scientific tree already
+  matches published master d267a56225eac342733d7f76287e86cd6237167c.
+  Never rewrite its contracted source to perform a repository sync.
+- Prior control and video-projection40/40/20 runs stopped gracefully at
+  178363 and17672, with full recovery states pinned under operation
+  `phase3_bidirectional_5050_20261102T010605Z/stopped_checkpoints`.
+  There is no four-task control200k checkpoint in the inspected local/shared
+  control locations; its shared backup is150k. Original two-task Phase3
+  200k is a different available model. Earlier launch notes are historical.
+- Naeive Adaptation full-test evaluation completed all11911 cases/task,
+  47644 predictions and all supported quantitative metrics, including TMR
+  retrieval/matching. Final COMPLETE.json at2026-11-02 23:50UTC supersedes
+  the earlier missing-caption-cache snapshot. Notion publication and final
+  numeric archive download SHA256 are verified. Camera tasks remain unsupported.
+- The image-only joint40/40/20 code is published with twelve CPU checks;
+  its sep-1 artifact staging and GPU acceptance are not certified by the handoff.
+  See `migration/HANDOVER_AUDIT_20261102.md`,
+  `motion_expert_phase3_edge_joint/CONDITIONING_5050_20261102.md` and
+  `motion_expert_phase3_edge_image_joint/README.md` for exact distinctions.
+
+## Foundary hand-visible M2V comparison (2026-11-01)
+
+- Completed all five models on eight GT-selected held-out clips and two locked
+  seeds each: original two-task200k, equal-thirds joint200k, hidden FiLM200k,
+  trajectory FiLM180k and original matching Phase1 EMA200k camera-to-video.
+  Same first image, empty captions, UniPC35/shift10 and approved guidance2.
+  Phase3 reference disables whole bridges; Phase1 drops camera tokens. Initial
+  Gaussian realizations match; only a local initial-noise adapter is added to
+  the native Phase1 path. No weights or scientific sources are changed.
+- All80 clips and16 comparison videos passed checks. Eight Notion toggles
+  contain both seeds, eight GT still sheets and eight fixed-crop hand details;
+  all33 uploaded media/provenance files are SHA256-download-verified. Page:
+  https://app.notion.com/p/40bd2a44f44b80c5a349ca6df079d9be . GPU4 is released.
+- Both previously missing baseline200k weights are now local and verified in
+  `cosmos_storage/models/phase3/original_two_task_200k` and
+  `joint_equal_thirds_200k`. Latest FiLM handoffs are local beside them as
+  `hidden_state_film_200k_20261101` and `trajectory_film_180k_20261101`.
+  Do not confuse equal-thirds200k with the new video-projection40/40/20 trainer.
+- Operation `cosmos_storage/operations/eval_m2v_hands_cfg2_20261101T210106Z`
+  has final media, strict package/shared-bridge audits, source/input hashes,
+  verified publication and exact scripts. See
+  `nymeria_baselines/M2V_HANDS_CFG2_20261101.md`. Follow-up requested: a separate
+  cohort where wearer hands are absent at frame0 and appear later.
+- That follow-up is now complete as cohortB on the same page. Eight new
+  GT-selected cases x two seeds x five models yield80 new clips,16 new
+  comparisons and eight new hand details. All33 new uploads are downloaded
+  and SHA256-verified; old cohortA is preserved. Independent evaluation
+  workers use prior idle-GPU authorization on2/4/5 and release all three.
+  Operation: `cosmos_storage/operations/eval_m2v_hands_enter_later_20261101T213810Z`.
+  See `nymeria_baselines/M2V_HANDS_ENTER_LATER_20261101.md`, final publication
+  and COMPLETE markers; late visible frames are examples, not exact onset labels.
+
+## Foundary Phase3 video-projection joint 40/40/20 (2026-11-01)
+
+- Fresh bridge-only joint run uses the user's one-frame Phase1
+  `global_lora_video_io` EMA200k checkpoint (metadata SHA b2b3374b8aa1f688...),
+  the existing selected Phase2 cross-caption200k specialist and task draws
+  M2V40%, V2M40%, joint20%. Same joint conditioning/noise/loss recipe, global32
+  = two GPUs x16, accumulation1, fresh200k schedule. Specialists stay frozen.
+- Production initially used sep-2 GPUs0/5 after the prefix17 Phase1 finished.
+  The user cancelled a requested sep-1 migration and explicitly coordinated
+  GPUs0/3. Complete state9461/draw302752 passed a two-update probe to9463;
+  production independently resumed original9461 on GPUs0/3 and passed9470.
+  Same W&B ID, fingerprint, optimizer/schedule/RNG, batch and task mix remain.
+  Current operation is `resume_joint4020_gpu0_3_20261101T203432Z`; tmux is
+  `cosmos_p3_videoio_joint4020_gpu0_3`. Both GPUs were empty before launch.
+  The already-authorized shared backup contains28 SHA256-readback-verified
+  payloads (30.5GB), both specialists and complete9461 recovery state under
+  `cosmos_data/phase3_videoio_joint4020_resume_20261101`. No sep-1 launcher or
+  destination GPU acceptance is claimed; training stays node-local on sep-2.
+  The loader restores all233 EMA LoRA/action/video tensors, including all four
+  video projection weights/biases. Both ranks audit all nine projection/embed
+  tensors. CPU cache/task checks, two-GPU preflight and full step4-to6
+  optimizer/scheduler/RNG resume passed before fresh production began.
+- Dedicated checkout: `/mnt/local/jinhyung.kim/worktrees/phase3_videoio_joint4020_20261101/cosmos_motion_ft`,
+  branch `foundary/sep2-p3-videoio-joint4020-20261101`, implementation f9043d3.
+  Reviewed implementation plus continuation documentation is published on
+  remote master cb7a031 (same tree as local f2b06b8); the dedicated branch
+  merged it without changing scientific Python. Remote SHA/tree verified.
+  W&B: `jungbinc-upenn/cosmos-motion-ft/p3-d89befa2e73309896cf3`.
+  Notion: https://app.notion.com/p/40bd2a44f44b81e09744c4dc386106db .
+- Node-local operations pointer:
+  `cosmos_storage/operations/phase3_videoio_joint4020_current_ops.txt`.
+  Consult its `training.log`, `running_verified.json` and W&B for live status;
+  this launch note is not a completed-training claim. Other control/evaluation
+  jobs remain separate. Experiment documentation is
+  `motion_expert_phase3_edge_joint/VIDEOIO_404020_20261101.md` in that checkout.
+
 ## Foundary sep-1 local cleanup (2026-11-01)
 
 - User authorized deleting excessive local files and old checkpoints. Removed
