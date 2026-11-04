@@ -1,5 +1,26 @@
 # Shared Agent Context
 
+## Foundary sep-2 matched71 Phase3 50k evaluation (2026-11-03)
+
+- Completed284 predictions: both exact50k directional/bidirectional checkpoints,
+  video-only and video+text, same71 held-out windows/shapes/seeds. Native
+  UniPC35/shift3/guidance1. Physical and matched Body23-completed Nymeria TMR
+  metrics pass GT/reference parity; captions reach both reasoners at inference.
+- Bidirectional MPJPE31.2745/22.2060cm (video/video+text); directional
+  35.4113/21.7846cm. Full FID/retrieval/physics/trajectory tables, paired
+  intervals and a remotely SHA256-verified evidence ZIP are published at
+  https://app.notion.com/p/40dd2a44f44b80459383d6df25184a73 .
+- That page also contains a concurrent, different sep-1 image-joint baseline
+  and camera-prediction comparison. Our results are explicitly separated in
+  an additional sep-2 toggle; do not identify either50/50 arm as the sep-1
+  camera-prediction model. A real separate sep-1 camera-prediction experiment
+  is reported there; inspecting only sep-2 never established its absence.
+- User explicitly authorized temporarily sharing own training GPU0. The
+  evaluator has exited; both sep-2 trainers continue. Source files unchanged.
+  Operation `eval_phase3_5050_50k_v2m_20261103` has final COMPLETE/publication
+  receipts, pinned weights and all per-case evidence. See
+  `nymeria_baselines/PHASE3_5050_50K_V2M_20261103.md`.
+
 ## Foundary bidirectional two-task camera weight-one run (2026-11-03)
 
 - User stopped scratch-motion camera on5,6 and requested bidirectional camera
