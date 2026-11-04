@@ -73,6 +73,88 @@
   were released/replaced. Idle single4090 job2671154 and unrelated requests
   are preserved. Earlier52k inference snapshot is separate; full sweep not run.
 
+## Foundary sep-2 matched71 Phase3 50k evaluation (2026-11-03)
+
+- Completed284 predictions: both exact50k directional/bidirectional checkpoints,
+  video-only and video+text, same71 held-out windows/shapes/seeds. Native
+  UniPC35/shift3/guidance1. Physical and matched Body23-completed Nymeria TMR
+  metrics pass GT/reference parity; captions reach both reasoners at inference.
+- Bidirectional MPJPE31.2745/22.2060cm (video/video+text); directional
+  35.4113/21.7846cm. Full FID/retrieval/physics/trajectory tables, paired
+  intervals and a remotely SHA256-verified evidence ZIP are published at
+  https://app.notion.com/p/40dd2a44f44b80459383d6df25184a73 .
+- That page also contains a concurrent, different sep-1 image-joint baseline
+  and camera-prediction comparison. Our results are explicitly separated in
+  an additional sep-2 toggle; do not identify either50/50 arm as the sep-1
+  camera-prediction model. A real separate sep-1 camera-prediction experiment
+  is reported there; inspecting only sep-2 never established its absence.
+- User explicitly authorized temporarily sharing own training GPU0. The
+  evaluator has exited; both sep-2 trainers continue. Source files unchanged.
+  Operation `eval_phase3_5050_50k_v2m_20261103` has final COMPLETE/publication
+  receipts, pinned weights and all per-case evidence. See
+  `nymeria_baselines/PHASE3_5050_50K_V2M_20261103.md`.
+
+## Foundary bidirectional two-task camera weight-one run (2026-11-03)
+
+- User stopped scratch-motion camera on5,6 and requested bidirectional camera
+  prediction without joint, no camera loss, video weight1. Scratch stopped
+  gracefully at46338; full motion/bridge/optimizer/RNG checkpoint is pinned
+  under local `operations/phase3_camera_prediction_bidir5050_video_weight1_20261103/scratch_preserved`.
+- New package `motion_expert_phase3_edge_camera_bidir5050_wv1` uses pretrained
+  frozen specialists and trains only bridges, with50/50/0 V2M/M2V/joint,
+  global32=2x16 on5,6, fresh200k. A worker-safe dataset restores the task policy
+  and rejects joint rows. Original joint diagnostics remain disposable only.
+- Reference is the existing joint camera/video-weight1 run on1,7; only tasks
+  and experiment identity differ. Operation of the same name records source
+  parity, actual spawned-loader checks and launch evidence. Read live status
+  and RUNNING_VERIFIED.json before claiming production has started. Full note:
+  `migration/FOUNDRY_CAMERA_BIDIR5050_WV1_20261103.md`.
+- Baseline0,4, camera/video-weight10 on2,3, joint camera/video-weight1 on1,7
+  and the original exact50k evaluation queue are preserved. Older notes that
+  call the scratch run active are historical.
+- Production/remote W&B verified at23:59UTC, step10, approximately2.03s/update;
+  W&B `p3-2dc6173f736a1d929a9f`. Actual logged task partitions match the
+  deterministic50/50 draws, zero joint. Scratch46338 full-state checkpoint
+  SHA2566295d34ad165ad33a3bf25e0ea2ad8a7ca385a29427f51cb5e3a9af05fdcc4f9.
+
+## Foundary camera video loss weight-one ablation (2026-11-03)
+
+- User requested the same pretrained-motion camera-prediction run with video
+  loss10→1, after interim evaluation and Notion publication. Camera40k matched71
+  evaluation is published_verified: video/video+text MPJPE30.07/22.56cm,
+  FID0.442398/0.146880, R@1=18.75/40.10%;142 predictions, no GT camera inputs.
+- New package `motion_expert_phase3_edge_image_joint_camera_wv1` reuses original
+  source through explicit guarded adapters. Same original camera settings and
+  specialists, bridges-only, global32=2x16, fresh200k on GPUs1,7. Other runs on
+  0,4/2,3/5,6 and the exact50k camera evaluation queue remain untouched.
+- Operation `cosmos/operations/phase3_camera_prediction_video_weight1_20261103`
+  under local NVMe records strict reference/source parity, native loss/gradient
+  CPU checks, real two-GPU acceptance and fresh4/reload2 probes. Inspect
+  RUNNING_VERIFIED.json/live metrics for actual production progress. Read
+  `migration/FOUNDRY_CAMERA_VIDEO_WEIGHT1_20261103.md` for the complete handoff.
+
+- Fresh production and remote W&B recipe were verified at22:10UTC, step30,
+  approximately2.02s/update; W&B `p3-8545d27c753b644f9ce1`. The original three
+  trainers continue. This launch snapshot is historical; read live metrics.
+
+## Foundary side-conversation handoff (2026-11-02)
+
+- Read `migration/FOUNDRY_SIDE_CONVERSATION_HANDOFF_20261102.md` first for the
+  consolidated side-work handoff; its adjacent `.snapshot.json` records the
+  documentation-time audit. Older allocation/launch notes below are historical.
+- Three active sep-1 jobs: image-joint baseline0,4; native camera-prediction
+  ablation2,3; scratch-motion camera ablation5,6. All global32/target200k.
+  Camera/scratch packages and handoff documentation are published with the
+  2026-11-03 master integration; jobs use pinned node-local source exports.
+- Camera ablation trains bridges only; scratch trains fresh motion+bridges.
+  Both feed noisy GT camera tokens to native attention with no camera loss.
+  Separate original200k+trajectory-FiLM-only50k is complete and routes camera
+  only to FiLM. Its426-output matched71/text evaluation is complete locally,
+  with an unresolved historical-original baseline discrepancy documented in full.
+- No-shape was stopped by the user; old camera idle queue has exited. Preserve
+  existing jobs and do not restart either from stale receipts. The handoff lists
+  exact checkpoints, loaders, W&B links, source provenance and remaining caveats.
+
 ## Both Edge Phase3 final200k checkpoints on Drive (2026-11-02)
 
 - Original September24 two-task and October2 joint-generation final200k are both

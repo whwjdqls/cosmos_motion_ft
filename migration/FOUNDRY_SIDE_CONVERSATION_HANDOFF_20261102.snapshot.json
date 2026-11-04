@@ -1,0 +1,519 @@
+{
+  "schema": 1,
+  "collected_utc": "2026-11-02T22:17:38.655311+00:00",
+  "host": "lg-gwangmo-4xh200-sep-1",
+  "repo": "/home/jinhyung.kim/cosmos_motion_ft",
+  "git_branch": "foundary/phase2-no-shape-20261101",
+  "git_head": "8fb2824d2fa75587098081e023b2fc839f6340be",
+  "git_status_before_handoff_docs": "?? migration/FOUNDRY_CAMERA_PREDICTION_ABLATION_20261102.md\n?? migration/FOUNDRY_FILM_SHARED_20261101.md\n?? migration/FOUNDRY_SCRATCH_MOTION_CAMERA_ABLATION_20261102.md\n?? motion_expert_phase3_edge_image_joint_camera/\n?? motion_expert_phase3_edge_image_joint_camera_scratch/\n?? nymeria_baselines/VIDEO2MOTION_SUMMARY_20261101.md\n",
+  "active_runs": [
+    {
+      "name": "joint_baseline",
+      "gpus": [
+        0,
+        4
+      ],
+      "run": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_p1videoioema200k_imagejoint402020_bidir_clean_t0_T97_gbs32_sep1_20261102",
+      "operation": "/mnt/local/jinhyung.kim/cosmos/operations/phase3_imagejoint402020_bidir_videoio_20261102T020527Z",
+      "pinned_source": "/mnt/local/jinhyung.kim/cosmos/operations/phase3_imagejoint402020_bidir_videoio_20261102T020527Z/source_snapshot",
+      "trainer_supervisor_pid": 3157281,
+      "alive": true,
+      "latest_metrics": {
+        "grad_norm": 11.838045120239258,
+        "job": null,
+        "joint_samples": 5.0,
+        "loss": 1.2408223152160645,
+        "lr": 0.00018463520305871743,
+        "motion_loss": 0.05777044045297723,
+        "motion_samples": 19.0,
+        "peak_gib": 17.42945671081543,
+        "seconds": 1.9681734191253781,
+        "stage": "training",
+        "step": 36580,
+        "task_samples": {
+          "joint": 5.0,
+          "motimg2video": 13.0,
+          "video2motion": 14.0
+        },
+        "video_loss": 0.2144926521513197,
+        "video_samples": 18.0,
+        "video_weighted": 2.144926521513197
+      },
+      "metric_age_seconds": 13.06,
+      "wandb_url": "https://wandb.ai/jungbinc-upenn/cosmos-motion-ft/runs/p3-a60444d889694dfb5e5d",
+      "wandb_local_state": {
+        "credentials_source": "environment_or_sdk_default",
+        "latest_optimizer_step": 36580,
+        "logger_host": "lg-gwangmo-4xh200-sep-1",
+        "logger_job": null,
+        "new_records_queued_this_process": 3659,
+        "remote_next_event_at_start": 0,
+        "run_id": "p3-a60444d889694dfb5e5d",
+        "source": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_p1videoioema200k_imagejoint402020_bidir_clean_t0_T97_gbs32_sep1_20261102",
+        "source_age_seconds": 1.4004344940185547,
+        "source_records": 3659,
+        "status": "streaming",
+        "updated_unix": 1793657846.9981391,
+        "url": "https://wandb.ai/jungbinc-upenn/cosmos-motion-ft/runs/p3-a60444d889694dfb5e5d"
+      },
+      "recipe": {
+        "actor_exclusions": [],
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "bones_fraction": 0.0,
+        "bridge_head_dim": 128,
+        "bridge_heads": 16,
+        "bridge_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27
+        ],
+        "caption_policy": {
+          "joint": "empty",
+          "motimg2video": "caption_dropout_0.1",
+          "video2motion": "empty"
+        },
+        "cfg_dropout": 0.1,
+        "clean_motion_timestep": "zero",
+        "clip_grad": 1.0,
+        "conditioning_attention": "bidirectional",
+        "contact_logit_scale": 2.0,
+        "experiment": "image_only_joint_native_losses_402020_bidirectional_clean_t0_v1",
+        "fps": 20.0,
+        "frames": 97,
+        "global_batch": 32,
+        "guidance": 1.0,
+        "hidden": 2048,
+        "image_hw": [
+          256,
+          256
+        ],
+        "joint_conditioning": "first_image_only_plus_supplied_neutral_shape_no_caption",
+        "joint_guidance": "none_no_text_condition",
+        "joint_loss_mode": "centered",
+        "joint_noise": "independent_specialist_schedules",
+        "joint_objective": "sum_native_video_velocity_and_motion_x0_physical_losses",
+        "juice_reference": {
+          "adapted": "independent_modality_times_and_both_targets",
+          "commit": "1bc0e5f34a2b47d9a4cbb5bc76821091b5994984",
+          "loss_choice": "native_specialist_losses_not_JUICE_velocity_space_losses",
+          "repository": "https://github.com/Ced3-han/JUICE-Code"
+        },
+        "latent_shape": [
+          48,
+          25,
+          16,
+          16
+        ],
+        "lr": 0.0002,
+        "lr_floor": 0.0,
+        "motion_decoded_nonfinite": "skip",
+        "motion_dim": 283,
+        "motion_inference_shift": 3.0,
+        "motion_loss_reduction": "per_task",
+        "motion_noise": "logitnormal",
+        "motion_weights": {
+          "w_contact": 0.05,
+          "w_feat": 1.0,
+          "w_foot_height": 10.0,
+          "w_foot_vel": 1.0,
+          "w_joint": 1.0,
+          "w_smooth": 5.0
+        },
+        "required_phase1_metadata_sha256": "b2b3374b8aa1f688dc73fabb78832889c9d3e4264299f20aa8aefbdcde4ecca8",
+        "sampler": "unipc",
+        "sampling_steps": 35,
+        "save_every": 10000,
+        "schema": 1,
+        "seed": 0,
+        "steps": 200000,
+        "tasks": {
+          "joint": 0.2,
+          "motimg2video": 0.4,
+          "video2motion": 0.4
+        },
+        "training_shift": 3.0,
+        "video_inference_shift": 10.0,
+        "video_noise": "waver",
+        "video_normalize_by_active": false,
+        "video_sample_level_loss_averaging": false,
+        "video_time_weight": "uniform",
+        "video_weight": 10.0,
+        "warmup": 1000,
+        "weight_decay": 0.0
+      },
+      "checkpoint_pointer": {
+        "file": "step_000030000.pt",
+        "step": 30000
+      }
+    },
+    {
+      "name": "camera_prediction",
+      "gpus": [
+        2,
+        3
+      ],
+      "run": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_imagejoint402020_bidir_camera_prediction_nocamloss_T97_gbs32_sep1_20261102_2gpu",
+      "operation": "/mnt/local/jinhyung.kim/cosmos/operations/phase3_camera_prediction_launch_20261102",
+      "pinned_source": "/mnt/local/jinhyung.kim/cosmos/operations/phase3_camera_prediction_launch_20261102/source_snapshot",
+      "trainer_supervisor_pid": 3039807,
+      "alive": true,
+      "latest_metrics": {
+        "grad_norm": 25.032691955566406,
+        "job": null,
+        "joint_samples": 10.0,
+        "loss": 1.847161054611206,
+        "lr": 0.00019988561579910118,
+        "motion_loss": 0.08337193727493286,
+        "motion_samples": 16.0,
+        "peak_gib": 17.608116149902344,
+        "seconds": 2.0254608877003193,
+        "stage": "training",
+        "step": 4030,
+        "task_samples": {
+          "joint": 10.0,
+          "motimg2video": 16.0,
+          "video2motion": 6.0
+        },
+        "video_loss": 0.22221233294560358,
+        "video_samples": 26.0,
+        "video_weighted": 2.222123329456036
+      },
+      "metric_age_seconds": 17.52,
+      "wandb_url": "https://wandb.ai/jungbinc-upenn/cosmos-motion-ft/runs/p3-b0c2529274be38864cbb",
+      "wandb_local_state": {
+        "credentials_source": "environment_or_sdk_default",
+        "latest_optimizer_step": 4030,
+        "logger_host": "lg-gwangmo-4xh200-sep-1",
+        "logger_job": null,
+        "new_records_queued_this_process": 404,
+        "remote_next_event_at_start": 0,
+        "run_id": "p3-b0c2529274be38864cbb",
+        "source": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_imagejoint402020_bidir_camera_prediction_nocamloss_T97_gbs32_sep1_20261102_2gpu",
+        "source_age_seconds": 2.1187963485717773,
+        "source_records": 404,
+        "status": "streaming",
+        "updated_unix": 1793657843.257486,
+        "url": "https://wandb.ai/jungbinc-upenn/cosmos-motion-ft/runs/p3-b0c2529274be38864cbb"
+      },
+      "recipe": {
+        "actor_exclusions": [],
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "bones_fraction": 0.0,
+        "bridge_head_dim": 128,
+        "bridge_heads": 16,
+        "bridge_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27
+        ],
+        "camera_prediction": {
+          "attention": "native_generator_video_action_attention",
+          "bridge_scope": "unchanged_video_motion_bridges_no_direct_camera_motion_edges",
+          "camera_decoder_gradients": false,
+          "clean_camera_tokens": 0,
+          "clock": "motion_sigma_for_video2motion_else_video_sigma",
+          "domain_id": 2,
+          "input": "noise_corrupted_ground_truth",
+          "loss_weight": 0.0,
+          "noise": "independent_per_global_draw_generator_preserves_baseline_RNG",
+          "representation": "native_backward_framewise_relative_se3_raw9_padded64",
+          "tokens_per_sample": 96,
+          "trainable_parameters": "same_seven_bridges_only"
+        },
+        "caption_policy": {
+          "joint": "empty",
+          "motimg2video": "caption_dropout_0.1",
+          "video2motion": "empty"
+        },
+        "cfg_dropout": 0.1,
+        "clean_motion_timestep": "zero",
+        "clip_grad": 1.0,
+        "conditioning_attention": "bidirectional",
+        "contact_logit_scale": 2.0,
+        "experiment": "image_joint_402020_bidirectional_camera_prediction_no_camera_loss_v1",
+        "fps": 20.0,
+        "frames": 97,
+        "global_batch": 32,
+        "guidance": 1.0,
+        "hidden": 2048,
+        "image_hw": [
+          256,
+          256
+        ],
+        "joint_conditioning": "first_image_only_plus_supplied_neutral_shape_no_caption",
+        "joint_guidance": "none_no_text_condition",
+        "joint_loss_mode": "centered",
+        "joint_noise": "independent_specialist_schedules",
+        "joint_objective": "sum_native_video_velocity_and_motion_x0_physical_losses",
+        "juice_reference": {
+          "adapted": "independent_modality_times_and_both_targets",
+          "commit": "1bc0e5f34a2b47d9a4cbb5bc76821091b5994984",
+          "loss_choice": "native_specialist_losses_not_JUICE_velocity_space_losses",
+          "repository": "https://github.com/Ced3-han/JUICE-Code"
+        },
+        "latent_shape": [
+          48,
+          25,
+          16,
+          16
+        ],
+        "lr": 0.0002,
+        "lr_floor": 0.0,
+        "motion_decoded_nonfinite": "skip",
+        "motion_dim": 283,
+        "motion_inference_shift": 3.0,
+        "motion_loss_reduction": "per_task",
+        "motion_noise": "logitnormal",
+        "motion_weights": {
+          "w_contact": 0.05,
+          "w_feat": 1.0,
+          "w_foot_height": 10.0,
+          "w_foot_vel": 1.0,
+          "w_joint": 1.0,
+          "w_smooth": 5.0
+        },
+        "required_phase1_metadata_sha256": "b2b3374b8aa1f688dc73fabb78832889c9d3e4264299f20aa8aefbdcde4ecca8",
+        "sampler": "unipc",
+        "sampling_steps": 35,
+        "save_every": 10000,
+        "schema": 1,
+        "seed": 0,
+        "steps": 200000,
+        "tasks": {
+          "joint": 0.2,
+          "motimg2video": 0.4,
+          "video2motion": 0.4
+        },
+        "training_shift": 3.0,
+        "video_inference_shift": 10.0,
+        "video_noise": "waver",
+        "video_normalize_by_active": false,
+        "video_sample_level_loss_averaging": false,
+        "video_time_weight": "uniform",
+        "video_weight": 10.0,
+        "warmup": 1000,
+        "weight_decay": 0.0
+      },
+      "checkpoint_pointer": null,
+      "main_package_hashes": {
+        "motion_expert_phase3_edge_image_joint_camera/README.md": "69db6064757864589ecbc13de64ea42d4aae3dfa2ca223b20d1cfbfeca87ce13",
+        "motion_expert_phase3_edge_image_joint_camera/__init__.py": "4fe284194d1e2dc3477979a768393b49b9ef89c6837c3feaeb489243f66a5de7",
+        "motion_expert_phase3_edge_image_joint_camera/data.py": "6e60057463fe35eca6cf0c5dabaab302efbfd0d9ba03c2fa2194c3701b1d35ff",
+        "motion_expert_phase3_edge_image_joint_camera/execution.py": "15a2ee11ca513c3208a22584689c726c609b7ce4edfc3843b69ac5340dea75c4",
+        "motion_expert_phase3_edge_image_joint_camera/launch.py": "f4216a314d5ba6ceac659b3e573a096c6f07afaf53e615c120a8642b3aec50e2",
+        "motion_expert_phase3_edge_image_joint_camera/model.py": "4b94dac8dc1a472fc6db2beeb16c777ed02337deecce80f8e68d014840b94db9",
+        "motion_expert_phase3_edge_image_joint_camera/native.py": "11e783593b35c9f41e11eaa3794f4290d4104d2aa9161982fcb2e13f7c33692e",
+        "motion_expert_phase3_edge_image_joint_camera/objectives.py": "5d21a1b9637958296b9449fd18efccae475fee76a2e2b3ea042634b526e58398",
+        "motion_expert_phase3_edge_image_joint_camera/policy.py": "14cc921054c24b13c1c0d2739bd41e50302d556d25cee5505469c39cdad62b4f",
+        "motion_expert_phase3_edge_image_joint_camera/run_foundary.sh": "b4c90eed24c81a3f821d5e197f766a2eb0689665967d39844ec01f6eb2ee3c46",
+        "motion_expert_phase3_edge_image_joint_camera/sample.py": "76585ca47fccaeb1aced1a64bd0ddb0cbf400ae493d1a7215e60fa8819d72fdb",
+        "motion_expert_phase3_edge_image_joint_camera/test_camera_prediction.py": "5888f3b49377260b8e8a90c9e9320ae930a2bec69f43e4d5cb91b51f35b4e40c",
+        "motion_expert_phase3_edge_image_joint_camera/train.py": "a165e657266b4984ffa0119f09e19abd2ced31b7d358969a439175a3b204e13b"
+      },
+      "main_python_matches_running_snapshot": true
+    },
+    {
+      "name": "scratch_motion_camera",
+      "gpus": [
+        5,
+        6
+      ],
+      "run": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_imagejoint402020_camera_prediction_scratchmotion_T97_gbs32_sep1_20261102_warmup",
+      "operation": "/mnt/local/jinhyung.kim/cosmos/operations/phase3_camera_prediction_scratch_motion_20261102/retry_with_production_warmup",
+      "pinned_source": "/mnt/local/jinhyung.kim/cosmos/operations/phase3_camera_prediction_scratch_motion_20261102/retry_with_production_warmup/source_snapshot",
+      "trainer_supervisor_pid": 3284427,
+      "alive": true,
+      "latest_metrics": {
+        "grad_norm": 39.021949768066406,
+        "job": null,
+        "joint_samples": 6.0,
+        "loss": 1.6144182682037354,
+        "lr": 0.00019998408857901525,
+        "motion_loss": 0.3434765759636374,
+        "motion_samples": 17.0,
+        "peak_gib": 20.05962085723877,
+        "seconds": 2.055282785091549,
+        "stage": "training",
+        "step": 2130,
+        "task_samples": {
+          "joint": 6.0,
+          "motimg2video": 15.0,
+          "video2motion": 11.0
+        },
+        "video_loss": 0.2182013647896903,
+        "video_samples": 21.0,
+        "video_weighted": 2.1820136478969028
+      },
+      "metric_age_seconds": 15.9,
+      "wandb_url": "https://wandb.ai/jungbinc-upenn/cosmos-motion-ft/runs/p3-b0122564c04ef74531b6",
+      "wandb_local_state": {
+        "credentials_source": "environment_or_sdk_default",
+        "latest_optimizer_step": 2130,
+        "logger_host": "lg-gwangmo-4xh200-sep-1",
+        "logger_job": null,
+        "new_records_queued_this_process": 214,
+        "remote_next_event_at_start": 0,
+        "run_id": "p3-b0122564c04ef74531b6",
+        "source": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_imagejoint402020_camera_prediction_scratchmotion_T97_gbs32_sep1_20261102_warmup",
+        "source_age_seconds": 11.816815376281738,
+        "source_records": 214,
+        "status": "streaming",
+        "updated_unix": 1793657854.579511,
+        "url": "https://wandb.ai/jungbinc-upenn/cosmos-motion-ft/runs/p3-b0122564c04ef74531b6"
+      },
+      "recipe": {
+        "actor_exclusions": [],
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "bones_fraction": 0.0,
+        "bridge_head_dim": 128,
+        "bridge_heads": 16,
+        "bridge_layers": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27
+        ],
+        "camera_prediction": {
+          "attention": "native_generator_video_action_attention",
+          "bridge_scope": "unchanged_video_motion_bridges_no_direct_camera_motion_edges",
+          "camera_decoder_gradients": false,
+          "clean_camera_tokens": 0,
+          "clock": "motion_sigma_for_video2motion_else_video_sigma",
+          "domain_id": 2,
+          "input": "noise_corrupted_ground_truth",
+          "loss_weight": 0.0,
+          "noise": "independent_per_global_draw_generator_preserves_baseline_RNG",
+          "representation": "native_backward_framewise_relative_se3_raw9_padded64",
+          "tokens_per_sample": 96,
+          "trainable_parameters": "scratch_motion_expert_and_same_seven_bridges_only"
+        },
+        "caption_policy": {
+          "joint": "empty",
+          "motimg2video": "caption_dropout_0.1",
+          "video2motion": "empty"
+        },
+        "cfg_dropout": 0.1,
+        "clean_motion_timestep": "zero",
+        "clip_grad": 1.0,
+        "conditioning_attention": "bidirectional",
+        "contact_logit_scale": 2.0,
+        "experiment": "image_joint_camera_prediction_scratch_motion_trainable_v1",
+        "fps": 20.0,
+        "frames": 97,
+        "global_batch": 32,
+        "guidance": 1.0,
+        "hidden": 2048,
+        "image_hw": [
+          256,
+          256
+        ],
+        "joint_conditioning": "first_image_only_plus_supplied_neutral_shape_no_caption",
+        "joint_guidance": "none_no_text_condition",
+        "joint_loss_mode": "centered",
+        "joint_noise": "independent_specialist_schedules",
+        "joint_objective": "sum_native_video_velocity_and_motion_x0_physical_losses",
+        "juice_reference": {
+          "adapted": "independent_modality_times_and_both_targets",
+          "commit": "1bc0e5f34a2b47d9a4cbb5bc76821091b5994984",
+          "loss_choice": "native_specialist_losses_not_JUICE_velocity_space_losses",
+          "repository": "https://github.com/Ced3-han/JUICE-Code"
+        },
+        "latent_shape": [
+          48,
+          25,
+          16,
+          16
+        ],
+        "lr": 0.0002,
+        "lr_floor": 0.0,
+        "motion_decoded_nonfinite": "skip",
+        "motion_dim": 283,
+        "motion_inference_shift": 3.0,
+        "motion_initialization": {
+          "frozen": "same_phase1_cosmos_reasoner_and_generator",
+          "motion": "fresh_original_phase2_constructor_no_learned_phase2_weights",
+          "motion_output": "original_zero_initialized_projection_trainable",
+          "phase2_metadata": "architecture_and_normalization_contract_only_no_tensors",
+          "seed": 0,
+          "trainable": "motion_expert_and_seven_bridges"
+        },
+        "motion_loss_reduction": "per_task",
+        "motion_noise": "logitnormal",
+        "motion_weights": {
+          "w_contact": 0.05,
+          "w_feat": 1.0,
+          "w_foot_height": 10.0,
+          "w_foot_vel": 1.0,
+          "w_joint": 1.0,
+          "w_smooth": 5.0
+        },
+        "required_phase1_metadata_sha256": "b2b3374b8aa1f688dc73fabb78832889c9d3e4264299f20aa8aefbdcde4ecca8",
+        "sampler": "unipc",
+        "sampling_steps": 35,
+        "save_every": 10000,
+        "schema": 1,
+        "seed": 0,
+        "steps": 200000,
+        "tasks": {
+          "joint": 0.2,
+          "motimg2video": 0.4,
+          "video2motion": 0.4
+        },
+        "training_shift": 3.0,
+        "video_inference_shift": 10.0,
+        "video_noise": "waver",
+        "video_normalize_by_active": false,
+        "video_sample_level_loss_averaging": false,
+        "video_time_weight": "uniform",
+        "video_weight": 10.0,
+        "warmup": 1000,
+        "weight_decay": 0.0
+      },
+      "checkpoint_pointer": null,
+      "main_package_hashes": {
+        "motion_expert_phase3_edge_image_joint_camera_scratch/README.md": "b7eeba3d916ec75497137a91d1e4f84a7407ee89a78eb0e412b03aefcf0e5f21",
+        "motion_expert_phase3_edge_image_joint_camera_scratch/__init__.py": "e71b6c47d4f630ebbc1097882fa87a7438534d4b54294ac88bdf2b175e7ae729",
+        "motion_expert_phase3_edge_image_joint_camera_scratch/data.py": "a67a8bcee4bf27db645b8224fab052db9cfa27bd6c28899de5c8efd9538cf8d0",
+        "motion_expert_phase3_edge_image_joint_camera_scratch/launch.py": "963e29fd674cd2b66ad0aa84a0a8c509483e63338566719d7a9b4551f2adaa6e",
+        "motion_expert_phase3_edge_image_joint_camera_scratch/model.py": "8dc255f2c2ca9e47e85102dd83a798a4f7fd9c39f3fcb69719e00e56b34fc293",
+        "motion_expert_phase3_edge_image_joint_camera_scratch/overlays.py": "bd4c799bc8005e39dff58d68930ddf4956125d470c6786e7e1c96fd47d998493",
+        "motion_expert_phase3_edge_image_joint_camera_scratch/policy.py": "4d2d827a6ddef1e9b1d4ee279b18399e7fce478a850b9d41cdf9c586fa1fd670",
+        "motion_expert_phase3_edge_image_joint_camera_scratch/run_foundary.sh": "431373e2992fc1174319cd62d9f7dddbb1f80099a0fc2e045c5d702420eeba9c",
+        "motion_expert_phase3_edge_image_joint_camera_scratch/sample.py": "7e539549d933bf6977c28f940115aa592b82edf9085a0db1a7f926874b4342dc",
+        "motion_expert_phase3_edge_image_joint_camera_scratch/state.py": "4fb41b6727f44423f9adf0952b3275f0a24999a63c17adab9c1a33bc6e30a71d",
+        "motion_expert_phase3_edge_image_joint_camera_scratch/test_scratch.py": "8cfefb636d42ea724c04e119c9a70f3717915dee0b2c0c98ecae245943fa90bb",
+        "motion_expert_phase3_edge_image_joint_camera_scratch/train.py": "bbf7b5448feeaaf362691e1769638ede4e8b7813742003661f82cc7bbf6ba152"
+      },
+      "main_python_matches_running_snapshot": true
+    }
+  ],
+  "nvidia_smi_gpu_snapshot": "index, uuid, memory.used [MiB], utilization.gpu [%]\n0, GPU-8f636ae2-5131-1fd5-636f-99b4376ea099, 19968 MiB, 100 %\n1, GPU-e83c68cb-9e72-1493-32dc-0565b72bc975, 67181 MiB, 0 %\n2, GPU-7f887c44-cfb9-ab74-65b3-d437a2904eb2, 20132 MiB, 100 %\n3, GPU-6c16fe66-63b7-97da-0856-5ba930911823, 20348 MiB, 100 %\n4, GPU-b022759f-754f-21ac-77e0-d4e3ba284650, 19988 MiB, 100 %\n5, GPU-202b7f87-fc4d-d6da-39af-a64470fafcfb, 22680 MiB, 100 %\n6, GPU-398d238b-965d-8390-9329-8e4a86d89cc1, 22780 MiB, 100 %\n7, GPU-ed737df2-ab90-0ca6-3f58-ef5b31616b1e, 0 MiB, 0 %\n",
+  "nvidia_smi_process_snapshot": "gpu_uuid, pid, process_name, used_gpu_memory [MiB]\nGPU-8f636ae2-5131-1fd5-636f-99b4376ea099, 3157418, /mnt/local/jinhyung.kim/cosmos/envs/cosmos/bin/python, 19958 MiB\nGPU-e83c68cb-9e72-1493-32dc-0565b72bc975, 3944233, vllm-env/bin/python, 67172 MiB\nGPU-7f887c44-cfb9-ab74-65b3-d437a2904eb2, 3040004, /mnt/local/jinhyung.kim/cosmos/envs/cosmos/bin/python, 20122 MiB\nGPU-6c16fe66-63b7-97da-0856-5ba930911823, 3040005, /mnt/local/jinhyung.kim/cosmos/envs/cosmos/bin/python, 20338 MiB\nGPU-b022759f-754f-21ac-77e0-d4e3ba284650, 3157419, /mnt/local/jinhyung.kim/cosmos/envs/cosmos/bin/python, 19978 MiB\nGPU-202b7f87-fc4d-d6da-39af-a64470fafcfb, 3284479, /mnt/local/jinhyung.kim/cosmos/envs/cosmos/bin/python, 22670 MiB\nGPU-398d238b-965d-8390-9329-8e4a86d89cc1, 3284480, /mnt/local/jinhyung.kim/cosmos/envs/cosmos/bin/python, 22770 MiB\n",
+  "completed_artifact_receipts": {
+    "original_and_joint_downloads": "/mnt/local/jinhyung.kim/cosmos/operations/download_phase3_pair_20261101T211746Z/COMPLETE.json",
+    "film_only50k": "/mnt/local/jinhyung.kim/cosmos/operations/posttrain_original200k_trajfilm_only_20261101/status.json",
+    "film_only426_eval": "/mnt/local/jinhyung.kim/cosmos/operations/eval_trajfilm_only50k_matched71_20261102T151804Z/ALL_CONDITIONS_COMPLETE.json",
+    "ego_fulltest": "/mnt/local/jinhyung.kim/cosmos/operations/eval_egocontrol_fulltest_20261101/status.json",
+    "no_shape_stopped": "/mnt/local/jinhyung.kim/cosmos/operations/phase2_no_shape_after_ego_20261101/status.json"
+  }
+}
