@@ -1,5 +1,20 @@
 # Server Migration
 
+## Bidirectional camera prediction without joint (2026-11-03)
+
+See [the replacement run and preserved scratch checkpoint](FOUNDRY_CAMERA_BIDIR5050_WV1_20261103.md).
+Scratch motion stopped at46338 with full recoverable state. Its GPUs5,6 are
+reused for fresh pretrained-motion camera training with50/50 V2M/M2V, no joint,
+bidirectional attention, video loss1 and no camera loss. Other runs continue.
+
+## Camera video-loss-weight ablation (2026-11-03)
+
+See [the interim40k results and weight-one launch note](FOUNDRY_CAMERA_VIDEO_WEIGHT1_20261103.md).
+The camera40k video/video+text evaluation is published and verified on Notion.
+The new fresh camera-prediction run changes video loss10→1, using GPUs1,7
+after evaluation finishes. Existing runs and the exact50k camera evaluation
+queue are preserved; consult operation receipts for live production status.
+
 ## Foundary side-conversation handoff (2026-11-02)
 
 Read [the consolidated handoff](FOUNDRY_SIDE_CONVERSATION_HANDOFF_20261102.md)
