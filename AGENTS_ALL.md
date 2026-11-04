@@ -1,5 +1,78 @@
 # Shared Agent Context
 
+## Full-test V2M: both Phase3 and UEM families (2026-11-04)
+
+- User explicitly selected BOTH families and requested the whole test set and
+  summary at https://app.notion.com/p/binne/Ablations-40dd2a44f44b8080aad3cda6b5fea7c8 .
+  Operation: `/scratch2/whwjdqls99/cosmos/operations/fulltest_v2m_ablations_20261104`.
+  Entrypoints: `nymeria_baselines/fulltest_v2m{,_score,_publish}.py`.
+- Frozen common cohort: all11911 accepted caption/window cases,11677 physical
+  windows,71 held-out recordings from the accepted floor-clean baseline index.
+  GT motion and centered skeletons match all71 prior reviewed cases exactly.
+  This is not the historical one-window-per-recording benchmark.
+- Frozen Phase3 steps: original200k, joint200k, camera-task200k,
+  four-task107793, hidden-FiLM92879, floor18-FiLM63864. UEM originals
+  RGB_recon/recon/all are555800/epoch349; supplied-shape three-mode UEM is
+  frozen142920/epoch89. Training continues separately; never chase live weights.
+  All inputs are video-only plus each model's native shape condition, no camera
+  trajectory, caption or head inpainting. Trajectory-only UEM is unsupported.
+- Node34/job2671154 runs the existing pool; extra single4090 base_qos jobs
+  2675047/2675048 are queued,3days each. Per-model file locks prevent duplicate
+  work. `pool_worker.sh` runs two-case acceptance, full sampling and scoring;
+  all predictions and scoring batches resume. Do not interrupt UEM training
+  2673623/node32. No original checkpoint/training source was changed.
+- GT scoring is complete: R@3=91.7031±0.1399%, FID0, raw skating14.0764cm/s,
+  mean foot penetration1.0481cm. A separate text cache extends the original by
+  six missing captions using the same frozen encoder; original entries retained.
+  Baseline sampling acceptance passed and production advanced; other models
+  are pending. No complete model metrics are claimed at this startup snapshot.
+- Tmux `fulltest_v2m_ablations_20261104` holds the pool and a five-minute
+  Notion update monitor; extra requests have matching `fulltest_v2m_extra*`
+  sessions. `scores/<model>/COMPLETE.json` plus summary hashes prove scoring,
+  root `COMPLETE.json` requires all10 models and remote Notion verification.
+  Check `*.failed`, worker logs and allocation files for live state. Use the
+  existing native35-step Phase3 and1000-step UEM samplers; generator stats and
+  Nymeria evaluator stats remain independently pinned. Physics and TMR use the
+  common23 joints and existing training-only leaf completion, including GT.
+
+## Original UEM final350 metrics update (2026-11-04)
+
+- Completed successfully and published: all71 RGB_recon and213 recon input-mode
+  predictions, physical metrics and Nymeria TMR; final trajectory/all predictions
+  reused with exact identities. COMPLETE.json and VERIFIED_PUBLICATION.json
+  passed, worker exit0; remote metrics were rechecked at06:56KST. Final RGB+traj
+  recon: MPJPE6.55cm, FID0.121541, R@3=65.62±2.71%; GT R@3=70.83±1.80%.
+  Notion heading40dd2a44-f44b-8148-ac8f-e3bdefb0ecd3. Prior launch notes below
+  are historical; no new videos were uploaded. Allocation2671154 is retained.
+
+- User requested metrics only on existing Video2motion Notion page. All four
+  original shape-predicting UEM variants now have verified epoch349/555800
+  checkpoints. Existing RGB/reconstruction metrics used341420/339832; new
+  final inference is running in retained2671154/node34, with final trajectory
+  and all-task predictions reused after identity checks. No new visuals.
+- Operation `operations/uem_final350_metrics_20261104` in Scratch2 Cosmos;
+  tmux same basename. Native matched71 inference, physics and Nymeria TMR
+  precede metrics publication/readback. Require COMPLETE.json plus
+  VERIFIED_PUBLICATION.json; this note does not claim completion. See
+  `nymeria_baselines/UEM_FINAL350_METRICS_20261104.md`. New shape-input mixed
+  trainer remains separate and is not interrupted.
+
+## Yonsei supplied-shape UEM three-mode reconstruction (2026-11-04)
+
+- User clarified training on two4090s on the same node, superseding initial
+  inference-only work. New `nymeria_baselines/train_uem_shape_modalities.py`
+  samples RGB-only/trajectory-only/both equally, always supplying the clean
+  centered SOMA30 shape. Fresh weights; original native loss/statistics,
+  global64=2x32, accumulation1,350epochs. Existing runs/overlay are untouched.
+- Joint job2673623 allocated node32; launcher first tests two-GPU save/resume
+  then starts production on success. Check actual progress, not this note.
+  Output `/scratch2/whwjdqls99/cosmos/operations/uem_shape_threeway_ddp_20261104`;
+  tmux `uem_shape_threeway_joint_20261104`. See
+  `nymeria_baselines/UEM_SHAPE_THREEWAY_20261104.md` for contract and evidence.
+- Split single-GPU jobs2671155/2671156 failed NCCL namespace acceptance and
+  were released/replaced. Idle single4090 job2671154 and unrelated requests
+  are preserved. Earlier52k inference snapshot is separate; full sweep not run.
+
 ## Both Edge Phase3 final200k checkpoints on Drive (2026-11-02)
 
 - Original September24 two-task and October2 joint-generation final200k are both
