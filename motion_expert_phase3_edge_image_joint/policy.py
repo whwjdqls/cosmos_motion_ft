@@ -6,7 +6,7 @@ import os
 from motion_expert_phase3_edge_joint.settings import RECIPE, configure_conditioning
 
 TASKS = {"video2motion": 0.4, "motimg2video": 0.4, "joint": 0.2}
-EXPERIMENT = "image_only_joint_native_losses_402020_bidirectional_clean_t0_v1"
+EXPERIMENT = "no_text_joint_native_losses_402020_bidirectional_clean_t0_v2"
 JUICE_COMMIT = "1bc0e5f34a2b47d9a4cbb5bc76821091b5994984"
 PHASE1_METADATA_SHA256 = "b2b3374b8aa1f688dc73fabb78832889c9d3e4264299f20aa8aefbdcde4ecca8"
 
@@ -22,7 +22,8 @@ def configure(conditioning_attention=None):
         joint_conditioning="first_image_only_plus_supplied_neutral_shape_no_caption",
         joint_noise="independent_specialist_schedules",
         joint_objective="sum_native_video_velocity_and_motion_x0_physical_losses",
-        caption_policy={"video2motion": "empty", "motimg2video": "caption_dropout_0.1", "joint": "empty"},
+        caption_policy={mode: "empty" for mode in TASKS},
+        cfg_dropout=0.0,
         joint_guidance="none_no_text_condition",
         juice_reference={"repository": "https://github.com/Ced3-han/JUICE-Code", "commit": JUICE_COMMIT,
                          "adapted": "independent_modality_times_and_both_targets",
@@ -35,7 +36,7 @@ def configure(conditioning_attention=None):
 def captions_for_modes(captions, modes):
     if len(captions) != len(modes) or set(modes) - set(TASKS):
         raise ValueError("Invalid image-joint task/caption batch")
-    return [caption if mode == "motimg2video" else "" for caption, mode in zip(captions, modes, strict=True)]
+    return [""] * len(modes)
 
 
 def check_checkpoint(payload):

@@ -145,7 +145,7 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
     with torch.no_grad():
         for mode in RECIPE["tasks"]:
             batch["modes"] = [mode] * len(rows)
-            batch["captions"] = ["" if mode == "video2motion" else "The camera wearer walks forward."] * len(rows)
+            batch["captions"] = [""] * len(rows)
             inputs, target = noise_batch(batch, device)
             actual = model(**inputs)
             if mode == "video2motion":
@@ -173,7 +173,7 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
     # Fixed mixed batch, including both tasks even for microbatch=1 across DDP ranks.
     batch["modes"] = ["video2motion" if (rank * len(rows) + i) % 2 == 0 else "motimg2video"
                       for i in range(len(rows))]
-    batch["captions"] = ["" if m == "video2motion" else "The camera wearer walks forward." for m in batch["modes"]]
+    batch["captions"] = [""] * len(batch["modes"])
     inputs, target = noise_batch(batch, device)
     optimizer = new_optimizer(model)
     model.train()

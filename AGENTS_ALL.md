@@ -1,5 +1,25 @@
 # Shared Agent Context
 
+## Phase3 caption-free requirement (2026-11-05, supersedes caption notes below)
+
+- User explicitly requires NEVER using captions in Phase3. All new Phase3
+  dataset outputs, noising inputs and both specialist model entrances clear
+  captions for V2M, M2V and joint. Caption dropout is0; no task receives text.
+  This does not change the frozen Phase2 specialist or its original training.
+- Fresh replacements on sep-2 retain bidirectional0/3 and directional1/7,
+  global32=2x16/accum1, MMDiT/groupedBF16, 40/40/20, all specialist sources,
+  native losses/noise,200k schedule and fixed71/every10k validation. New
+  experiment identities end in no-text v2; captioned checkpoints cannot be
+  identified as these fresh runs. Never resume captioned bridges into them.
+- User requests BOTH new runs verified BEFORE either old captioned trainer
+  stops. Native gates include all-three-task poisoned-caption invariance at
+  both specialist inputs, unchanged frozen experts, real joint gradients,
+  fresh4/save/strict reload6 and finite live production/W&B progress.
+- Local operation: cosmos_storage/operations/phase3_mmdit_no_text_handover_20261105.
+  Read its current status/COMPLETE receipts; these instructions alone do not
+  establish successful cutover. Preserve old checkpoints and immutable sources.
+  Main code updates do not alter any live frozen source snapshot.
+
 ## Foundary sep-2 joint MMDiT cutover completed (2026-11-05)
 
 - User requested overlapping replacements, then stopping old runs only once

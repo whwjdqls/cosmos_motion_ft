@@ -29,13 +29,13 @@ two-task baseline, its checkpoints, and its implementation snapshot are unchange
 ## Task contract
 
 - `video2motion`, probability 1/3: clean video conditions noisy motion; no caption.
-- `motimg2video`, probability 1/3: clean motion, caption, and first image condition noisy future video.
-- `joint`, probability 1/3: caption, neutral body shape, and first image condition both noisy motion and noisy future video.
+- `motimg2video`, probability 1/3: clean motion and first image condition noisy future video.
+- `joint`, probability 1/3: neutral body shape and first image condition both noisy motion and noisy future video.
 
 Joint generation does not receive clean motion or camera-action tokens. Motion and
 video noise levels are drawn independently from their existing specialist training
 distributions. The first video latent remains clean and is excluded from video loss.
-Motion retains all 97 supervised frames. Caption dropout remains 0.1.
+Motion retains all 97 supervised frames. Captions are empty in all Phase3 tasks; caption dropout is0.
 
 Both specialist losses apply to joint examples without halving either loss:
 video weight 10; motion feature/joint/smooth weights 1/1/5; contact/foot-velocity/

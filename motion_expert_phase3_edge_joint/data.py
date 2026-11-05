@@ -185,7 +185,7 @@ class Phase3Dataset(Dataset):
         motion, neutral = self.arrays[array]
         rng = random.Random(RECIPE["seed"] + 1000003 * (draw + 1))
         mode = sample_task(rng)
-        caption = "" if mode == "video2motion" or rng.random() < 0.1 else row["caption"]
+        caption = ""  # Phase3 uses image/motion conditioning only, never captions.
         return {"motion": torch.from_numpy(motion[row["row"]].copy()),
                 "neutral": torch.from_numpy(neutral.copy()),
                 "video": torch.from_numpy(read_latents(row["latent"]).copy()),
