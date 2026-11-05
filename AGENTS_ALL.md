@@ -1,5 +1,28 @@
 # Shared Agent Context
 
+## Foundary standard Phase1 exact71 camera→video (2026-11-05)
+
+- Completed all71, zero skips. PSNR21.499544, SSIM0.664160, LPIPS0.216270,
+  DreamSim0.136212, I3D-FVD286.677860, VideoMAE CD-FVD320.367475. Notion
+  table and seven files (six fixed videos plus ZIP) passed readback/download
+  SHA verification. COMPLETE/publication receipts are verified; evaluator
+  exited0 and GPU3 again contains only the original trainer. Launch notes
+  below are historical. The cached-input/codec/sampler limits remain.
+
+- User confirmed camera→video and explicitly approved temporary sharing of
+  own GPU3 with trainer3620615. Native EMA200k global_lora_video_io checkpoint
+  loaded; all32 new clips and both30-step camera-CFG branches passed.
+- Operation `cosmos_storage/operations/eval_phase1_video_io200k_camera2video_matched71_20261105T081600Z`
+  under local NVMe reused39 exact-window videos and generated32 missing ones.
+  Fresh all71 scoring used fixed-bundle RGB frames1–96 and six video metrics;
+  native UniPC30/shift10/cameraCFG2/textCFG1/seed0/prefix1, empty captions.
+- MP4 prediction decoding and cached initial-image preprocessing differ from
+  recent lossless Phase3 reports; report these limits. Preserve all trainers.
+  Six fixed videos plus quantitative evidence are published and verified at
+  https://app.notion.com/p/40fd2a44f44b80489a0bdecc5d9410bb . Read actual
+  METRICS_COMPLETE/COMPLETE/publication receipts for completion evidence.
+  See `nymeria_baselines/PHASE1_VIDEO_IO_CAMERA_FIXED71_20261105.md`.
+
 ## Foundary Naeive cached exact71 M2V subset (2026-11-05)
 
 - User requested Naeive Adaptation M2V on the exact71 windows and clarified
