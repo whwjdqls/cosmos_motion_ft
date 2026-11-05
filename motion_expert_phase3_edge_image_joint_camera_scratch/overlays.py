@@ -35,9 +35,6 @@ def adapt_preflight(source):
         '    # One real resumed optimizer update, not just deserialization.\n'
         '    for group in optimizer.param_groups:\n'
         '        group["lr"] = lr_for_step(13)\n')
-    source = source.replace('model.bridges.state_dict()', 'trainable_state(model)')
-    source = replace_once(source, 'model.bridges.load_state_dict(restored["bridges"], strict=True)',
-                          'load_trainable_state(model, restored["bridges"])')
     source = source.replace('.contiguous().numpy().tobytes()',
                             '.contiguous().reshape(-1).view(torch.uint8).numpy().tobytes()')
     source = source.replace('bit_exact_zero_bridge_phase1_and_phase2_parity',
@@ -60,10 +57,5 @@ def adapt_main(source):
         'int(STOP or (SCRATCH_PROBE_UPDATES > 0 and step >= start_step + SCRATCH_PROBE_UPDATES))')
     source = source.replace('clip_grad_norm_(model.bridges.parameters(),',
                             'clip_grad_norm_(trainable_parameters(model),')
-    source = replace_once(source, 'model.bridges.load_state_dict(payload["bridges"], strict=True)',
-        'model.bridges.load_state_dict(payload["bridges"], strict=True)\n'
-        '        model.motion.load_motion_state_dict(payload["motion_state"], strict=True)')
-    source = replace_once(source, '"bridges": model.bridges.state_dict(), "optimizer": optimizer.state_dict(),',
-        '"bridges": model.bridges.state_dict(), "motion_state": model.motion.motion_state_dict(), "optimizer": optimizer.state_dict(),')
     source = source.replace('Non-finite bridge gradient;', 'Non-finite bridge/motion gradient;')
     return source

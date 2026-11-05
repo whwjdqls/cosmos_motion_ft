@@ -1,5 +1,11 @@
 # Server Migration
 
+## Latest Phase3 motion-guidance2 quantitative results (2026-11-05)
+
+[Verified full71 results for the four latest Phase3 snapshots](FOUNDRY_PHASE3_LATEST_M2V_MOTIONCFG2_FIXED71_20261105.md).
+Image-joint130k and camera90k/50k/40k, motion/shape CFG2, all284 predictions
+complete. Includes EgoControl/Naive context and the Naive FVD protocol distinction.
+
 ## EgoControl fixed71 native image-CFG2 results (2026-11-05)
 
 [Verified quantitative results and exact sampling protocol](FOUNDRY_EGOCONTROL_FIXED71_CFG2_20261105.md).

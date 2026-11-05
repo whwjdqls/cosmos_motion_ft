@@ -16,7 +16,8 @@ from .data import Phase3Dataset, collate
 from .model import EdgePhase3
 from .overlays import function_source, adapt_main, adapt_preflight
 from .policy import INITIALIZATION, configure
-from .state import trainable_parameters, trainable_state, load_trainable_state, frozen_versions, assert_frozen, new_optimizer
+from .state import trainable_parameters, frozen_versions, assert_frozen, new_optimizer
+from .state import checkpoint_state, load_checkpoint_state
 
 
 def scratch_require_acceptance(receipt, fingerprint, world, microbatch):
@@ -34,12 +35,22 @@ def prepare_trainer(probe_updates=0):
     original_identity = train.source_identity
     native_source = adapt_preflight(function_source(train, 'preflight'))
     main_source = adapt_main(function_source(train, 'main'))
+    base_configure_training = train.configure_training
+
+    def configure_training(args):
+        if args.phase3_lora_rank or args.ema_decay or args.bridge_parameterization not in (None, 'shared'):
+            raise ValueError('Additional LoRA/EMA/private bridge parameters are for frozen-specialist Phase3, not the scratch recipe')
+        if args.bridge_attention_backend not in (None, 'dense') or args.bridge_precision not in (None, 'fp32'):
+            raise ValueError('Historical scratch overlays do not support the new bridge execution flags')
+        base_configure_training(args)
+
     train.__dict__.update(
         Phase3Dataset=Phase3Dataset, collate=collate, EdgePhase3=EdgePhase3,
         noise_batch=noise_batch, specialist_loss=specialist_loss,
-        trainable_parameters=trainable_parameters, trainable_state=trainable_state,
-        load_trainable_state=load_trainable_state, frozen_versions=frozen_versions,
+        trainable_parameters=trainable_parameters, trainable_state=checkpoint_state,
+        load_trainable_state=load_checkpoint_state, frozen_versions=frozen_versions,
         assert_frozen=assert_frozen, new_optimizer=new_optimizer,
+        configure_training=configure_training,
         camera_topology=topology, scratch_require_acceptance=scratch_require_acceptance,
         SCRATCH_PROBE_UPDATES=probe_updates,
     )

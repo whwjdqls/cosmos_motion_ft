@@ -5,6 +5,7 @@ import argparse
 from contextlib import ExitStack
 import fcntl
 import json
+import importlib
 import os
 from pathlib import Path
 import shutil
@@ -12,7 +13,9 @@ import socket
 import subprocess
 import sys
 import time
-import uuid as uuidlib
+
+from motion_expert_phase3_edge_joint.adapters import add_training_options, configure_training
+from motion_expert_phase3_edge_joint.settings import add_bridge_options
 
 
 def gpu_rows():
@@ -27,8 +30,25 @@ def require_empty(uuids):
             raise RuntimeError(f"GPU {uuid} is occupied (PIDs {pids.replace(chr(10), ', ')}); not queued")
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def freeze_sources(repo, snapshot):
+    from motion_expert_phase3_edge_joint.settings import sha256
+    # Include lazily loaded evaluators: later repository edits must not change
+    # the definition of the 10k/20k/... points within a running experiment.
+    packages = ("motion_expert_phase3_edge_joint", "motion_expert_phase3_edge_image_joint", "motion_expert_phase3_edge_mmdit",
+                "motion_expert_joint_attention", "motion_expert_t2m_edge", "motion_expert_phase3_edge",
+                "native_phase_training", "nymeria_world", "nymeria_baselines", "shape_aware_TMR", "migration")
+    sources = sorted({p for name in packages for p in (repo / name).rglob("*.py")})
+    sources += [repo / name for name in ("runtime_paths.py", "scripts/phase3_performance.py", "scripts/stream_phase3_wandb.py")]
+    manifest = {str(p.relative_to(repo)): sha256(p) for p in sources}
+    for path in sources:
+        destination = snapshot / path.relative_to(repo)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, destination)
+    return manifest
+
+
+def main(experiment_package="motion_expert_phase3_edge_image_joint"):
+    parser = add_training_options(add_bridge_options(argparse.ArgumentParser(description=__doc__)))
     parser.add_argument("--gpus", required=True, help="Two coordinated physical GPU indices, e.g. 2,3")
     for key in ("phase1", "phase2", "cache", "out"):
         parser.add_argument("--" + key, type=Path, required=True)
@@ -60,11 +80,12 @@ def main():
         os.environ.pop(key, None)
     from native_phase_training.compute_access import require_compute_access
     require_compute_access()
-    from .policy import configure
+    configure = importlib.import_module(experiment_package + ".policy").configure
     recipe = configure()
+    configure_training(args)
     from .train import configure_local_paths
     path_map = configure_local_paths()
-    from .data import Phase3Dataset
+    Phase3Dataset = importlib.import_module(experiment_package + ".data").Phase3Dataset
     dataset = Phase3Dataset(args.cache)
     if not dataset.index["full_training_index"]:
         raise RuntimeError("A smoke/limited cache cannot authorize production")
@@ -101,19 +122,25 @@ def main():
         from motion_expert_phase3_edge_joint.settings import atomic_json, sha256
         atomic_json(ops / "plan.json", plan)
         repo = Path(__file__).resolve().parents[1]
-        sources = sorted((repo / "motion_expert_phase3_edge_joint").glob("*.py"))
-        sources += sorted(Path(__file__).parent.glob("*.py"))
-        sources += [repo / "motion_expert_joint_attention/modality_bridge.py", repo / "scripts/phase3_performance.py"]
-        manifest = {str(p.relative_to(repo)): sha256(p) for p in sources}
-        for path in sources:
-            destination = ops / "source_snapshot" / path.relative_to(repo)
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(path, destination)
+        manifest = freeze_sources(repo, ops / "source_snapshot")
         atomic_json(ops / "source_manifest.json", manifest)
+        snapshot = ops / "source_snapshot"
+        child_environment = os.environ.copy()
+        child_environment["PYTHONPATH"] = os.pathsep.join([
+            str(snapshot / "motion_expert_t2m_edge"), str(snapshot / "motion_expert_joint_attention"),
+            str(snapshot / "nymeria_world"), str(snapshot), child_environment.get("PYTHONPATH", "")])
+        child_cwd = os.environ["COSMOS_FRAMEWORK_EDGE_ROOT"]
         command = [sys.executable, "-m", "torch.distributed.run", "--standalone", "--nnodes=1", "--nproc-per-node=2",
-                   "-m", "motion_expert_phase3_edge_image_joint.train"]
+                   "-m", experiment_package + ".train"]
         common = ["--phase1", str(args.phase1), "--phase2", str(args.phase2), "--cache", str(args.cache),
                   "--microbatch", "16", "--workers", str(args.workers)]
+        for name in ("phase3_lora_rank", "phase3_lora_alpha", "phase3_lora_lr", "phase3_lora_weight_decay",
+                     "bridge_lr", "bridge_weight_decay", "ema_decay", "bridge_parameterization",
+                     "bridge_attention_backend", "bridge_precision", "validation_config", "validation_every",
+                     "validation_batch_size", "validation_decode_batch_size"):
+            value = getattr(args, name)
+            if value is not None:
+                common += ["--" + name.replace("_", "-"), str(value)]
 
         def stage(name, extra):
             require_empty(uuids)
@@ -122,7 +149,8 @@ def main():
             atomic_json(ops / "status.json", {"stage": name, "host": host})
             print(f"[image-joint/launch] {name}: {ops / (name + '.log')}", flush=True)
             with (ops / (name + ".log")).open("x") as log:
-                subprocess.run(command + common + extra, stdout=log, stderr=subprocess.STDOUT, check=True)
+                subprocess.run(command + common + extra, stdout=log, stderr=subprocess.STDOUT, check=True,
+                               env=child_environment, cwd=child_cwd)
 
         stage("preflight", ["--preflight", "--out", str(ops / "preflight")])
         acceptance = ["--acceptance", str(ops / "preflight/acceptance.json")]
@@ -133,24 +161,29 @@ def main():
         atomic_json(ops / "status.json", {"stage": "starting_fresh_production", "host": host})
         with (ops / "training.log").open("x") as log:
             trainer = subprocess.Popen(command + common + ["--out", str(args.out), "--resume", "none", *acceptance],
-                                       stdout=log, stderr=subprocess.STDOUT)
+                                       stdout=log, stderr=subprocess.STDOUT, env=child_environment, cwd=child_cwd)
             logger = None
             try:
                 while not (args.out / "metrics.jsonl").is_file():
                     if trainer.poll() is not None:
                         raise RuntimeError(f"Trainer exited with {trainer.returncode}; see {ops / 'training.log'}")
                     time.sleep(2)
-                run_id = "p3-" + uuidlib.uuid4().hex[:20]
+                import hashlib
+                run_id = "p3-" + hashlib.sha256(str(args.out.resolve()).encode()).hexdigest()[:20]
                 with (ops / "wandb.log").open("x") as wandb_log:
-                    logger = subprocess.Popen([sys.executable, str(repo / "motion_expert_phase3_edge/stream_wandb.py"),
-                        "--run-dir", str(args.out), "--state-dir", str(ops / "wandb_state"), "--run-id", run_id,
-                        "--name", "edge-p3-videoio-imagejoint-402020-bidirectional-clean-t0",
-                        "--variant", "image_only_joint_native_losses", "--group", "edge-phase3-imagejoint-20261102",
-                        "--entity", args.wandb_entity, "--project", args.wandb_project], stdout=wandb_log, stderr=subprocess.STDOUT)
+                    logger = subprocess.Popen([sys.executable, str(snapshot / "scripts/stream_phase3_wandb.py"),
+                        "--run-dir", str(args.out), "--state-dir", str(ops / "wandb_state"),
+                        "--name", args.out.name, "--poll-seconds", "2",
+                        "--variant", recipe["experiment"], "--group", "edge-phase3-mmdit",
+                        "--entity", args.wandb_entity, "--project", args.wandb_project], stdout=wandb_log, stderr=subprocess.STDOUT,
+                        env=child_environment, cwd=child_cwd)
                     url = f"https://wandb.ai/{args.wandb_entity}/{args.wandb_project}/runs/{run_id}"
                     atomic_json(ops / "status.json", {"stage": "trainer_started", "host": host, "pid": trainer.pid, "wandb_url": url})
                     print(f"[image-joint/launch] trainer started; W&B {url} (check logger for remote sync)", flush=True)
                     code = trainer.wait()
+                    if code == 0:
+                        # Drain final training AND validation events before closing.
+                        logger.wait(timeout=60)
                 if code:
                     raise RuntimeError(f"Trainer exited with {code}; see {ops / 'training.log'}")
             finally:

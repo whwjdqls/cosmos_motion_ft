@@ -1,5 +1,28 @@
 # Edge Phase 3: joint generation ablation
 
+An opt-in [additional Phase3 LoRA and optional EMA](ADDITIONAL_LORA.md) can train
+alongside the bridges while retaining the frozen Phase1 LoRA. The defaults
+below describe the original bridge-only recipe.
+
+[Per-modality bridge parameters](MMDIT_BRIDGE.md) are available as three
+cumulative stages: `separate_norm`, `separate_norm_out`, and `mmdit` (separate
+norms, Q/K/V and output projections with joint attention). They can be tested
+with the additional LoRA disabled.
+
+The [temporally local joint-attention mask](TEMPORALLY_LOCAL_ATTENTION.md)
+restricts both same-modality and cross-modal attention to causal Wan groups,
+with the existing directional/bidirectional switch and a shape key whose query
+is self-only.
+
+An opt-in [grouped FP32 implementation and isolated H200 benchmark](GROUPED_ATTENTION_BENCHMARK.md)
+avoids the dense mask. Seven checkpointed MMDiT bridges measured66.47→46.61ms
+forward/backward (1.43×); this excludes the frozen specialists and optimizer.
+
+[BF16 attention-only and BF16 projection/attention experiments](BF16_BRIDGE_BENCHMARK.md)
+are opt-in compute modes with FP32 master storage. A new matched reference
+uses shape exclusion; shared-GPU timings favor BF16 projections plus attention,
+while attention-only conversion showed little benefit.
+
 This is a fresh, isolated variant of `motion_expert_phase3_edge`. The completed
 two-task baseline, its checkpoints, and its implementation snapshot are unchanged.
 
@@ -64,3 +87,11 @@ are computed before either stream advances. The first video latent is re-pinned
 after every step. Joint NPZ files contain `generated_motion` and `generated_video`;
 single-target files retain `generated`. Joint outputs need a paired renderer rather
 than the baseline single-target `generated` reader.
+
+## Periodic evaluation and grouped BF16
+
+The new image-joint MMDiT launcher uses grouped BF16 bridge projections and
+fixed71 V2M/M2V metrics every10k steps on the same W&B run. Sampling starts at
+32 windows per GPU with deterministic case seeds and OOM backoff. See
+[PERIODIC_VALIDATION.md](PERIODIC_VALIDATION.md) for the exact protocol,
+local assets, launch command and verification limits.

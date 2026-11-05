@@ -11,6 +11,7 @@ from self_cross import encode_reasoner_memory
 from modality_bridge import BridgeMeta, LocalModalityBridge
 from motion_expert_phase3_edge_joint.native import FullFrozenEdge
 from motion_expert_phase3_edge_joint.settings import RECIPE
+from motion_expert_phase3_edge_joint.adapters import Phase3LoRA, trainable_parameters
 
 
 def bridge_meta(mode, device):
@@ -46,14 +47,24 @@ class EdgePhase3(nn.Module):
         self.motion.requires_grad_(False).eval()
         self.bridges = nn.ModuleDict({
             str(index): LocalModalityBridge(2048, 16, 128,
-                conditioning_attention=RECIPE.get("conditioning_attention", "directional")).to(device=device, dtype=torch.float32)
+                conditioning_attention=RECIPE.get("conditioning_attention", "directional"),
+                parameterization=RECIPE.get("bridge_parameterization", "shared")).to(device=device, dtype=torch.float32)
             for index in RECIPE["bridge_layers"]
         })
+        self.phase3_lora = Phase3LoRA(self.native, RECIPE.get("phase3_lora"))
         self.activation_checkpointing = bool(activation_checkpointing)
         self.provenance = {**edge.provenance, "phase2_step": 200000,
                            "motion_tensors": len(payload["motion_state"])}
+        if RECIPE.get("bridge_parameterization", "shared") != "shared":
+            self.provenance["bridge_parameterization"] = RECIPE["bridge_parameterization"]
+        if len(self.phase3_lora):
+            self.provenance["phase3_lora"] = dict(config=self.phase3_lora.config,
+                                                  target_paths=self.phase3_lora.target_paths)
         print(f"[phase3/model] motion tensors={len(payload['motion_state'])}; "
               f"trainable bridges={sum(p.numel() for p in self.bridges.parameters()):,}", flush=True)
+        if len(self.phase3_lora):
+            print(f"[phase3/model] additional LoRA={sum(p.numel() for p in self.phase3_lora.parameters()):,}; "
+                  "Phase1 LoRA remains frozen", flush=True)
 
     def train(self, mode=True):
         super().train(mode)
@@ -187,6 +198,6 @@ class EdgePhase3(nn.Module):
         output["video"] = torch.stack([item.reshape(48, 25, 16, 16) for item in output["preds_vision"]])
         # Homogeneous task batches can leave the final opposite-direction gate
         # unused. Explicit zero edges keep DDP's parameter set stable.
-        output["anchor"] = sum(p.flatten()[0] * 0.0 for p in self.bridges.parameters())
+        output["anchor"] = sum(p.flatten()[0] * 0.0 for p in trainable_parameters(self))
         output["packed"] = packed
         return output
