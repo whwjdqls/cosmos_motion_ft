@@ -9,6 +9,7 @@ from motion_expert_phase3_edge_joint.model import bridge_meta
 from motion_expert_phase3_edge_joint.settings import RECIPE
 from .native import pack_predictions
 from .policy import CAMERA_POLICY
+from motion_expert_phase3_edge_joint.adapters import trainable_parameters
 
 
 class EdgePhase3(BaseModel):
@@ -131,7 +132,7 @@ class EdgePhase3(BaseModel):
         output["video"] = torch.stack([item.reshape(48, 25, 16, 16) for item in output["preds_vision"]])
         # Homogeneous task batches can leave the final opposite-direction gate
         # unused. Explicit zero edges keep DDP's parameter set stable.
-        output["anchor"] = sum(p.flatten()[0] * 0.0 for p in self.bridges.parameters())
+        output["anchor"] = sum(p.flatten()[0] * 0.0 for p in trainable_parameters(self))
         output["packed"] = packed
         return output
 

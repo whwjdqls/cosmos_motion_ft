@@ -1,0 +1,4 @@
+# Add to the existing Foundary Cosmos environment on each node.
+# Torch, LPIPS, SciPy, scikit-image, timm, PEFT and open-clip are provided by
+# the Foundary training/metric environment; retain their recorded versions.
+dreamsim==0.2.1

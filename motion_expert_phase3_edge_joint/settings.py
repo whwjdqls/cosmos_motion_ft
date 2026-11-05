@@ -16,6 +16,32 @@ PHASE2_RUN = (
     "nanoparity_gbs256_camhead_v1_subjectv1_w1_1_5_contact_c0p05_v1_h10_yonsei_20260921"
 )
 
+BRIDGE_PARAMETERIZATIONS = ("shared", "separate_norm", "separate_norm_out", "mmdit")
+
+
+def add_bridge_options(parser):
+    from .runtime import add_execution_options
+    add_execution_options(parser)
+    parser.add_argument("--bridge-parameterization", choices=BRIDGE_PARAMETERIZATIONS,
+                        help="Bridge parameter sharing; training defaults to shared, inference uses checkpoint")
+    return parser
+
+
+def configure_bridge(parameterization):
+    if parameterization not in BRIDGE_PARAMETERIZATIONS:
+        raise ValueError("Unknown bridge parameterization")
+    # Legacy recipes omit this key. Preserve their semantic defaults.
+    RECIPE.pop("bridge_parameterization", None)
+    if parameterization != "shared":
+        RECIPE["bridge_parameterization"] = parameterization
+
+
+def configure_checkpoint_bridge(payload, *, requested=None):
+    saved = payload.get("scheduler", {}).get("recipe", {}).get("bridge_parameterization", "shared")
+    if requested is not None and requested != saved:
+        raise ValueError("Requested bridge parameterization conflicts with checkpoint")
+    configure_bridge(saved)
+
 
 def task_probabilities(value=None):
     default = {"video2motion": 1/3, "motimg2video": 1/3, "joint": 1/3}
@@ -50,6 +76,7 @@ def configure_checkpoint_conditioning(payload, *, attention=None, clean_motion_t
     if clean_motion_timestep is not None and clean_motion_timestep != expected_time:
         raise ValueError("Requested clean motion timestep conflicts with checkpoint")
     configure_conditioning(expected_attention, expected_time)
+    configure_checkpoint_bridge(payload)
     if "tasks" in saved:
         RECIPE["tasks"] = saved["tasks"].copy()
 
@@ -119,6 +146,7 @@ def require_compute_node():
 
 
 def add_paths(parser: argparse.ArgumentParser):
+    add_bridge_options(parser)
     parser.add_argument("--conditioning-attention", choices=["directional", "bidirectional"],
                         default=os.environ.get("PHASE3_CONDITIONING_ATTENTION", "directional"))
     parser.add_argument("--clean-motion-timestep", choices=["omit", "zero"],
