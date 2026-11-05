@@ -375,6 +375,144 @@
   new model before using its selected batch; sample_model_serial.sh retained.
   No training, checkpoints, diffusion step counts, guidance or stats changed.
 
+## Foundary Naeive cached exact71 M2V subset (2026-11-05)
+
+- User requested Naeive Adaptation M2V on the exact71 windows and clarified
+  that the dataset must not be resampled. All71 recording/start windows exist
+  in the completed full-test outputs. Reused those predictions and per-case
+  metrics; no new sampling or neural evaluator inference was launched.
+- Operation `cosmos_storage/operations/eval_naeive_m2v_matched71_cached_20261105T022142Z`
+  under local NVMe. First original manifest entry for duplicate physical
+  windows, selected without output quality; all71 motion/shape inputs match
+  the fixed bundles. Full ID/seed map and source hashes are preserved.
+- Cached EMA200k UniPC30/shift10/guidance1/original seeds are retained.
+  Both subset FVDs recomputed on CPU over71 feature pairs; no full-test FVD
+  substitution. Phase3’s35-step/fixed-seed protocol is explicitly distinguished.
+- Results PSNR20.814565,SSIM0.652935,LPIPS0.230158,DreamSim0.137476,
+  I3D-FVD296.034300,VideoMAE CD-FVD313.299364. All tables, six fixed cached
+  qualitative videos and ZIP are published/readback/downloaded-SHA verified:
+  https://app.notion.com/p/40fd2a44f44b80489a0bdecc5d9410bb .
+  COMPLETE/publication markers passed. See
+  `nymeria_baselines/NAEIVE_MATCHED71_CACHED_M2V_20261105.md`.
+
+## Foundary sep-2 exact110k matched71 both directions (2026-11-05)
+
+- Completed01:42UTC:all426 predictions and requested metrics; both workers
+  and CPU finalizer exited0. Notion tables and seven attachments (six fixed
+  three-panel videos plus quantitative ZIP) passed readback/full downloaded
+  SHA verification. Root COMPLETE.json is complete_published_verified.
+  M2V PSNR19.6219/19.4856dB for bidirectional/directional; native video V2M
+  MPJPE25.0311/28.4315cm, video+text20.1491/17.9206cm. Full tables are at the
+  existing report link below. This is separate from the still-running original
+  Phase3 full-test metric computation on2/4.
+
+- User authorized idle GPUs5/6 to evaluate both active50/50 models for M2V
+  and V2M on the exact71 windows. Both110k checkpoints are hardlinked;110k
+  was the newest common saved step. Model sources/conditioning restored
+  from the actual checkpoints; original Phase3 weights are not substituted.
+- Operation `cosmos_storage/operations/eval_phase3_5050_110k_matched71_v2m_m2v_20261105T010824Z`
+  under node-local NVMe; pointer `phase3_5050_matched71_current_ops.txt`.
+  GPU5 bidirectional, GPU6 directional. Both native M2V acceptance checks
+  passed and selected batch64;71 clips/model generated. Each then performs
+  V2M/video+text metrics and M2V scoring sequentially on its GPU.
+- Report appends110k/both-directions separately to
+  https://app.notion.com/p/40dd2a44f44b80459383d6df25184a73 .
+  Startup protocol is published; live markers establish final completion.
+  See `nymeria_baselines/PHASE3_5050_110K_MATCHED71_BOTH_20261105.md`.
+  Expected142 M2V+284 V2M outputs, six fixed three-panel videos.
+- Existing trainers0/3 and1/7 and original full-test scorers2/4 are preserved.
+  A root METRICS_COMPLETE marker means all local metrics; require separate
+  remote table and attachment SHA-verified publication/COMPLETE receipts.
+
+## Foundary original full-test M2V and sep-2 100k V2M (2026-11-04)
+
+- User authorized idle GPUs2/4 for original two-task Phase3 200k full-test
+  M2V, then requested both active sep-2 models on the fixed71 V2M windows.
+  Full-test operation is `cosmos_storage/operations/eval_original_p3_m2v_fulltest_20261104T204800Z`
+  under local NVMe; see `nymeria_baselines/ORIGINAL_PHASE3_FULLTEST_VIDEO_20261104.md`.
+- Original M2V uses the original frozen specialists,11911 eligible entries
+  over71 recordings, native UniPC35/shift10/guidance1, one image and clean
+  full motion/shape. Batch64 benchmark/acceptance passed (~1clip/s/GPU).
+  Native FP32 metric kernels and DreamSim batch parity/GT-feature parity
+  passed. The existing naeive_eval environment supplies metric dependencies.
+  GPU2 generates shard0; GPU4 first performs V2M, then generates shard1.
+  Metric followers score concurrently on these same evaluation GPUs;
+  sequential manager scoring waits on the shard lock if needed. Existing
+  trainers and their contracted sources are untouched.
+- M2V report: https://app.notion.com/p/40ed2a44f44b802eb554ea55a82b4611 .
+  Startup protocol is remotely verified. Require METRICS_COMPLETE.json for
+  full local results and a separate verified publication receipt for uploads.
+- V2M operation `eval_phase3_5050_100k_v2m_20261104T204800Z` pins both arms
+  at100k, the newest common saved step when selected. It repeats video-only
+  and video+text, native35/shift3, the exact71 cases/seeds/shapes and original
+  Body23/matched-TMR protocol from50k. Its results append separately at
+  https://app.notion.com/p/40dd2a44f44b80459383d6df25184a73 .
+  Consult live markers rather than treating this launch snapshot as completion.
+- The100k comparison completed21:11UTC:284 predictions, all physical and
+  matched-TMR metrics, GT parity and remote table/ZIP SHA verification passed.
+  Video/video+text MPJPE: bidirectional26.9017/19.5434cm; directional
+  32.1353/18.1352cm. Native video FID0.384449/0.411545 respectively.
+  Its COMPLETE.json is complete_published_verified; the page preserves50k.
+  GPU4 has moved on to the original full-test M2V shard. M2V remains running.
+
+## EgoControl fixed71 native image-CFG2 evaluation (2026-11-05)
+
+- Fresh native EMA200k sampling/scoring complete for all71 fixed windows,
+  seeds0–70, zero exclusions. PSNR20.301307, SSIM0.644898, LPIPS0.221591,
+  DreamSim0.144942, FVD376.908678 (426 I3D400 segments).
+- ReferenceCFG2 is image guidance with pose retained, mapped to Edge3;
+  not motion-null guidance. UniPC35/shift10, batch1, first RGB plus Body23.
+  First seed0 output reproduces the prior full-test sample bit-for-bit.
+- Published/verified on page40fd2a44f44b80489a0bdecc5d9410bb; evaluators on1/5
+  exited, all trainers continued. Read `migration/FOUNDRY_EGOCONTROL_FIXED71_CFG2_20261105.md`.
+
+## Camera motion-stream guidance pilot (2026-11-05)
+
+- Completed/published all three pinned camera checkpoints at motion guidance
+  1/1.5/2 on eight fixed windows:48 new+24 reused outputs, zero skipped;
+  eight comparison videos and full metric/provenance evidence verified.
+- Reference blocks video queries to motion/shape keys only, preserving other
+  bridge attention. Video velocity guided; camera uses native conditional
+  velocity. No trained dropped-motion null: experimental bridge guidance.
+- Joint weight1 gains modest LPIPS; no-joint loses PSNR at higher scales.
+  Eight-window pilot does not establish full-cohort/control improvement.
+  All trainers continued; evaluator allocations released. Read
+  `migration/FOUNDRY_CAMERA_MOTIONCFG_PILOT8_20261105.md`.
+
+## Camera weight-one motion-to-video results (2026-11-04)
+
+- Published and verified three models ×71 windows, 213 M2V predictions, no skips,
+  plus eight fixed comparison videos on the motion2video Notion page. Joint w1
+  40k improves PSNR/SSIM/LPIPS/DreamSim against joint w10 40k; FVD is slightly
+  higher (386.814 vs384.048). No-joint w1 30k FVD384.412; budgets differ.
+- Native guidance1/UniPC35/shift10, same motion/shape/first image and initial
+  noise, blank captions, no GT camera. Evaluators on1/2/5 exited; all training
+  continued. Read `migration/FOUNDRY_CAMERA_WV1_M2V_MATCHED71_20261104.md`.
+
+## Foundary camera weight-one matched71 evaluation (2026-11-04)
+
+- Completed and Notion-published: joint camera/video-weight1 step40k and
+  no-joint camera/video-weight1 step30k, 71 windows and 284 predictions, zero
+  skipped. Video/video+text MPJPE is23.2132/17.8636cm and27.3021/19.1894cm.
+- Unequal budgets prevent isolating the joint-task effect. Matched40k weight1
+  versus weight10 improves MPJPE by6.8580/4.6977cm. Exact matched evaluator
+  91f9d8… and reference GT checks passed. All trainers continued; evaluation
+  workers on1/5 exited and GPU memory was released.
+- Read `migration/FOUNDRY_CAMERA_WV1_MATCHED71_20261104.md` and local
+  operation `eval_camera_wv1_latest_matched71_20261104T2146Z/COMPLETE.json`.
+
+## Exact Phase1 video-I/O EMA200k Drive handoff (2026-11-04)
+
+- Uploaded and verified the exact b2b3374b… Phase1 required by the camera
+  trainers, including all original DCP/config/contract files and EMA video I/O.
+  Drive folder: https://drive.google.com/drive/folders/1d49-FqpeYu9TW8sJGkCnfzLLBjvxgf5E .
+- Archive27.14GB; SHA25694f237c198d1777d8ce114f959fc608dda444b883b2c53a8121e366ff9117e50.
+  Source payload SHA256 and Drive size/MD5 checks pass; all small handoff files
+  were downloaded and SHA256 verified. READY.json marks completion.
+- User confirmed minsu1206 uses existing Drive access. Follow RESTORE.md and
+  `migration/PHASE1_VIDEO_IO_EMA200K_DRIVE_20261104.md` for download/restore.
+  This is global_lora_video_io, distinct from standard LoRA-only two-task200k.
+
 ## Full-test V2M: both Phase3 and UEM families (2026-11-04)
 
 - User explicitly excluded Nano evaluation. The frozen ten-model full-test
