@@ -10,7 +10,7 @@ from motion_expert_phase3_edge_image_joint.model import EdgePhase3
 from motion_expert_phase3_edge_image_joint.train import configure_local_paths
 from motion_expert_phase3_edge_joint.settings import RECIPE, sha256
 from .data import Phase3Dataset
-from .policy import configure, TASKS
+from .policy import configure, TASKS, attention_policy
 
 
 def prepare_trainer(probe_updates=0):
@@ -27,8 +27,8 @@ def prepare_trainer(probe_updates=0):
     original_identity = train.source_identity
 
     def source_identity(args, dataset, model):
-        if RECIPE["tasks"] != TASKS or RECIPE["conditioning_attention"] != "directional":
-            raise ValueError("This run requires directional conditioning and two equally weighted tasks")
+        if RECIPE["tasks"] != TASKS or RECIPE["conditioning_attention"] != attention_policy():
+            raise ValueError("This run requires its selected conditioning policy and two equally weighted tasks")
         contract = original_identity(args, dataset, model)
         contract["mmdit_two_task_implementation"] = {p.name: sha256(p) for p in sorted(Path(__file__).parent.glob("*.py"))}
         contract["image_joint_model_sha256"] = sha256(Path(inspect.getfile(EdgePhase3)))
@@ -46,7 +46,7 @@ def main():
     args, rest = parser.parse_known_args()
     if args.probe_updates < 0:
         raise ValueError("Probe updates must be nonnegative")
-    for name, value in (("conditioning-attention", "directional"), ("clean-motion-timestep", "zero")):
+    for name, value in (("conditioning-attention", attention_policy()), ("clean-motion-timestep", "zero")):
         if "--" + name not in rest:
             rest += ["--" + name, value]
     train = prepare_trainer(args.probe_updates)

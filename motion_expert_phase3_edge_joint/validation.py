@@ -238,13 +238,23 @@ def maybe_validate(args, model, step, fingerprint, rank, world, log):
             except Exception as exc:
                 error = f"rank{rank}: {type(exc).__name__}: {exc}"
             collective_errors(error)
+        # The native Wan loader synchronizes weights across the training group.
+        # All ranks must enter it before rank zero starts scoring.
+        vae, error = None, None
+        if not done:
+            try:
+                from .validation_metrics import load_scoring_vae
+                vae = load_scoring_vae(config)
+            except Exception as exc:
+                error = f"rank{rank} VAE initialization: {type(exc).__name__}: {exc}"
+            collective_errors(error)
         error = None
         if rank == 0:
             try:
                 if not done:
                     from .validation_metrics import score
                     torch.cuda.empty_cache()
-                    metrics = score(config, records, folder, model.provenance["phase2_contract"], policy)
+                    metrics = score(config, records, folder, model.provenance["phase2_contract"], policy, vae=vae)
                     event = dict(kind="validation", validation_id=signature, step=step,
                                  validation={**metrics, "seconds": time.monotonic() - started, "windows": len(records)})
                     atomic_json(complete, event)
@@ -256,5 +266,6 @@ def maybe_validate(args, model, step, fingerprint, rank, world, log):
             except Exception as exc:
                 error = f"rank0 scoring: {type(exc).__name__}: {exc}"
         collective_errors(error)
+        del vae
     gc.collect()
     torch.cuda.empty_cache()
