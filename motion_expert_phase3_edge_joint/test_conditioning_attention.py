@@ -1,11 +1,7 @@
 """Actual cross-modal influence, legacy parity and execution-cache correctness."""
 import copy
 import json
-import subprocess
-import sys
-import types
 import unittest
-from pathlib import Path
 
 import torch
 from modality_bridge import BridgeMeta, LocalModalityBridge
@@ -23,24 +19,26 @@ def metadata(mode):
 
 
 class ConditioningTests(unittest.TestCase):
-    def test_default_preserves_legacy_outputs_with_nonzero_gates(self):
-        old=types.ModuleType('_legacy_bridge');sys.modules[old.__name__]=old
-        source=subprocess.check_output(['git','-C',str(Path(__file__).resolve().parents[1]),'show','f9043d3:motion_expert_joint_attention/modality_bridge.py'],text=True)
-        exec(compile(source,'legacy_bridge.py','exec'),old.__dict__)
-        for mode in ['video2motion','motimg2video']:
-            torch.manual_seed(12);a=old.LocalModalityBridge(8,2,4)
-            torch.manual_seed(12);b=LocalModalityBridge(8,2,4)
-            with torch.no_grad():a.gate_g.fill_(.2);a.gate_m.fill_(.3)
-            b.load_state_dict(a.state_dict());g=torch.randn(3,8);m=torch.randn(5,8);meta=metadata(mode)
-            for x,y in zip(a(g,m,meta),b(g,m,meta)):self.assertTrue(torch.equal(x,y))
+    def test_zero_gates_preserve_inputs_with_local_mask(self):
+        # Nonzero-gate equality to the old global mask is intentionally no
+        # longer an invariant. Zero-gate specialist identity still is.
+        for mode in ['video2motion','motimg2video','joint']:
+            for policy in ['directional','bidirectional']:
+                bridge=LocalModalityBridge(8,2,4,policy)
+                g,m=torch.randn(3,8),torch.randn(5,8)
+                for x,y in zip(bridge(g,m,metadata(mode)),(g,m)):
+                    self.assertTrue(torch.equal(x,y))
 
     def test_bidirectional_reverses_local_edges_and_shape_edges(self):
         for mode in ['video2motion','motimg2video']:
             b=LocalModalityBridge(8,2,4,'bidirectional');meta=metadata(mode);mask=b._attention_mask(meta)
-            self.assertTrue(torch.equal(mask,mask.T))
+            temporal=torch.tensor([0,1,2,4,5,6,7])
+            local=mask[temporal][:,temporal]
+            self.assertTrue(torch.equal(local,local.T))
             self.assertTrue(mask[1,3+2]);self.assertTrue(mask[3+2,1])
             self.assertFalse(mask[1,3+4]);self.assertFalse(mask[3+4,1])
-            self.assertTrue(mask[:3,3].all());self.assertTrue(mask[3,:3].all())
+            self.assertFalse(mask[:3,3].any());self.assertFalse(mask[3,:3].any())
+            self.assertEqual(mask[3].sum().item(),1)
 
     def test_clean_queries_receive_target_information_only_in_bidirectional_mode(self):
         for mode in ['video2motion','motimg2video']:

@@ -162,6 +162,8 @@ def measure(joints, target, skate):
     result['head_error_cm'] = float(np.linalg.norm(joints[:, 6]-target[:, 6], axis=-1).mean())*100
     other = [j for j in range(23) if j != 6]
     result['nonhead22_mpjpe_cm'] = float(np.linalg.norm(joints[:, other]-target[:, other], axis=-1).mean())*100
+    from nymeria_baselines.motion_error_metrics import extra_metrics
+    result.update(extra_metrics(joints, target, fps=20.))
     assert all(np.isfinite(v) for v in result.values())
     return result
 

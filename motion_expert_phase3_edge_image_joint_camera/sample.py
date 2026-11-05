@@ -10,6 +10,7 @@ from motion_expert_phase3_edge_joint.settings import add_paths, atomic_json, req
 from .model import EdgePhase3
 from .policy import CAMERA_POLICY, configure
 from motion_expert_phase3_edge_image_joint.policy import captions_for_modes
+from motion_expert_phase3_edge_joint.adapters import configure_checkpoint, load_trainable_state
 
 
 @torch.no_grad()
@@ -67,6 +68,7 @@ def main():
     parser.add_argument('--cases', type=Path, required=True)
     parser.add_argument('--mode', choices=['video2motion','motimg2video','joint'], required=True)
     parser.add_argument('--steps', type=int, default=35)
+    parser.add_argument('--weights', choices=['raw', 'ema'], default='raw')
     args = parser.parse_args()
     require_compute_node()
     if not args.out.resolve().is_relative_to('/mnt/local'):
@@ -74,10 +76,11 @@ def main():
     payload = torch.load(args.checkpoint, map_location='cpu', mmap=True, weights_only=False)
     if payload['scheduler']['recipe'].get('camera_prediction') != CAMERA_POLICY:
         raise ValueError('Not this camera-prediction checkpoint')
+    configure_checkpoint(payload, bridge_parameterization=args.bridge_parameterization)
     model = EdgePhase3(args.phase1,args.phase2,device='cuda',activation_checkpointing=False)
     if payload['sources']['phase1_metadata_sha256'] != model.provenance['phase1_metadata_sha256'] or payload['sources']['phase2_contract'] != model.provenance['phase2_contract']:
         raise ValueError('Checkpoint specialist identity mismatch')
-    model.bridges.load_state_dict(payload['bridges'],strict=True)
+    load_trainable_state(model,payload,weights=args.weights)
     model.requires_grad_(False).eval()
     args.out.mkdir(parents=True,exist_ok=True)
     records = json.loads(args.cases.read_text())
@@ -94,6 +97,7 @@ def main():
             raise FileExistsError(target)
         np.savez(target,**{k:v[0].cpu().numpy() for k,v in result.items()},seed=row['seed'])
         atomic_json(args.out/'manifest.json',dict(checkpoint=str(args.checkpoint),step=payload['step'],
+                    weights=args.weights,
                     mode=args.mode,steps=args.steps,camera_input='pure_noise_no_GT_camera_at_inference',
                     camera_prediction=CAMERA_POLICY))
 

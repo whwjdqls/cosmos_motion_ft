@@ -64,11 +64,27 @@ def main(a):
   embeddings.append(m);texts.append(t);metrics+=physical
   if start%160==0:progress(target,'scoring',completed=start+len(batch),total=len(rows),seconds=time.monotonic()-started)
  motion,text=np.concatenate(embeddings),np.concatenate(texts)
+ ids=[r['id'] for r in rows]
+ text_reference=dict(policy='GT canonical text embeddings',absolute_tolerance=1e-6)
  if a.model=='GT':gt=motion
  else:
+  gt_summary=read(a.out/'scores/GT/summary.json')
+  assert gt_summary['text_cache_sha256']==sha(text_cache),'GT/model text cache mismatch'
+  assert gt_summary['evaluator_sha256']==sha(cfg['evaluator']['evaluator_checkpoint']),'GT/model evaluator mismatch'
+  assert gt_summary['input_configuration_sha256']==sha(a.out/'configuration.json'),'GT/model cohort mismatch'
   with np.load(a.out/'scores/GT/embeddings.npz') as z:
-   gt=z['motion'].copy();assert np.array_equal(text,z['text'])
- ids=[r['id'] for r in rows];retrieval,groups=retrieval_details(motion,text,ids)
+   gt=z['motion'].copy();canonical_text=z['text'].copy()
+   assert z['case_id'].tolist()==ids,'GT/model case order mismatch'
+  # FP32 text-encoder kernels can differ slightly across A6000/4090/A100.
+  # Keep one common text reference after a strict identity/tolerance check;
+  # cached per-model embeddings remain untouched for the numerical audit.
+  np.testing.assert_allclose(text,canonical_text,rtol=0,atol=1e-6)
+  text_reference.update(max_abs_difference=float(np.max(np.abs(text-canonical_text))),
+      max_row_l2_difference=float(np.linalg.norm(text-canonical_text,axis=-1).max()),
+      cache_sha256=gt_summary['text_cache_sha256'])
+  text=canonical_text
+ save(target/'text_reference_audit.json',text_reference)
+ retrieval,groups=retrieval_details(motion,text,ids)
  npz(target/'embeddings.npz',motion=motion,text=text,case_id=np.array(ids))
  save(target/'retrieval_groups.json',groups);save(target/'per_case.json',metrics)
  values={k:float(np.mean([r['metrics'][k] for r in metrics])) for k in metrics[0]['metrics']}
@@ -79,7 +95,8 @@ def main(a):
       recording_balanced_physical=balanced,FID=fid(motion,gt),retrieval=retrieval,
       input_configuration_sha256=sha(a.out/'configuration.json'),source_sha256=sha(__file__),
       evaluator_sha256=sha(cfg['evaluator']['evaluator_checkpoint']),
-      text_cache_sha256=sha(text_cache),text_cache_provenance=provenance,completed=time.time())
+      text_cache_sha256=sha(text_cache),text_cache_provenance=provenance,
+      text_reference_audit=text_reference,completed=time.time())
  save(target/'summary.json',result);save(target/'COMPLETE.json',dict(cases=len(rows),summary_sha256=sha(target/'summary.json')))
  print(json.dumps(result),flush=True)
 
