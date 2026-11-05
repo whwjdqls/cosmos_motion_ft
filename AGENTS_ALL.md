@@ -35,6 +35,26 @@
 - Final experiment report and W&B links remotely verified:
   https://app.notion.com/p/40fd2a44f44b814fb925c3d86c250284 .
 
+## Both MMDiT runs stopped at first validation (2026-11-05 17:26 UTC audit)
+
+- Directional1/7 and bidirectional2/3 each reached10000, saved complete schema2
+  checkpoints (98 bridge tensors/optimizer states,2 rank RNGs,next draw320000),
+  and sampled all71 V2M +71 M2V cases. Neither completed metric scoring.
+- Both crashed around16:41–16:43 UTC with a30-minute NCCL timeout: rank0-only
+  scoring loaded the Wan VAE, whose constructor synchronizes states across the
+  training process group; rank1 was instead gathering the scoring error status.
+  This was a validation implementation bug, not a completed training run.
+- Working-copy fix initializes the VAE on all ranks before rank0 scoring and
+  passes that instance to the scorer. Ten CPU validation tests pass, including
+  a two-rank regression with a collective VAE-loader stub. Native GPU verification
+  and controlled resume/source-contract migration are still pending.
+- No training is currently running for these experiments. Their W&B JSONL
+  loggers remain alive but do not indicate live trainers. All8 GPUs were occupied
+  by other researchers at the audit; do not share or terminate those processes.
+- Operation `phase3_mmdit_bf16_validation_20261105/CURRENT.json` now points to
+  `VALIDATION_FAILURE_AUDIT_20261105.json`. The earlier RUNNING_VERIFIED receipt
+  is historical. Old stopped checkpoint steps147929/66369/111863 remain present.
+
 ## Foundary standard Phase1 exact71 camera→video (2026-11-05)
 
 - Completed all71, zero skips. PSNR21.499544, SSIM0.664160, LPIPS0.216270,
@@ -97,7 +117,29 @@
 
 ## Grouped BF16 Phase3 with periodic fixed71 metrics (2026-11-05)
 
-- Final user steering supersedes the initially prepared40/40/20 bidirectional
+- **Production is running** after both fresh/reload probes passed: directional
+  GPUs1/7 W&B `p3-e66f3888bbc921aaf511`; bidirectional GPUs2/3 W&B
+  `p3-d78d31e92cb5a3fee577`. Both fresh MMDiT bridges,50/50,no joint, global32
+  (16/GPU), groupedBF16, clean E(0), video weight10, LR2e-4/cosine200k,
+  LoRA/EMA off. Keepers were released only after live production/W&B evidence.
+  Read `RUNNING_VERIFIED.json` in the operation for current paths/receipts.
+
+- Latest steering supersedes0/4: launch **directional1/7 + bidirectional2/3**,
+  both50/50 V2M/M2V with no joint objective. User authorized replacing the two
+  remaining camera jobs without an empty-GPU gap. New preflight processes and
+  2GiB CUDA keepers attached before rank0SIGUSR1 to old jobs; keepers persist
+  across disposable probes and release after production/W&B startup.
+- Old checkpoints verified: image-joint baseline147929 (0/4), camera weight1
+  66369 (1/7), camera weight10 111863 (2/3), all optimizer/RNG/data cursors intact.
+  GPU4/0 were reclaimed by other researchers after the first baseline stop;
+  none of those foreign jobs was touched. Current four-GPU handover held1/2/3/7.
+- Both new two-GPU native preflights passed, including zero-gate expert parity,
+  frozen guards, mixed backward/overfit and full optimizer/RNG roundtrip.
+  Initial failed preflights used a default restored/ path alias; retries inherit
+  the exact old-run local path map (both legacy Cosmos prefixes→local Cosmos).
+  Check `takeover_*_retry1/status.json` for production/W&B state before reporting.
+
+- Earlier intermediate steering superseded the initially prepared40/40/20 bidirectional
   run: replace the image-joint trainer on GPUs0/4 with **directional50/50 V2M/M2V,
   no joint objective**, fresh MMDiT/groupedBF16. Dedicated package
   `motion_expert_phase3_edge_mmdit` pins that recipe in trainer and spawned data
@@ -108,7 +150,8 @@
   W&B, with large sampling batches. New image-joint `launch_mmdit` selects
   per-modality MMDiT, grouped `bf16_bridge`, validation every10000, sampling32
   per GPU and VAE decode4. Other recipe settings, frozen sources, shape
-  exclusion, optional LoRA/EMA off defaults are retained. Existing jobs unchanged.
+  exclusion, optional LoRA/EMA off defaults are retained. The final takeover
+  and two-task selection are recorded above.
 - `validation.py` shards71 held-out windows across training ranks, scores on
   rank0, restores training RNG/modes, checkpoints before evaluation and resumes
   pending milestones idempotently. These are test-monitoring results, with no
@@ -124,8 +167,9 @@
 - CPU/DDP tests cover OOM retries, RNG/gradient preservation, full71 sharding,
   collective failure, checkpoint-step replay, W&B axes/final draining. A frozen
   source snapshot is actually used by the launcher, including lazy evaluators.
-  Full fresh two-GPU production acceptance remains pending allocation; no new
-  training run has started. Never reclaim5/6 from another researcher's jobs.
+  Initial implementation was prepared before allocation; the final two-GPU
+  acceptances and production starts are recorded above. Never reclaim GPUs
+  from another researcher's jobs.
 - Prepared config/launch plan and smoke receipts:
   `cosmos/operations/phase3_mmdit_bf16_validation_20261105`; instructions in
   `motion_expert_phase3_edge_joint/PERIODIC_VALIDATION.md`.

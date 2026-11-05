@@ -1,8 +1,10 @@
 # Grouped BF16 training and periodic fixed71 monitoring
 
-The final user-selected run uses `motion_expert_phase3_edge_mmdit.launch`:
-**directional conditioning,50% V2M /50% M2V, no joint objective**, on GPUs0/4.
-It retains clean-motion E(0), video weight10 and the optimization settings below.
+The final user-selected runs use `motion_expert_phase3_edge_mmdit`:
+**directional on GPUs1/7 and bidirectional on GPUs2/3, both50% V2M /50% M2V,
+no joint objective**. They retain clean-motion E(0), video weight10 and the
+optimization settings below. An initial0/4 plan was superseded after GPU4 was
+taken by another researcher during the first handover.
 The image-joint launcher described below remains a separate supported recipe.
 
 The new `motion_expert_phase3_edge_image_joint.launch_mmdit` entry point selects
@@ -86,8 +88,9 @@ python -m motion_expert_phase3_edge_image_joint.launch_mmdit \
   --validation-config /mnt/local/.../validation.json
 ```
 
-For the requested directional two-task run replace the command module above
-with `motion_expert_phase3_edge_mmdit.launch`; its spawned DataLoader workers
+For either requested two-task run replace the command module above with
+`motion_expert_phase3_edge_mmdit.launch --conditioning-attention directional`
+or `--conditioning-attention bidirectional`. Its spawned DataLoader workers
 also restore the50/50 policy, so no worker can revert to joint sampling.
 
 Select two coordinated, empty GPUs. The launcher checks occupancy, performs a
@@ -98,5 +101,9 @@ batch32 is an independent setting.
 
 On sep-1 the prepared assets/settings are recorded under
 `/mnt/local/jinhyung.kim/cosmos/operations/phase3_mmdit_bf16_validation_20261105/`.
-Native GPU and CPU test evidence lives there; no production run has been started
-by this implementation. The other user's jobs on5/6 must not be interrupted.
+Native GPU and CPU test evidence lives there. `takeover_plan.json` and the
+`takeover_*_retry1/status.json` files identify the live production launch stages.
+The user explicitly authorized launching replacements while their old jobs were
+still resident, then stopping those old jobs. CUDA keepers preserve occupancy
+between disposable stages and are released once production and W&B are active.
+Other researchers' processes are never stopped/shared by this handover.

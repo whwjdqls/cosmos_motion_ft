@@ -34,6 +34,22 @@ def test_departed_old_process_is_allowed_but_no_new_process():
     with patch.object(launch,"resident_pids",return_value=set()),patch.object(launch.subprocess,"check_output",return_value="120000"):
         launch.require_available(["gpu0"],{"gpu0":{11:(os.getuid(),"start")}})
 
+
+def test_two_task_entrypoint_attention_survives_shared_launcher(monkeypatch):
+    from motion_expert_phase3_edge_mmdit.policy import configure as configure_two_task
+    previous=copy.deepcopy(RECIPE)
+    try:
+        monkeypatch.setenv("PHASE3_MMDIT_CONDITIONING_ATTENTION","bidirectional")
+        monkeypatch.setenv("PHASE3_IMAGE_JOINT_CONDITIONING_ATTENTION","directional")
+        assert launch.configure_attention_policy("motion_expert_phase3_edge_mmdit",None)=="bidirectional"
+        assert configure_two_task()["conditioning_attention"]=="bidirectional"
+        assert RECIPE["tasks"]=={"video2motion":.5,"motimg2video":.5}
+        assert launch.configure_attention_policy("motion_expert_phase3_edge_mmdit","directional")=="directional"
+        assert configure_two_task()["conditioning_attention"]=="directional"
+        assert RECIPE["tasks"]=={"video2motion":.5,"motimg2video":.5}
+    finally:
+        RECIPE.clear();RECIPE.update(previous)
+
 @pytest.mark.parametrize("attention",["directional","bidirectional"])
 def test_joint_policy_roundtrip_and_worker_initialization(attention,monkeypatch):
     previous=copy.deepcopy(RECIPE)

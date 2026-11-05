@@ -74,6 +74,18 @@ def require_available(uuids, residents):
             raise RuntimeError(f"Less than64GiB free on coordinated shared GPU {uuid}")
 
 
+def configure_attention_policy(experiment_package, requested):
+    two_task = experiment_package == "motion_expert_phase3_edge_mmdit"
+    key = "PHASE3_MMDIT_CONDITIONING_ATTENTION" if two_task else "PHASE3_IMAGE_JOINT_CONDITIONING_ATTENTION"
+    attention = requested or os.environ.get(key, "directional" if two_task else "bidirectional")
+    if attention not in {"directional", "bidirectional"}:
+        raise ValueError("Unknown conditioning attention policy")
+    os.environ["PHASE3_IMAGE_JOINT_CONDITIONING_ATTENTION"] = attention
+    if two_task:
+        os.environ["PHASE3_MMDIT_CONDITIONING_ATTENTION"] = attention
+    return attention
+
+
 def freeze_sources(repo, snapshot):
     from motion_expert_phase3_edge_joint.settings import sha256
     # Include lazily loaded evaluators: later repository edits must not change
@@ -126,10 +138,7 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
         os.environ.pop(key, None)
     from native_phase_training.compute_access import require_compute_access
     require_compute_access()
-    attention = args.conditioning_attention or ("directional" if experiment_package == "motion_expert_phase3_edge_mmdit" else "bidirectional")
-    if experiment_package == "motion_expert_phase3_edge_mmdit" and attention != "directional":
-        raise ValueError("The two-task MMDiT package requires directional conditioning")
-    os.environ["PHASE3_IMAGE_JOINT_CONDITIONING_ATTENTION"] = attention
+    attention = configure_attention_policy(experiment_package, args.conditioning_attention)
     configure = importlib.import_module(experiment_package + ".policy").configure
     recipe = configure()
     configure_training(args)
