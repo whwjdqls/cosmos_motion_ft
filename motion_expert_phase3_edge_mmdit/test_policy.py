@@ -25,6 +25,10 @@ def test_sampling_never_selects_joint_and_both_tasks_remain_active():
         assert settings.RECIPE["conditioning_attention"] == "directional"
         assert settings.RECIPE["clean_motion_timestep"] == "zero"
         assert settings.RECIPE["video_weight"] == 10
+        with patch.dict(os.environ, {"PHASE3_MMDIT_CONDITIONING_ATTENTION": "bidirectional"}):
+            configure()
+            assert settings.RECIPE["conditioning_attention"] == "bidirectional"
+            assert settings.RECIPE["tasks"] == TASKS and "joint" not in settings.RECIPE["tasks"]
     finally:
         settings.RECIPE.clear(); settings.RECIPE.update(previous)
 
