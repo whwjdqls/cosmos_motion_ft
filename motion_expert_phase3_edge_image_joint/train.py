@@ -19,7 +19,7 @@ from .policy import configure
 
 
 def install(train):
-    configure()
+    expected_attention = configure()["conditioning_attention"]
     train.Phase3Dataset = Phase3Dataset
     train.EdgePhase3 = EdgePhase3
     train.noise_batch = noise_batch
@@ -27,8 +27,8 @@ def install(train):
     original_identity = train.source_identity
 
     def source_identity(args, dataset, model):
-        if RECIPE["conditioning_attention"] != "bidirectional" or RECIPE["clean_motion_timestep"] != "zero":
-            raise ValueError("This experiment requires bidirectional conditioning and clean-motion E_M(0)")
+        if RECIPE["conditioning_attention"] != expected_attention or RECIPE["clean_motion_timestep"] != "zero":
+            raise ValueError("This experiment requires its selected conditioning policy and clean-motion E_M(0)")
         contract = original_identity(args, dataset, model)
         contract["image_joint_implementation"] = {
             p.name: sha256(p) for p in sorted(Path(__file__).parent.glob("*.py"))}
@@ -201,11 +201,13 @@ def main():
     import sys
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--probe-updates", type=int, default=0)
+    parser.add_argument("--conditioning-attention", choices=("directional", "bidirectional"))
     args, rest = parser.parse_known_args()
     if args.probe_updates < 0:
         raise ValueError("--probe-updates must be nonnegative")
-    if "--conditioning-attention" not in rest:
-        rest += ["--conditioning-attention", "bidirectional"]
+    attention = args.conditioning_attention or os.environ.get("PHASE3_IMAGE_JOINT_CONDITIONING_ATTENTION", "bidirectional")
+    os.environ["PHASE3_IMAGE_JOINT_CONDITIONING_ATTENTION"] = attention
+    rest += ["--conditioning-attention", attention]
     if "--clean-motion-timestep" not in rest:
         rest += ["--clean-motion-timestep", "zero"]
     train = prepare_trainer(args.probe_updates)

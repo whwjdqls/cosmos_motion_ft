@@ -1,5 +1,40 @@
 # Shared Agent Context
 
+## Foundary sep-2 joint MMDiT cutover completed (2026-11-05)
+
+- User requested overlapping replacements, then stopping old runs only once
+  BOTH new runs are correctly training. User explicitly selected40/40/20
+  V2M/M2V/joint for BOTH directional and bidirectional models.
+- New bidirectional GPUs0/3, W&B p3-b6b71e1630ea628544fe; new directional
+  GPUs1/7, W&B p3-5caf5e94d92b872de27e. Fresh200k, global32=2x16/no accumulation,
+  same frozen standard Phase1 video-I/O EMA200k and selected Phase2 200k.
+  Seven MMDiT bridges, grouped bf16_bridge, shape excluded from bridges,
+  clean E(0), video weight10, no additional Phase3 LoRA or EMA.
+- Both native DDP/joint preflights passed, fresh save4/strict resume6 passed,
+  then both production streams passed20 updates/all three tasks/remote W&B.
+  Only then old rank0s receivedSIGUSR1. Old bidirectional stopped134993 and
+  old directional137999; full optimizer56/bridges56/two-rank RNG/data-cursor
+  checkpoints plus prior130k milestones are hardlinked in the operation.
+  No old worker/logger remains. Do not auto-resume the stopped50/50 jobs.
+- Actual later snapshot12:56UTC:both new runs160 updates, about1.3s/update
+  after cutover. This is a snapshot, not a live status promise.
+- Operation `cosmos_storage/operations/phase3_mmdit_joint_handover_20261105`
+  under local NVMe has COMPLETE, RUNNING_VERIFIED, REMOTE_WANDB_VERIFIED,
+  OLD_RUNS_PRESERVED, plan and evidence. No new shared-storage transfer.
+- Active implementation is in
+  `/mnt/local/jinhyung.kim/worktrees/phase3_mmdit_replacement_20261105/cosmos_motion_ft`,
+  branch `foundary/sep2-mmdit-replacement-20261105`, code commit e55efe4.
+  Both trainers use immutable per-run launch/source_snapshot exports.
+  Directional joint support and coordinated sharing are new on that branch;
+  do not evaluate/resume using an older hardcoded-bidirectional image-joint policy.
+- Fixed71 monitoring every10k, batch32/GPU, decode4, native35/CFG1/seeds0-70;
+  exact matched TMR and EgoControl I3D rgb_imagenet SHA2609088c... verified.
+  FVD uses426 segment descriptors, distinct from71-descriptor CDFVD reports.
+  Existing naeive_eval inherits cosmos's Torch; CUDNN_HOME/CUBLAS_HOME are
+  set locally for Transformer Engine.30 focused tests and real GT acceptance passed.
+- Final experiment report and W&B links remotely verified:
+  https://app.notion.com/p/40fd2a44f44b814fb925c3d86c250284 .
+
 ## Foundary standard Phase1 exact71 camera→video (2026-11-05)
 
 - Completed all71, zero skips. PSNR21.499544, SSIM0.664160, LPIPS0.216270,

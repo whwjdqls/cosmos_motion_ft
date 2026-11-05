@@ -30,6 +30,50 @@ def require_empty(uuids):
             raise RuntimeError(f"GPU {uuid} is occupied (PIDs {pids.replace(chr(10), ', ')}); not queued")
 
 
+def resident_pids(uuid):
+    text = subprocess.check_output(["nvidia-smi", "-i", uuid, "--query-compute-apps=pid", "--format=csv,noheader,nounits"], text=True)
+    return {int(value.strip()) for value in text.splitlines() if value.strip().isdigit()}
+
+
+def process_identity(pid):
+    root = Path("/proc") / str(pid)
+    # proc stat's comm field may contain spaces or parentheses.
+    start = root.joinpath("stat").read_text().rsplit(")", 1)[1].split()[19]
+    return root.stat().st_uid, start
+
+
+def coordinated_residents(uuids, value):
+    """Explicit owned-PID sharing only; never broaden another launcher's allocation."""
+    if not value:
+        return {}
+    try:
+        supplied = [int(item) for item in value.split(",")]
+    except ValueError as error:
+        raise ValueError("--shared-gpu-pids must list explicitly coordinated resident PIDs") from error
+    if any(pid <= 0 for pid in supplied) or len(set(supplied)) != len(supplied):
+        raise ValueError("Expected distinct positive coordinated PIDs")
+    actual = {uuid: resident_pids(uuid) for uuid in uuids}
+    if set(supplied) != set().union(*actual.values()):
+        raise RuntimeError("Coordinated PID list must exactly match residents of the selected GPUs")
+    identities = {pid: process_identity(pid) for pid in supplied}
+    if any(uid != os.getuid() for uid, _ in identities.values()):
+        raise RuntimeError("Coordinated sharing may only overlap this user's trainers")
+    return {uuid: {pid: identities[pid] for pid in pids} for uuid, pids in actual.items()}
+
+
+def require_available(uuids, residents):
+    if not residents:
+        return require_empty(uuids)
+    for uuid in uuids:
+        expected = residents[uuid]
+        for pid in resident_pids(uuid):
+            if pid not in expected or process_identity(pid) != expected[pid]:
+                raise RuntimeError(f"Uncoordinated or replaced GPU process {pid} on {uuid}")
+        free = int(subprocess.check_output(["nvidia-smi", "-i", uuid, "--query-gpu=memory.free", "--format=csv,noheader,nounits"], text=True).strip())
+        if free < 65536:
+            raise RuntimeError(f"Less than64GiB free on coordinated shared GPU {uuid}")
+
+
 def freeze_sources(repo, snapshot):
     from motion_expert_phase3_edge_joint.settings import sha256
     # Include lazily loaded evaluators: later repository edits must not change
@@ -53,6 +97,8 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
     for key in ("phase1", "phase2", "cache", "out"):
         parser.add_argument("--" + key, type=Path, required=True)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--conditioning-attention", choices=("directional", "bidirectional"))
+    parser.add_argument("--shared-gpu-pids", help="Explicitly coordinated resident PIDs owned by this user; default requires empty GPUs")
     parser.add_argument("--check-only", action="store_true", help="Check local inputs/resources without creating a run or using a GPU")
     parser.add_argument("--wandb-entity", default="jungbinc-upenn")
     parser.add_argument("--wandb-project", default="cosmos-motion-ft")
@@ -80,6 +126,10 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
         os.environ.pop(key, None)
     from native_phase_training.compute_access import require_compute_access
     require_compute_access()
+    attention = args.conditioning_attention or ("directional" if experiment_package == "motion_expert_phase3_edge_mmdit" else "bidirectional")
+    if experiment_package == "motion_expert_phase3_edge_mmdit" and attention != "directional":
+        raise ValueError("The two-task MMDiT package requires directional conditioning")
+    os.environ["PHASE3_IMAGE_JOINT_CONDITIONING_ATTENTION"] = attention
     configure = importlib.import_module(experiment_package + ".policy").configure
     recipe = configure()
     configure_training(args)
@@ -94,11 +144,13 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
         if tuple(row["motion"].shape) != (97, 283) or tuple(row["video"].shape) != (48, 25, 16, 16):
             raise ValueError("Wrong cache representation or temporal shape")
     del dataset
-    require_empty(uuids)
+    residents = coordinated_residents(uuids, args.shared_gpu_pids)
+    require_available(uuids, residents)
     plan = {"stage": "checked_not_started", "host": host, "gpus": indices, "gpu_uuids": uuids,
             "phase1": str(args.phase1), "phase2": str(args.phase2), "cache": str(args.cache),
             "out": str(args.out), "recipe": recipe, "path_map": path_map, "global_batch": 32,
-            "microbatch": 16, "accumulation": 1, "gpu_acceptance": "pending"}
+            "microbatch": 16, "accumulation": 1, "gpu_acceptance": "pending",
+            "coordinated_resident_pids": {uuid: sorted(pids) for uuid, pids in residents.items()}}
     if args.check_only:
         print(json.dumps(plan, indent=2))
         return
@@ -113,9 +165,10 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
         lock_root = Path(os.environ.get("FOUNDRY_LOCAL_ROOT", "/mnt/local/" + os.environ["USER"])) / "locks"
         lock_root.mkdir(parents=True, exist_ok=True)
         for uuid in sorted(uuids):
-            lock = stack.enter_context((lock_root / (uuid + ".lock")).open("a+"))
+            suffix = ".handover.lock" if residents else ".lock"
+            lock = stack.enter_context((lock_root / (uuid + suffix)).open("a+"))
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        require_empty(uuids)
+        require_available(uuids, residents)
         args.out.mkdir(parents=True)
         ops = args.out / "launch"
         ops.mkdir()
@@ -133,7 +186,7 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
         command = [sys.executable, "-m", "torch.distributed.run", "--standalone", "--nnodes=1", "--nproc-per-node=2",
                    "-m", experiment_package + ".train"]
         common = ["--phase1", str(args.phase1), "--phase2", str(args.phase2), "--cache", str(args.cache),
-                  "--microbatch", "16", "--workers", str(args.workers)]
+                  "--microbatch", "16", "--workers", str(args.workers), "--conditioning-attention", attention]
         for name in ("phase3_lora_rank", "phase3_lora_alpha", "phase3_lora_lr", "phase3_lora_weight_decay",
                      "bridge_lr", "bridge_weight_decay", "ema_decay", "bridge_parameterization",
                      "bridge_attention_backend", "bridge_precision", "validation_config", "validation_every",
@@ -143,7 +196,7 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
                 common += ["--" + name.replace("_", "-"), str(value)]
 
         def stage(name, extra):
-            require_empty(uuids)
+            require_available(uuids, residents)
             if any(sha256(repo / relative) != expected for relative, expected in manifest.items()):
                 raise RuntimeError("Source files changed during launch; use the saved snapshot")
             atomic_json(ops / "status.json", {"stage": name, "host": host})
@@ -157,7 +210,7 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
         stage("fresh_probe", ["--out", str(ops / "fresh_probe"), "--resume", "none", "--probe-updates", "4", *acceptance])
         stage("reload_probe", ["--out", str(ops / "reload_probe"), "--resume", str(ops / "fresh_probe/checkpoints/recovery_latest.pt"),
                                "--probe-updates", "2", *acceptance])
-        require_empty(uuids)
+        require_available(uuids, residents)
         atomic_json(ops / "status.json", {"stage": "starting_fresh_production", "host": host})
         with (ops / "training.log").open("x") as log:
             trainer = subprocess.Popen(command + common + ["--out", str(args.out), "--resume", "none", *acceptance],

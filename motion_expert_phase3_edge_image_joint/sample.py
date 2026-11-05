@@ -31,7 +31,6 @@ def main():
     payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False, mmap=True)
     check_checkpoint(payload)
     del payload
-    configure()
     base.EdgePhase3, base.sample = EdgePhase3, sample
     base.main()
 
