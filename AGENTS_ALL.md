@@ -114,6 +114,28 @@
 - Final experiment report and W&B links remotely verified:
   https://app.notion.com/p/40fd2a44f44b814fb925c3d86c250284 .
 
+## Foundary sep-1 MMDiT runs resumed past10k (2026-11-05 evening UTC)
+
+- User requested resuming both runs. Free coordinated GPUs2/3/4/7 were used:
+  directional4/7 (GPU1 occupied by another researcher), bidirectional2/3.
+  Both passed fresh two-GPU acceptance, loaded step10000 including all98
+  optimizer states, both rank RNGs and next-global-draw320000, and continued
+  beyond10000 after finishing the pending71-window V2M/M2V metrics.
+- Wan decoder synchronization now runs on all ranks; actual distributed
+  metric scoring completed in about4minutes per run. Original71 predictions
+  per mode were reused; sampling/model/optimizer math is unchanged.
+- Source-contract migration explicitly permits only validation.py,
+  validation_metrics.py and test_validation.py hashes to change. All remaining
+  contract fields are exactly equal. Original checkpoints are protected with
+  local hardlinks; migrated copies were tensor-by-tensor roundtrip verified.
+  Canonical latest.json now references the migrated10k recovery artifact.
+- Same W&B runs/loggers continue. Temporary2GiB CUDA keepers were released
+  after optimizer updates resumed, leaving one trainer process per GPU.
+- Operation: `/mnt/local/jinhyung.kim/cosmos/operations/resume_phase3_mmdit_10k_20261105T191102Z`.
+  Inspect RUNNING_VERIFIED.json and each attention's status/migration receipts.
+  Original operation CURRENT.json points to this resumed state. Earlier failure
+  notes below describe the prior crash, not the current status.
+
 ## Both MMDiT runs stopped at first validation (2026-11-05 17:26 UTC audit)
 
 - Directional1/7 and bidirectional2/3 each reached10000, saved complete schema2
