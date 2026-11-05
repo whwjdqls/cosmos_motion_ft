@@ -53,6 +53,6 @@ def test_spawned_worker_retains_two_task_policy_and_local_data_translation():
             modes = sum([b["modes"] for b in batches], [])
             assert set(modes) == set(TASKS) and "joint" not in modes
             for batch in batches:
-                assert all(caption == "" for caption, mode in zip(batch["captions"], batch["modes"]) if mode == "video2motion")
+                assert all(caption == "" for caption in batch["captions"])
     finally:
         settings.RECIPE.clear(); settings.RECIPE.update(previous)

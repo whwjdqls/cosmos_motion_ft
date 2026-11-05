@@ -54,15 +54,9 @@ def install(train):
         train.barrier()
         rows = [dataset[(rank, rank % len(dataset))]]
         raw = train.collate(rows)
-        raw["modes"] = ["joint"]
         raw["captions"] = ["PRIVATE_GROUND_TRUTH_CAPTION_MUST_NOT_ENTER_EITHER_SPECIALIST"]
-        inputs, target = noise_batch(raw, device)
-        assert inputs["captions"] == [""]
-        assert 0 < inputs["motion_sigma"].item() < 1
-        assert 0 < inputs["video_sigma"].item() < 1
-        assert inputs["motion_sigma"].item() != inputs["video_sigma"].item()
-        torch.testing.assert_close(inputs["video"][:, :, 0], raw["video"].to(device).float()[:, :, 0], rtol=0, atol=0)
         seen = {"motion": [], "video": []}
+        audited_modes = []
         prepare_conditions, pack_video = model.motion.prepare_conditions, model.edge.pack_video
 
         def motion_conditions(captions):
@@ -71,7 +65,7 @@ def install(train):
             return prepare_conditions(captions)
 
         def video_pack(captions, modes, latents, sigma):
-            assert captions == [""] and modes == ["joint"]
+            assert captions == [""] and modes == inputs["modes"]
             seen["video"].append(captions)
             return pack_video(captions, modes, latents, sigma)
 
@@ -79,16 +73,28 @@ def install(train):
         model.eval()
         try:
             with torch.no_grad():
-                blank = model(**inputs)
-                poisoned = model(**{**inputs, "captions": raw["captions"]})
-                for key in ("motion", "video"):
-                    torch.testing.assert_close(blank[key], poisoned[key], rtol=0, atol=0)
-                mask = blank["packed"].vision.condition_mask[0].reshape(25, -1)
-                assert bool(mask[0].all()) and not bool(mask[1:].any())
-                del blank, poisoned
+                # End with joint inputs for the native joint-gradient checks below.
+                for mode in ("video2motion", "motimg2video", "joint"):
+                    raw["modes"] = [mode]
+                    inputs, target = noise_batch(raw, device)
+                    assert inputs["captions"] == [""]
+                    if mode == "joint":
+                        assert 0 < inputs["motion_sigma"].item() < 1
+                        assert 0 < inputs["video_sigma"].item() < 1
+                        assert inputs["motion_sigma"].item() != inputs["video_sigma"].item()
+                    torch.testing.assert_close(inputs["video"][:, :, 0], raw["video"].to(device).float()[:, :, 0], rtol=0, atol=0)
+                    blank = model(**inputs)
+                    poisoned = model(**{**inputs, "captions": raw["captions"]})
+                    for key in ("motion", "video"):
+                        torch.testing.assert_close(blank[key], poisoned[key], rtol=0, atol=0)
+                    mask = blank["packed"].vision.condition_mask[0].reshape(25, -1)
+                    assert bool(mask[0].all())
+                    assert bool(mask[1:].all()) if mode == "video2motion" else not bool(mask[1:].any())
+                    audited_modes.append(mode)
+                    del blank, poisoned
         finally:
             model.motion.prepare_conditions, model.edge.pack_video = prepare_conditions, pack_video
-        assert all(len(calls) == 2 for calls in seen.values())
+        assert all(len(calls) == 6 for calls in seen.values())
         model.train()
         # Both native joint losses must contribute gradients to real bridges
         # after the disposable gate-opening updates, without changing weights.
@@ -111,11 +117,12 @@ def install(train):
         del output, video_loss, motion_loss, grads
         receipt = {"passed": True, "motion_sigma": inputs["motion_sigma"].item(),
                    "video_sigma": inputs["video_sigma"].item(), "caption_invariant_outputs_bit_exact": True,
-                   "both_specialist_caption_inputs_empty": True, "initial_image_clean_and_loss_excluded": True,
+                   "both_specialist_caption_inputs_empty": True, "caption_invariance_modes": audited_modes, "initial_image_clean_and_loss_excluded": True,
                    "both_joint_branches_reach_bridges": branch_norms, "frozen_specialists": True}
         receipts = train.all_objects(receipt, world)
         if rank == 0:
-            acceptance["checks"].extend(["joint_caption_invariance_both_specialists_actual_nonzero_bridges",
+            acceptance["checks"].extend(["all_tasks_caption_invariance_both_specialists_actual_nonzero_bridges",
+                                         "joint_caption_invariance_both_specialists_actual_nonzero_bridges",
                                          "independent_joint_times_initial_image_clean_and_loss_excluded",
                                          "both_joint_targets_have_nonzero_bridge_gradients"])
             acceptance["joint_audits_by_rank"] = receipts

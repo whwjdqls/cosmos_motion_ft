@@ -1,4 +1,4 @@
-"""Native, independently noised specialist objectives; no joint caption."""
+"""Native, independently noised specialist objectives; no Phase3 captions."""
 from motion_expert_phase3_edge_joint.objectives import noise_batch as original_noise_batch
 from motion_expert_phase3_edge_joint.objectives import specialist_loss
 from .policy import captions_for_modes

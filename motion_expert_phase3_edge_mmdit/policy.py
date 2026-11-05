@@ -14,10 +14,10 @@ def attention_policy():
 def configure():
     recipe = original_configure()
     attention = attention_policy()
-    recipe.update(experiment=f"mmdit_{attention}_two_task5050_temporal_local_bf16_v1", tasks=TASKS.copy(),
+    recipe.update(experiment=f"mmdit_{attention}_two_task5050_temporal_local_bf16_no_text_v2", tasks=TASKS.copy(),
                   joint_objective="disabled_no_joint_samples",
                   joint_conditioning="disabled", joint_noise="disabled",
-                  caption_policy={"video2motion": "empty", "motimg2video": "caption_dropout_0.1"})
+                  caption_policy={mode: "empty" for mode in TASKS}, cfg_dropout=0.0)
     recipe.pop("camera_prediction", None)
     recipe.pop("juice_reference", None)
     configure_conditioning(attention, "zero")

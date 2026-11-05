@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import torch
 from torch import nn
+from motion_expert_phase3_edge.captions import empty_captions
 from torch.utils.checkpoint import checkpoint
 
 from attention import build_layout
@@ -62,10 +63,7 @@ class EdgePhase3(nn.Module):
 
     def prepare_motion(self, motion, neutral, sigma, captions, modes):
         device, batch = motion.device, len(captions)
-        condition = self.motion.prepare_conditions([
-            "" if mode == "video2motion" else caption
-            for caption, mode in zip(captions, modes, strict=True)
-        ])
+        condition = self.motion.prepare_conditions(empty_captions(captions, modes))
         noisy = torch.tensor([mode == "video2motion" for mode in modes], device=device)[:, None].expand(batch, 97)
         shape = self.motion.heads.encode_shape(neutral)
         frames = self.motion.heads.encode_motion(motion, sigma, noisy)
@@ -98,6 +96,7 @@ class EdgePhase3(nn.Module):
         batch = motion.shape[0]
         if len(modes) != batch or set(modes) - {"video2motion", "motimg2video"}:
             raise ValueError("Unsupported phase-3 task batch")
+        captions = empty_captions(captions, modes)
         motion_state, memory, layout, mc, ms, tc, ts = self.prepare_motion(
             motion, neutral, motion_sigma, captions, modes)
         packed = self.edge.pack_video(captions, modes, [v.unsqueeze(0) for v in video], video_sigma)

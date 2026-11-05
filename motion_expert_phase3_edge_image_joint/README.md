@@ -1,19 +1,19 @@
 # Image-only joint video/motion denoising
 
-Fresh Phase3 experiment requested for sep-1. **Nothing was queued or launched
-on sep-2.** The existing directional and bidirectional 50/50 trainers continue.
-CPU acceptance is complete; this new experiment still requires its own GPU/DDP
-acceptance on the destination node. Do not describe it as already running.
+Current Phase3 policy forbids captions in every task. See
+[sep-2 replacement record](SEP2_NO_TEXT_REPLACEMENT_20261105.md) for the fresh
+caption-free directional/bidirectional handover. Read operation receipts for
+live status; the experiment definition alone does not establish GPU acceptance.
 
 ## Objective
 
 The task probabilities are 40% `video2motion`, 40% `motimg2video`, and 20% `joint`.
-V2M has an empty caption; M2V retains the existing caption/dropout0.1 policy.
+All three tasks receive empty captions, with caption dropout0.
 **Joint has no semantic text:** the only measured conditions are the initial
 RGB image and supplied neutral body shape. Required native structural prompt
 tokens remain. No clean target motion or future video enters the joint inputs.
-The loader, noising function, model entry point and joint sampler all remove
-joint captions. Motion retains its usual camera/head-aligned 283-D representation.
+The loader, noising function, model entry point and samplers all remove
+captions for every task. Motion retains its usual camera/head-aligned 283-D representation.
 
 Using our convention, sigma0 is clean and sigma1 is noise. For each joint row:
 
@@ -33,8 +33,9 @@ the masked first frame. Neither joint loss is halved. Expected target exposure
 is60% motion and60% video; this is an extra training objective, not an exposure-
 matched50/50 control.
 
-The seven bridges use bidirectional conditioning attention across the existing
-time-aligned intervals; the shape token exchanges globally. This does not make
+The seven bridges use the selected directional or bidirectional conditioning
+attention across time-aligned intervals. Shape stays in the motion expert and
+is excluded from bridge Q/K/V. This does not make
 all frames globally cross-attend. Clean M2V motion receives E_M(0); noisy motion
 receives E_M(sigma_M). Video and motion keep separate timestep embeddings.
 
@@ -162,4 +163,4 @@ Offline inference uses `python -m motion_expert_phase3_edge_image_joint.sample`
 with the inherited checkpoint/cases/phase1/phase2/out flags and `--mode joint`.
 It rejects old image+text joint checkpoints and uses empty text, separate
 motion-shift3/video-shift10 UniPC35 clocks, paired predictions before either state
-advances, and first-image re-pinning. Joint guidance must be1 (no caption CFG).
+advances, and first-image re-pinning. Guidance must be1 for every task (no caption CFG).

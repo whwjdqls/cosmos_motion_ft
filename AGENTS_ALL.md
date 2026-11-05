@@ -1,5 +1,57 @@
 # Shared Agent Context
 
+## Phase3 caption-free requirement (2026-11-05, supersedes caption notes below)
+
+- User explicitly requires NEVER using captions in Phase3. All new Phase3
+  dataset outputs, noising inputs and both specialist model entrances clear
+  captions for V2M, M2V and joint. Caption dropout is0; no task receives text.
+  This does not change the frozen Phase2 specialist or its original training.
+- Fresh replacements on sep-2 retain bidirectional0/3 and directional1/7,
+  global32=2x16/accum1, MMDiT/groupedBF16, 40/40/20, all specialist sources,
+  native losses/noise,200k schedule and fixed71/every10k validation. New
+  experiment identities end in no-text v2; captioned checkpoints cannot be
+  identified as these fresh runs. Never resume captioned bridges into them.
+- User requests BOTH new runs verified BEFORE either old captioned trainer
+  stops. Native gates include all-three-task poisoned-caption invariance at
+  both specialist inputs, unchanged frozen experts, real joint gradients,
+  fresh4/save/strict reload6 and finite live production/W&B progress.
+- Local operation: cosmos_storage/operations/phase3_mmdit_no_text_handover_20261105.
+  Read its current status/COMPLETE receipts; these instructions alone do not
+  establish successful cutover. Preserve old checkpoints and immutable sources.
+  Main code updates do not alter any live frozen source snapshot.
+
+## Foundary sep-2 joint MMDiT controlled resume verified (2026-11-05 19:28 UTC)
+
+- Latest user request explicitly authorized resuming the runs, superseding
+  the earlier Git-only/no-restart instruction. This section concerns sep-2;
+  other nodes' failure audits below remain separate historical records.
+- Both joint40/40/20 runs saved full10k checkpoints then crashed in the known
+  rank0-only Wan-VAE scoring collective. Both are now strictly resumed:
+  bidirectional GPUs0/3 step10120, directional GPUs1/7 step10130 at this
+  snapshot, finite losses/gradients, about1.34–1.36s/update. Check live logs.
+- Resume snapshots patch ONLY core validation.py and validation_metrics.py
+  from reviewed master416b2ea. Original349-file snapshots and10k checkpoints
+  are preserved. Derived checkpoint migration verifies all98 bridge tensors,
+  98 Adam states, two rank RNGs, scheduler and cursor bit-exact; only those
+  two source hashes and explicit migration provenance change. Native trainer
+  fingerprint enforcement remains enabled and passed on both arms.
+- Collective VAE initialization and full71 V2M +71 M2V scoring passed on
+  both GPU pairs. All142 cached predictions per arm retained identical SHA256;
+  no generation was repeated. One10k validation event per original history.
+- Same global32=2x16, accumulation1, 40/40/20, frozen specialists, model,
+  noise/loss recipe and optimizer. Same W&B p3-b6b71e1630ea628544fe and
+  p3-5caf5e94d92b872de27e remotely verified running with val10000/train>10100.
+- Operation: local cosmos_storage/operations/phase3_mmdit_resume_validationfix_20261105.
+  Read plan.json, MIGRATION.json, GPU_VALIDATION_COMPLETE.json,
+  STRICT_RESUME_VERIFIED.json, RUNNING_VERIFIED.json and REMOTE_WANDB_VERIFIED.json.
+  COMPLETE.json means recovery complete, not training200k complete. Detached
+  run_arm.py controllers retain GPU leases and logger supervision. Do not
+  invoke that initial recovery driver again blindly: cached validation identity
+  is already migrated. For a later stop use the latest native full checkpoint
+  with its matching resume snapshot/contract. Do not resume the old50/50 runs.
+- Report: https://app.notion.com/p/40fd2a44f44b814fb925c3d86c250284 .
+  See motion_expert_phase3_edge_image_joint/SEP2_VALIDATION_RESUME_20261105.md.
+
 ## Foundary sep-2 joint MMDiT cutover completed (2026-11-05)
 
 - User requested overlapping replacements, then stopping old runs only once
