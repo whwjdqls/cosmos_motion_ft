@@ -1,5 +1,63 @@
 # Shared Agent Context
 
+## EgoControl fixed71 native image-CFG2 evaluation (2026-11-05)
+
+- Fresh native EMA200k sampling/scoring complete for all71 fixed windows,
+  seeds0–70, zero exclusions. PSNR20.301307, SSIM0.644898, LPIPS0.221591,
+  DreamSim0.144942, FVD376.908678 (426 I3D400 segments).
+- ReferenceCFG2 is image guidance with pose retained, mapped to Edge3;
+  not motion-null guidance. UniPC35/shift10, batch1, first RGB plus Body23.
+  First seed0 output reproduces the prior full-test sample bit-for-bit.
+- Published/verified on page40fd2a44f44b80489a0bdecc5d9410bb; evaluators on1/5
+  exited, all trainers continued. Read `migration/FOUNDRY_EGOCONTROL_FIXED71_CFG2_20261105.md`.
+
+## Camera motion-stream guidance pilot (2026-11-05)
+
+- Completed/published all three pinned camera checkpoints at motion guidance
+  1/1.5/2 on eight fixed windows:48 new+24 reused outputs, zero skipped;
+  eight comparison videos and full metric/provenance evidence verified.
+- Reference blocks video queries to motion/shape keys only, preserving other
+  bridge attention. Video velocity guided; camera uses native conditional
+  velocity. No trained dropped-motion null: experimental bridge guidance.
+- Joint weight1 gains modest LPIPS; no-joint loses PSNR at higher scales.
+  Eight-window pilot does not establish full-cohort/control improvement.
+  All trainers continued; evaluator allocations released. Read
+  `migration/FOUNDRY_CAMERA_MOTIONCFG_PILOT8_20261105.md`.
+
+## Camera weight-one motion-to-video results (2026-11-04)
+
+- Published and verified three models ×71 windows, 213 M2V predictions, no skips,
+  plus eight fixed comparison videos on the motion2video Notion page. Joint w1
+  40k improves PSNR/SSIM/LPIPS/DreamSim against joint w10 40k; FVD is slightly
+  higher (386.814 vs384.048). No-joint w1 30k FVD384.412; budgets differ.
+- Native guidance1/UniPC35/shift10, same motion/shape/first image and initial
+  noise, blank captions, no GT camera. Evaluators on1/2/5 exited; all training
+  continued. Read `migration/FOUNDRY_CAMERA_WV1_M2V_MATCHED71_20261104.md`.
+
+## Foundary camera weight-one matched71 evaluation (2026-11-04)
+
+- Completed and Notion-published: joint camera/video-weight1 step40k and
+  no-joint camera/video-weight1 step30k, 71 windows and 284 predictions, zero
+  skipped. Video/video+text MPJPE is23.2132/17.8636cm and27.3021/19.1894cm.
+- Unequal budgets prevent isolating the joint-task effect. Matched40k weight1
+  versus weight10 improves MPJPE by6.8580/4.6977cm. Exact matched evaluator
+  91f9d8… and reference GT checks passed. All trainers continued; evaluation
+  workers on1/5 exited and GPU memory was released.
+- Read `migration/FOUNDRY_CAMERA_WV1_MATCHED71_20261104.md` and local
+  operation `eval_camera_wv1_latest_matched71_20261104T2146Z/COMPLETE.json`.
+
+## Exact Phase1 video-I/O EMA200k Drive handoff (2026-11-04)
+
+- Uploaded and verified the exact b2b3374b… Phase1 required by the camera
+  trainers, including all original DCP/config/contract files and EMA video I/O.
+  Drive folder: https://drive.google.com/drive/folders/1d49-FqpeYu9TW8sJGkCnfzLLBjvxgf5E .
+- Archive27.14GB; SHA25694f237c198d1777d8ce114f959fc608dda444b883b2c53a8121e366ff9117e50.
+  Source payload SHA256 and Drive size/MD5 checks pass; all small handoff files
+  were downloaded and SHA256 verified. READY.json marks completion.
+- User confirmed minsu1206 uses existing Drive access. Follow RESTORE.md and
+  `migration/PHASE1_VIDEO_IO_EMA200K_DRIVE_20261104.md` for download/restore.
+  This is global_lora_video_io, distinct from standard LoRA-only two-task200k.
+
 ## Foundary bidirectional two-task camera weight-one run (2026-11-03)
 
 - User stopped scratch-motion camera on5,6 and requested bidirectional camera

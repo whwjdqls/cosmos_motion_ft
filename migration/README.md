@@ -1,5 +1,34 @@
 # Server Migration
 
+## EgoControl fixed71 native image-CFG2 results (2026-11-05)
+
+[Verified quantitative results and exact sampling protocol](FOUNDRY_EGOCONTROL_FIXED71_CFG2_20261105.md).
+Fresh native EMA200k, UniPC35/shift10, reference image-CFG2 mapped to Edge3,
+fixed71 seeds0–70. All predictions and Notion publication complete.
+
+## Motion-stream guidance pilot (2026-11-05)
+
+[Verified guidance1/1.5/2 results and eight comparison videos](FOUNDRY_CAMERA_MOTIONCFG_PILOT8_20261105.md).
+Eight-window pilot, three pinned camera checkpoints; experimental motion/shape
+bridge guidance on video velocity, preserving the native camera update.
+
+## Camera weight-one motion-to-video results (2026-11-04)
+
+[Verified 71-window metrics and eight matched comparison videos](FOUNDRY_CAMERA_WV1_M2V_MATCHED71_20261104.md).
+Joint weight1/10 at40k and no-joint weight1 at30k; native guidance1.
+All 213 predictions and nine uploaded assets are complete and verified.
+
+## Latest camera weight-one quantitative results (2026-11-04)
+
+[Verified matched71 results: joint40k and no-joint30k](FOUNDRY_CAMERA_WV1_MATCHED71_20261104.md).
+Both video-only and video+text are complete and published; all trainers continue.
+The additional video-weight1/10 contrast is matched at40k.
+
+## Phase1 video-I/O EMA200k download (2026-11-04)
+
+[Verified Drive handoff and Yonsei/minsu1206 restore instructions](PHASE1_VIDEO_IO_EMA200K_DRIVE_20261104.md).
+Exact camera-trainer metadata b2b3374b…; full27.14GB checkpoint, checksums and native contract.
+
 ## Bidirectional camera prediction without joint (2026-11-03)
 
 See [the replacement run and preserved scratch checkpoint](FOUNDRY_CAMERA_BIDIR5050_WV1_20261103.md).
