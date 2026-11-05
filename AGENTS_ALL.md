@@ -80,6 +80,137 @@
   Its COMPLETE.json is complete_published_verified; the page preserves50k.
   GPU4 has moved on to the original full-test M2V shard. M2V remains running.
 
+## EgoControl fixed71 native image-CFG2 evaluation (2026-11-05)
+
+- Fresh native EMA200k sampling/scoring complete for all71 fixed windows,
+  seeds0–70, zero exclusions. PSNR20.301307, SSIM0.644898, LPIPS0.221591,
+  DreamSim0.144942, FVD376.908678 (426 I3D400 segments).
+- ReferenceCFG2 is image guidance with pose retained, mapped to Edge3;
+  not motion-null guidance. UniPC35/shift10, batch1, first RGB plus Body23.
+  First seed0 output reproduces the prior full-test sample bit-for-bit.
+- Published/verified on page40fd2a44f44b80489a0bdecc5d9410bb; evaluators on1/5
+  exited, all trainers continued. Read `migration/FOUNDRY_EGOCONTROL_FIXED71_CFG2_20261105.md`.
+
+## Camera motion-stream guidance pilot (2026-11-05)
+
+- Completed/published all three pinned camera checkpoints at motion guidance
+  1/1.5/2 on eight fixed windows:48 new+24 reused outputs, zero skipped;
+  eight comparison videos and full metric/provenance evidence verified.
+- Reference blocks video queries to motion/shape keys only, preserving other
+  bridge attention. Video velocity guided; camera uses native conditional
+  velocity. No trained dropped-motion null: experimental bridge guidance.
+- Joint weight1 gains modest LPIPS; no-joint loses PSNR at higher scales.
+  Eight-window pilot does not establish full-cohort/control improvement.
+  All trainers continued; evaluator allocations released. Read
+  `migration/FOUNDRY_CAMERA_MOTIONCFG_PILOT8_20261105.md`.
+
+## Camera weight-one motion-to-video results (2026-11-04)
+
+- Published and verified three models ×71 windows, 213 M2V predictions, no skips,
+  plus eight fixed comparison videos on the motion2video Notion page. Joint w1
+  40k improves PSNR/SSIM/LPIPS/DreamSim against joint w10 40k; FVD is slightly
+  higher (386.814 vs384.048). No-joint w1 30k FVD384.412; budgets differ.
+- Native guidance1/UniPC35/shift10, same motion/shape/first image and initial
+  noise, blank captions, no GT camera. Evaluators on1/2/5 exited; all training
+  continued. Read `migration/FOUNDRY_CAMERA_WV1_M2V_MATCHED71_20261104.md`.
+
+## Foundary camera weight-one matched71 evaluation (2026-11-04)
+
+- Completed and Notion-published: joint camera/video-weight1 step40k and
+  no-joint camera/video-weight1 step30k, 71 windows and 284 predictions, zero
+  skipped. Video/video+text MPJPE is23.2132/17.8636cm and27.3021/19.1894cm.
+- Unequal budgets prevent isolating the joint-task effect. Matched40k weight1
+  versus weight10 improves MPJPE by6.8580/4.6977cm. Exact matched evaluator
+  91f9d8… and reference GT checks passed. All trainers continued; evaluation
+  workers on1/5 exited and GPU memory was released.
+- Read `migration/FOUNDRY_CAMERA_WV1_MATCHED71_20261104.md` and local
+  operation `eval_camera_wv1_latest_matched71_20261104T2146Z/COMPLETE.json`.
+
+## Exact Phase1 video-I/O EMA200k Drive handoff (2026-11-04)
+
+- Uploaded and verified the exact b2b3374b… Phase1 required by the camera
+  trainers, including all original DCP/config/contract files and EMA video I/O.
+  Drive folder: https://drive.google.com/drive/folders/1d49-FqpeYu9TW8sJGkCnfzLLBjvxgf5E .
+- Archive27.14GB; SHA25694f237c198d1777d8ce114f959fc608dda444b883b2c53a8121e366ff9117e50.
+  Source payload SHA256 and Drive size/MD5 checks pass; all small handoff files
+  were downloaded and SHA256 verified. READY.json marks completion.
+- User confirmed minsu1206 uses existing Drive access. Follow RESTORE.md and
+  `migration/PHASE1_VIDEO_IO_EMA200K_DRIVE_20261104.md` for download/restore.
+  This is global_lora_video_io, distinct from standard LoRA-only two-task200k.
+
+## Full-test V2M: both Phase3 and UEM families (2026-11-04)
+
+- User explicitly selected BOTH families and requested the whole test set and
+  summary at https://app.notion.com/p/binne/Ablations-40dd2a44f44b8080aad3cda6b5fea7c8 .
+  Operation: `/scratch2/whwjdqls99/cosmos/operations/fulltest_v2m_ablations_20261104`.
+  Entrypoints: `nymeria_baselines/fulltest_v2m{,_score,_publish}.py`.
+- Frozen common cohort: all11911 accepted caption/window cases,11677 physical
+  windows,71 held-out recordings from the accepted floor-clean baseline index.
+  GT motion and centered skeletons match all71 prior reviewed cases exactly.
+  This is not the historical one-window-per-recording benchmark.
+- Frozen Phase3 steps: original200k, joint200k, camera-task200k,
+  four-task107793, hidden-FiLM92879, floor18-FiLM63864. UEM originals
+  RGB_recon/recon/all are555800/epoch349; supplied-shape three-mode UEM is
+  frozen142920/epoch89. Training continues separately; never chase live weights.
+  All inputs are video-only plus each model's native shape condition, no camera
+  trajectory, caption or head inpainting. Trajectory-only UEM is unsupported.
+- Node34/job2671154 runs the existing pool; extra single4090 base_qos jobs
+  2675047/2675048 are queued,3days each. Per-model file locks prevent duplicate
+  work. `pool_worker.sh` runs two-case acceptance, full sampling and scoring;
+  all predictions and scoring batches resume. Do not interrupt UEM training
+  2673623/node32. No original checkpoint/training source was changed.
+- GT scoring is complete: R@3=91.7031±0.1399%, FID0, raw skating14.0764cm/s,
+  mean foot penetration1.0481cm. A separate text cache extends the original by
+  six missing captions using the same frozen encoder; original entries retained.
+  Baseline sampling acceptance passed and production advanced; other models
+  are pending. No complete model metrics are claimed at this startup snapshot.
+- Tmux `fulltest_v2m_ablations_20261104` holds the pool and a five-minute
+  Notion update monitor; extra requests have matching `fulltest_v2m_extra*`
+  sessions. `scores/<model>/COMPLETE.json` plus summary hashes prove scoring,
+  root `COMPLETE.json` requires all10 models and remote Notion verification.
+  Check `*.failed`, worker logs and allocation files for live state. Use the
+  existing native35-step Phase3 and1000-step UEM samplers; generator stats and
+  Nymeria evaluator stats remain independently pinned. Physics and TMR use the
+  common23 joints and existing training-only leaf completion, including GT.
+
+## Original UEM final350 metrics update (2026-11-04)
+
+- Completed successfully and published: all71 RGB_recon and213 recon input-mode
+  predictions, physical metrics and Nymeria TMR; final trajectory/all predictions
+  reused with exact identities. COMPLETE.json and VERIFIED_PUBLICATION.json
+  passed, worker exit0; remote metrics were rechecked at06:56KST. Final RGB+traj
+  recon: MPJPE6.55cm, FID0.121541, R@3=65.62±2.71%; GT R@3=70.83±1.80%.
+  Notion heading40dd2a44-f44b-8148-ac8f-e3bdefb0ecd3. Prior launch notes below
+  are historical; no new videos were uploaded. Allocation2671154 is retained.
+
+- User requested metrics only on existing Video2motion Notion page. All four
+  original shape-predicting UEM variants now have verified epoch349/555800
+  checkpoints. Existing RGB/reconstruction metrics used341420/339832; new
+  final inference is running in retained2671154/node34, with final trajectory
+  and all-task predictions reused after identity checks. No new visuals.
+- Operation `operations/uem_final350_metrics_20261104` in Scratch2 Cosmos;
+  tmux same basename. Native matched71 inference, physics and Nymeria TMR
+  precede metrics publication/readback. Require COMPLETE.json plus
+  VERIFIED_PUBLICATION.json; this note does not claim completion. See
+  `nymeria_baselines/UEM_FINAL350_METRICS_20261104.md`. New shape-input mixed
+  trainer remains separate and is not interrupted.
+
+## Yonsei supplied-shape UEM three-mode reconstruction (2026-11-04)
+
+- User clarified training on two4090s on the same node, superseding initial
+  inference-only work. New `nymeria_baselines/train_uem_shape_modalities.py`
+  samples RGB-only/trajectory-only/both equally, always supplying the clean
+  centered SOMA30 shape. Fresh weights; original native loss/statistics,
+  global64=2x32, accumulation1,350epochs. Existing runs/overlay are untouched.
+- Joint job2673623 allocated node32; launcher first tests two-GPU save/resume
+  then starts production on success. Check actual progress, not this note.
+  Output `/scratch2/whwjdqls99/cosmos/operations/uem_shape_threeway_ddp_20261104`;
+  tmux `uem_shape_threeway_joint_20261104`. See
+  `nymeria_baselines/UEM_SHAPE_THREEWAY_20261104.md` for contract and evidence.
+- Split single-GPU jobs2671155/2671156 failed NCCL namespace acceptance and
+  were released/replaced. Idle single4090 job2671154 and unrelated requests
+  are preserved. Earlier52k inference snapshot is separate; full sweep not run.
+
 ## Foundary sep-2 matched71 Phase3 50k evaluation (2026-11-03)
 
 - Completed284 predictions: both exact50k directional/bidirectional checkpoints,
