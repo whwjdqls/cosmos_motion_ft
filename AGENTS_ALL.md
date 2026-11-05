@@ -1,6 +1,388 @@
 # Shared Agent Context
 
+## Position errors and DisCoRD sJPE backfill (2026-11-05)
+
+- First pass complete10:37KST: all10 completed models plus2GTreferences
+  have11911-case new metrics; hidden-FiLM is partial10317 and its final update
+  remains automatic. New Notion table40fd2a44-f44b-8123-81a0-e6cc4aa28e74
+  was readback verified; BACKFILL_PASS_VERIFIED.json records acceptance.
+- User requested PA-MPJPE, Root ADE, UPE/LPE and replaced MPJVE with sJPE.
+  Additive body23 metric pass runs on retained2673623 compute CPUs in tmux
+  motion_metrics_20261105; no inference/training/sampler/prediction changes.
+  Operation operations/motion_metrics_20261105, details in
+  nymeria_baselines/MOTION_METRICS_20261105.md. Inspect actual completion.
+- PA/root definitions retained; UPE14 upper vsLPE9 pelvis+legs, disjoint23.
+  DisCoRD782deff... wrist/toe jerk magnitudes,20fps. Primary per-joint/time
+  mean sJPE0..1 plus exact nativev1 joint-sum (4x) and nativev2 ratio-of-sums
+  are explicitly saved. Static+noise components retained, GT error0.
+  Direct upstream-function parity and analytic tests passed on compute.
+- New files motion_error_metrics.py/backfill_motion_metrics.py; shared body23
+  measure adds fields for future scores. Existing audited summaries stay;
+  extended_metrics/<model> beside both original operations holds new results.
+  The hidden-FiLM pending evaluation remains partial until genuinely scored;
+  watcher dispatches its final backfill later. Phase1 video metrics are N/A.
+  An additive Notion table is used; original audited table shapes stay intact.
+
+## Full-cohort Phase1 and final350 UEM evaluations complete (2026-11-05 10:17 KST)
+
+- Requested objective is fully evaluated and audited: all11911T97 cases,
+  11677physical windows,71recordings. Phase1 has all32shards complete; all3
+  supplied-shape UEM conditions have11911generated/scored cases each.
+  Final operation receipts `FULL_COMPLETION_VERIFIED.json` and independently
+  checked `GOAL_COMPLETION_AUDIT.json` match current summary/audit hashes and
+  actual final Notion tables. Both tables were read again after finalization.
+- Phase1 exact two-task prefix1 LoRA+video-I/O EMA200k, official camera+first
+  image inference, empty text, UniPC30/shift10/guidance1. Scored frames1..96:
+  PSNR19.815407dB,SSIM.593451810,LPIPS-Alex.256971254,DreamSim.161340002,
+  FVD-I3D40044.063621. GT identity100cap/1/0/0/0. Full compute output audit
+  checked every video hash/header, native args/seed, metric/features and source
+  identities, and recomputed all aggregates/FVD; passed in228.61seconds on
+  node34/job2671154. SummarySHA f55c0a07a1b425bb25c2a46dda4ef0eaa8b2746d6b20084820a537c4ee2066ad.
+- Final350 UEM MPJPEcm/FID/R@3percent: trajectory12.749/.041364/66.919,
+  video41.392/.059815/64.553, both11.190/.037073/79.825. Measured GT0/0/91.703;
+  full contact metrics and GT are in the summary/Notion table below.
+- Final tables on Ablations: Phase1 `40ed2a44-f44b-81a7-bb03-ec8e1320001e`,
+  UEM `40ed2a44-f44b-818c-87e9-df207e3b1592`. Repo overview:
+  `nymeria_baselines/IDLE_FOLLOWUPS_20261104.md`. Artifacts remain in Scratch2
+  `cosmos/operations/idle_gpu_followups_20261104`; predictions/videos retained.
+- Follow-up dispatch queues and metadata/finalization monitors completed.
+  Extra evaluation-only jobs2682696/2682697 left the controller queue after
+  completion. Original retained allocations/PRO requests were not canceled.
+  The older `p3_hidden_film` full-test inference still runs on A6000/node25;
+  it is separate from this completed Phase1/UEM objective. Do not restart
+  completed dispatchers to fill otherwise available GPUs with duplicate work.
+
+## Native prefix scoring overlap — temporary coordinator holds (2026-11-05 09:53 KST)
+
+- Final update10:02KST: all3passes completed0; **all coordinator holds are
+  released**. Both dispatcher PIDs974836/94171 and launcher2166384 were checked
+  in S state; the same native generator2166441 continued in Rsl state.
+  Shard30 cached53cases; shard31 cached212cases cumulatively. No source edits,
+  allocation cancellations or model-process restarts. Prefix artifact audit
+  passed on owned job2682696; receipt `PREFIX_OVERLAP_ACCEPTANCE.json`
+  checks265cached cases' video hashes, finite metrics and400D features plus
+  helper exit/resume receipts. Full11911-case audit remains mandatory later.
+  The historical hold warnings below describe completed episodes.
+
+- Update09:58KST: both original passes completed0 with unchanged native source
+  hash7bc8a754...; shard30 cached53cases, shard31 cached128cases. Both pairs of
+  RESUMED receipts were verified, and actual coordinator processes returned
+  from T to S. Shard31's unchanged generator advanced151->272 during its pass.
+  A second pass `prefix_overlap_031_round2_20261105` on job2682697 now scores
+  84additional cases (cumulative prefix212), after verifying first-pass exit
+  and both resumes. This second pass holds launcher2166384 and dispatcher94171
+  with the same bounded guard; dispatcher974836 is resumed normally. Tmux
+  `phase1_prefix_overlap31_round2_20261105`. Check this episode's HELPER_REAPED
+  and both RESUMED receipts before considering those last holds released.
+
+- All32Phase1 shards are claimed. The2 extra evaluation4090s finished their
+  original shards and now pre-score already-generated prefixes with the exact
+  unmodified `fulltest_forward score --limit` command. Native generation stays
+  on its existing GPU/PID; no training/checkpoint/sampler/source changes.
+- Operations `prefix_overlap_031_20261105` (128cases, helper2682696) and
+  `prefix_overlap_030_20261105` (53cases, helper2682697) under
+  `idle_gpu_followups_20261104` record PLAN/READY/COMPLETE/HELPER_REAPED/RESUMED.
+  This avoids duplicate scorers: only waiting coordinator processes are held
+  with SIGSTOP; model processes continue. Shard31 launcher2166384 and idle
+  dispatcher974836; shard30 launcher648321 and idle dispatcher94171.
+  **Do not resume these coordinators until their helper has actually exited**.
+  The controller writes HELPER_REAPED then both guards issue SIGCONT. Helpers
+  have Slurm8min step limits; independent guards restore coordinators after
+  15min if a controller is lost (KillWait30sec, unkillable timeout120sec).
+- Tmux `phase1_prefix_overlap_20261105` / `phase1_prefix_overlap30_20261105`;
+  scripts `score_prefix_overlap.py` / `score_prefix_overlap30.py` and guard
+  companions live in the operation root. A paused dispatcher can show stale
+  waiting status while its delegated native scorer is active: use NVML and
+  job-local scorer PIDs. Allocations remain retained. Verify both RESUMED
+  receipts and actual process states after helper completion.
+
+## Seven-GPU Phase1 handoff / floor18 evaluation complete (2026-11-05 09:29 KST)
+
+- Older frozen `p3_floor18_film`63864 has finished11911predictions and full
+  scoring. Summary/COMPLETE SHA matches59c943f84ce22737cba97b58b8c758fe9c56ef73c05d78d0ed5af0efaf025391.
+  Its job2675047/GPU4446 automatically switched to native Phase1 shard027;
+  live official inference PID4155661 was verified. Seven GPUs now run Phase1,
+  one A6000 still runs the older `p3_hidden_film` full-test inference. No job
+  was canceled or working model process interrupted for this handoff.
+- Phase1 snapshot:10173generated,9005scored,22/32shards complete. Latest
+  published aggregate8965cases was independently read back from Notion with
+  GT100cap/1/0/0/0. This remains partial; all11911cases are still required.
+  The full-output-audit/final-Notion waiter remains live with no failure.
+  Existing full completion requirements and exact native recipe stay below.
+
+## Final350 UEM complete / six-GPU Phase1 evaluation (2026-11-05 08:26 KST)
+
+- Final supplied-shape UEM evaluation is complete for all11911cases in each
+  condition. All3 full-output audits passed on compute; independent Notion
+  readback matched GT and all3model rows. Authoritative combined receipt:
+  `idle_gpu_followups_20261104/uem_final350/FULL_COMPLETION_VERIFIED.json`.
+  MPJPEcm / FID / R@3percent: trajectory12.749/.041364/66.919,
+  video41.392/.059815/64.553, both11.190/.037073/79.825.
+  GT0/0/91.703; measured GT skate14.076cm/s, footdepth1.048cm.
+- The3 freed UEM GPUs automatically joined Phase1. All8allocated GPUs are
+  useful:6Phase1 generation/scoring,2older frozen Phase3 full-test evaluations.
+  Active jobs2651408,2675047,2675048,2673623(twoGPUs),2671154,2682696,2682697.
+  Momentary empty NVML during scoring->summary->loading is a normal handoff;
+  inspect actual process state before restarting a worker.
+- Phase1 has5490cases in its latest published partial aggregate at this
+  snapshot, and all32shards are still required. Full goal remains incomplete.
+  `verify_phase1_outputs.py` is prepared in the operation root, with a real
+  compute audit passed for all373cases of shard000. Full mode (no --shard)
+  requires all11911outputs, all32markers and publication, verifies native
+  inputs/EMA/source identities, MP4 byte hashes and headers, finite metrics and
+  I3D400 features, and recomputes pixel/recording aggregates and full FVD.
+  Run full mode on compute after completion, then independently read back
+  final Notion values; a shard audit does not prove full-cohort completion.
+- Automatic closure is running in tmux `fulltest_finalize_20261105`, metadata
+  PID3390273 at08:40KST. `finalize_followups.py` only waits on login; after
+  genuine full-cohort completion it runs the full Phase1 audit on an owned
+  compute allocation, independently reads both final Notion tables, and writes
+  operation-root `FULL_COMPLETION_VERIFIED.json`. A failure writes
+  `finalization_FAILED.json` and exits; inspect/fix the cause before retrying.
+  Existing GPU dispatchers and publication monitor remain unchanged. Do not
+  mark the goal complete just because this waiter or a COMPLETE marker exists:
+  inspect the actual full audit/remote-readback receipt when it finishes.
+
+## Eight-GPU evaluation pool / consistent publication (2026-11-05 06:35 KST)
+
+- Completion audit utility is now prepared at
+  `idle_gpu_followups_20261104/verify_completed_uem_model.py`. Run on owned
+  compute only, after both full inference and score COMPLETE for each final
+  UEM label. It checks all11911 prediction IDs/seeds/checkpoint hashes, native
+  batch receipts, finite97-frame arrays, exact supplied neutral shapes, full
+  GT/model per-case metric coverage and256D embeddings/canonical text equality.
+  It writes `uem_final350/audits/<label>_FULL_OUTPUT_AUDIT.json`. Syntax was
+  checked; no full audit is claimed before actual completed-model execution.
+
+- Both extra single4090 sruns are allocated and performing actual native Phase1
+  inference:2682696/node31/GPUd52b (shard007),2682697/node33/GPU71d3 (shard008).
+  Each has8CPU/64GiB/3days and excludes cs-gpu-01,node29,node37. Tmux remains
+  `fulltest_extra4090_{a,b}_20261105`; no original allocation was canceled.
+  All8 GPUs now evaluate:3Phase1,3final350UEM,2older frozen Phase3 full-test runs.
+  No UEM training remains. Check actual worker/CUDA processes for live state.
+- Phase1 shard006 moved from generation into scoring on job2673623/GPU23a.
+  The two extra GPUs generate different leased shards. Aggregate generated
+  counts now include several concurrent shards: do not infer one shard's
+  completion from a global count threshold. Use cases.json[shard::32], per-case
+  outputs, task processes and shard COMPLETE markers. Latest published aggregate
+  is2238/11911, readback/hash verified; full evaluation remains incomplete.
+- A publication race was fixed without editing the pinned Phase1 source:
+  the metadata monitor now takes the same summary.lock as summarize.sh before
+  invoking the Phase1 publisher. This keeps table rows and receipt hashes tied
+  to one summary during parallel shard updates. Lock order stays
+  summary->publication. Runtime Notion readback matched all3current table rows.
+  See `PUBLICATION_LOCK_UPGRADE.json`; native source hash remains7bc8a754... .
+- Metadata monitor replacement: tmux `idle_followups_publish_v2_20261105`,
+  PID1899521 at this snapshot. Old metadata PID3775693 exited intentionally;
+  do not restart its original tmux on top of v2. No GPU process was stopped.
+  Keep using summarize.sh phase1 (or its summary.lock) for manual publication.
+
+## Final350 UEM evaluation handoff / Phase1 full-window progress (2026-11-05 05:36 KST)
+
+- Supplied-shape three-mode UEM training finished: real training/COMPLETE.json
+  records350epochs,555800updates,global64,world2,smoke=false. The trainer exited;
+  job2673623 remains allocated and is now used for evaluation. Earlier notes
+  describing a live trainer or unfinished350epochs are historical.
+- Operation `idle_gpu_followups_20261104/uem_final350` pins the final snapshot
+  `snapshots/final350.ckpt`, SHA256
+  e45124576d72193bf91154ee7aab6710b6e6ec3762663070ae3080208d7d2d20.
+  Preparation verified the full11911-case input audit and current source/stats.
+  All3conditions use this checkpoint, supplied SOMA30 shape, native1000steps,
+  paired seeds and the exact training normalization inverse. Model evaluation
+  is not complete merely because preparation/training completed.
+- Fresh GT scoring is complete for11911cases/71recordings: FID0,
+  R@3=91.703069±0.139897percent (batch32,3seeds,11904cases/seed,7dropped).
+  Notion table40ed2a44-f44b-818c-87e9-df207e3b1592 on Ablations is readback
+  verified with pending model rows; complete=false. Heading
+  40ed2a44-f44b-81ad-8b2d-f87962bb5383.
+- At05:56 all3 final UEM conditions generate at accepted batch128. Artifact
+  `uem_final350/FIRST_PRODUCTION_BATCH_ACCEPTANCE.json` verifies the first128
+  actual outputs from each condition on compute: paired case IDs/seeds, exact
+  final checkpoint identity, finite97x220states,97x23x3joints,23x3neutral shape,
+  benchmark hashes and nativeB1 bitwise parity. Full-cohort completion=false;
+  this is production acceptance, not the final model-metric result.
+- Job2673623/node32 GPUc99 runs
+  trajectory generation (batch128); job2671154/node34 runs video-only generation
+  (batch128); job2675048/node35 runs combined-condition generation after the
+  previous four-task model finished11911generations and complete scoring. Native
+  B1 is bitwise identical; all trajectory batch candidates passed. Its first128
+  production outputs were independently checked on compute for checkpoint/seed,
+  finite97x220states,97x23x3joints and23x3neutral shape. Node32 GPU23a continues
+  Phase1 shard005. All6 allocated GPUs now evaluate; no UEM trainer remains.
+  Verify live CUDA/task processes before claiming full-cohort completion.
+  Do not restart the old exited helper; v2/UUID leases remain authoritative.
+- Phase1 now has1865scored cases (5shards), published/readback/hash verified:
+  PSNR19.7728,SSIM0.589437,LPIPS0.258932,DreamSim0.163229,FVD-I3D40062.5665;
+  GT100cap/1/0/0/0. These remain partial11911-case results. A transient Notion
+  PATCH409 delayed this update; the existing publication monitor recovered it.
+  Predictions/metrics/checkpoints were unaffected. Extra4090jobs2682696/2682697
+  remain pending Priority. No original allocation was canceled.
+
+## Exact Phase1 Drive checkpoint located / GPU engineering preflight (2026-11-05)
+
+- Additional evaluation capacity requested at03:43KST: two independent single4090
+  sruns2682696/2682697, each8CPU/64GiB/3days, excluding cs-gpu-01,node29,node37.
+  Tmux `fulltest_extra4090_{a,b}_20261105` directly launches the existing
+  UUID/task-lease dispatcher when allocated. Initial state pending Priority;
+  do not claim inference until actual worker/CUDA activity is verified. Existing
+  six GPUs remain occupied (4evaluation+2UEM training); no allocation canceled.
+  Immutable launchers and request receipts are in the operation directory.
+- Two Phase1 shards now complete:746/11911 scored and Notion readback verified;
+  next shard002 active. Partial PSNR19.7855,SSIM0.590824,LPIPS0.256414,
+  DreamSim0.162539,FVD-I3D40088.7158; GT100cap/1/0/0/0. Latest UEM snapshot
+  520750/epoch327; final350 evaluation remains gated on genuine completion.
+
+- First complete Phase1 shard scored373/11911 cases and was published/readback
+  verified at03:00KST. PRELIMINARY: PSNR19.7912dB,SSIM0.590312,LPIPS0.256677,
+  DreamSim0.163249,FVD-I3D400=128.7131; GT100cap/1/0/0/0. Not full-cohort
+  results and not directly comparable with earlier matched71/CFG2 measurements.
+  Notion heading40ed2a44-f44b-8147-8061-fc4cb59b40ed on Ablations page;
+  shard001 is active, root summary/publication complete=false. No active
+  follow-up failures. UEM trainer507500/epoch319 at this snapshot; remains active.
+
+- Exact Drive handoff is fully staged and verified. `PHASE1_STAGED.json`
+  records all payload SHA256s, DCP extents, native contract and4 FP32 EMA video
+  projection keys. `phase1_checkpoint.json` atomically released inference.
+  First official forward case generated97x256x256 at20fps, empty caption,
+  prefix1, UniPC30/shift10/guidance1. Runtime debug confirms use_ema_weights=True;
+  saved config checkpoint.load_ema_to_reg=False is an unused default, overridden
+  by the explicit inference setup argument passed to the load planner.
+- `PREFLIGHT_ACCEPTANCE.json` verifies video/hash/prefix/seed/finite pixel metrics
+  and I3D features. Production shard000 is running on node34. Editing task.sh
+  while its first bash reader was active caused a trailing EOF after successful
+  generation/scoring. Fresh launch exited0; error receipt is preserved as
+  `.failed.resolved_launcher_20261105.json`. task.sh is now an atomic symlink to
+  a readonly SHA256-named launcher. Create a new version and atomically replace
+  the symlink for future edits; never edit the target or a live script inode.
+  Active inference/checkpoints/training were retained, no cases discarded.
+- Queue generation and GT scoring now overlap; motion scoring still requires
+  GT. Identical per-model lease names keep old/new dispatchers mutually exclusive.
+  Stage-routing acceptance passed. Only the2 waiting helper children in the
+  training allocation were recycled, preserving actual training PIDs.
+  Tmux `idle_followups_2673623_v2_20261105` replaces its original exited helper;
+  8CPU/64GiB inside the existing16CPU/128GiB allocation, no new job. Do not
+  restart the old helper on top of this live replacement.
+
+- User directed a renewed Drive search. Exact final LoRA+video-I/O EMA200k
+  handoff is `gggdrive:cosmos_data/phase1_twotask_prefix1_phase23_20261031/phase1_video_io_ema200k`.
+  Tar27,141,017,600bytes, SHA25694f237c198d1777d8ce114f959fc608dda444b883b2c53a8121e366ff9117e50;
+  manifest confirms expected model metadata b2b3374b... and run contract/config.
+  Earlier missing-location blocker is superseded; staging is in progress.
+- Download and checksum/extraction workers use owned node34/job2671154 compute
+  CPUs under `operations/idle_gpu_followups_20261104`. Tmux
+  `phase1_videoio_{download,restore}_20261105`; logs/exit receipts prove stages.
+  Restorer verifies archive/all payloads/DCP extents/FP32 EMA video projections
+  and native contract before atomically writing `phase1_checkpoint.json`.
+- Node34's now-idle4090 passed the actual GPU metric identity gate: PSNR100,
+  SSIM1,LPIPS0,DreamSim≈0,finite identical I3D400 features. It is temporarily
+  running an engineering-only64-recording UEM three-mode end-to-end smoke using
+  immutable intermediate142920 weights while the25.3GiB transfer runs. Output
+  `uem_pipeline_smoke` is NOT final350/model-performance results; never publish
+  it as such. Native B1/batch parity, generation,GT/physics/TMR scoring are tested.
+- Only the waiting dispatcher child was terminated for this handoff; original
+  allocation and all other inference/training processes remain. New tmux
+  `uem_pipeline_smoke_node34_20261105` holds its GPU lease, then execs the normal
+  idle dispatcher after smoke success/failure. Do not restart the old exited
+  allocation2671154 helper on top of this live replacement. Check GPU PIDs/logs.
+- New supplied-shape three-mode trainer is still active (latest snapshot303/350,
+ 481550 updates); original UEM variants are already complete. Final350 automatic
+  evaluation remains separately gated by real training COMPLETE and data audit.
+- Engineering smoke completed:64casesx3conditions, nativeB1/batch parity,
+  saved predictions, GT/physics/Nymeria TMR, exit0. Larger-batch probe on the same
+  frozen142920 specialist completed on node34: B64/128/256/512 take respectively
+  0.8400/0.7225/0.7447/0.7413s/case; all passed parity, nativeB1 bitwise true.
+  B128 was fastest (≈16% more throughput than64), peak allocated0.916GiB.
+  Final350 preparation retains its own per-checkpoint/device/mode benchmark;
+  task.sh now sweeps1,16,64,128,256 rather than silently fixing128. Training,
+  sampler steps/guidance/weights/noise remain unchanged. Probe is engineering,
+  not final performance. Its helper hands the GPU back to the normal dispatcher.
+
+## Full-window Phase1 / final supplied-shape UEM follow-ups (2026-11-04 evening)
+
+- User clarified all97-frame test windows: accepted11911 annotation cases,
+  11677 physical windows,71 recordings. New operation
+  `operations/idle_gpu_followups_20261104` in Scratch2; see
+  `nymeria_baselines/IDLE_FOLLOWUPS_20261104.md` and operation README/status.
+- Phase1 FD is empty text, first image+camera, final two-task prefix1
+  global_lora_video_io EMA200k, official UniPC30/shift10/guidance1. Exact
+  checkpoint is documented on Foundary but not staged in checked Yonsei paths;
+  user path/Drive-location question is pending. Never substitute the stopped
+  action+video-projection-only125764 checkpoint. All-case input/timeline checks
+  and metric CPU loading passed; GPU/model acceptance and generation are pending.
+  Full input preparation completed on node25/job2651408 compute CPUs with no
+  GPU, exit0,38.1minutes: all11911 passed official schema/action loading. Final
+  `VERIFIED_INPUTS.json` checks order, paired seeds, empty captions, prefix1 and
+  manifest hash6b8cfcc01f7d3d56a2c736692498a895347113a1a4204229a44c8164d84dd36d.
+  `ALL_INPUTS_COMPLETE.json` is input acceptance, not inference/metric completion.
+- Final supplied-shape three-mode UEM waits for350epoch COMPLETE then pins
+  555800 updates, samples trajectory/video/both with paired seeds/native1000
+  steps and clean SOMA30 shape, then GT/physics/Nymeria TMR and Notion readback.
+  This is separate from frozen intermediate142920 V2M evaluation.
+  Full-cohort CPU tensor audit passed35733 comparisons (11911x3): camera,
+  DINO visual and centered shape inputs match the real training loader exactly;
+  max motion-inverse error2.384e-7. Receipt `UEM_INPUT_AUDIT_COMPLETE.json` and
+  per-case audit are pinned to wrapper/cohort/training contract/stats. The final
+  prepare task verifies these identities before accepting the350epoch snapshot.
+  This is data/normalization acceptance, not GPU sampling or completed metrics.
+- Five tmux `idle_followups_<job>_20261104` workers cover owned jobs2651408,
+  2671154,2675047,2675048,2673623. Process/claim/UUID-aware idle handoffs, leases,
+  and two idle checks protect existing workloads. No original job/trainer was
+  stopped. Waiting helpers are intentional, not unused sessions. Check receipts
+  before claiming actual evaluation. Private metric env leaves training intact.
+- User excluded Phase3 joint-generation and camera-conditioned-task evaluation.
+  Only specific p3_joint/p3_camera inference PIDs were stopped; allocations and
+  partial predictions preserved. Old full-test EXCLUDED_MODELS.json plus runtime
+  guards/publisher now target8models. Prior ten-model completion notes are
+  historical. Manual Notion-row deletion does not exclude other models.
+
+## Full-test V2M scoring/publication recovery (2026-11-04 evening)
+
+- UEM RGB generated all11911 cases, but strict byte-equality of recomputed text
+  embeddings failed across A6000 versus the GT GPU. Same ordered case IDs and
+  finite vectors; measured max component difference3.241e-7, max rowL2 1.141e-6.
+  Scorer now checks matching evaluator/cache/cohort identities and atol1e-6,
+  then uses the identical canonical GT text matrix for retrieval. Cached motion
+  embeddings/predictions are untouched; text_reference_audit.json records this.
+  A larger discrepancy still fails. New score summary records the code/audit.
+- RGB scoring recovered from cached batches: MPJPE36.7036cm, FID0.0673338,
+  R@3=66.8515% on11911 cases (GT91.7031%). COMPLETE/hash verified;
+  prior failure marker preserved as uem_rgb.failed.resolved_20261104.
+- Notion readback failed because two extra manually added table rows were
+  outside the publisher's twelve managed rows. Publisher now verifies managed
+  row IDs/content exactly and preserves extras; records unmanaged IDs and uses
+  a publication lock. Remote table verification passes; CSV/status updates work.
+  Source main training/inference/checkpoints/stats are unchanged. Remaining
+  full-test models continue; this is not completion of the ten-model sweep.
+
+## Full-test V2M batching / minsu partition (2026-11-04)
+
+- User assigned two idle minsu GPUs through its separate agent. Reserved
+  uem_recon and uem_all, one per GPU; both excluded from whw pool_worker.sh.
+  Handoff in fulltest operation MINSU_HANDOFF.md / MINSU_RESERVED.json.
+  Their writable output belongs under /scratch2/minsu1206/cosmos/operations/
+  fulltest_v2m_ablations_20261104; shared source/checkpoints/cohort remain pinned.
+  Do not assume those remote workers launched: whw cannot see/control them.
+- New inference-only fulltest_v2m_batched.py preserves native samplers/seeds,
+  including an independent original CUDA ancestral noise stream per UEM case.
+  Original fulltest_v2m.py must remain unchanged: its hash is frozen by config.
+  GPU benchmarks require native B1 bitwise agreement and record B>1 decoded
+  differences before selecting throughput. UEM selected B64 on A6000:1.744s/case versus7.903s B1
+  (4.53x in the benchmark), negligible decoded differences. Phase3 B2/4 changes joints about1–2cm, so rejected; B1 retained.
+  Read current batch_benchmark.json for completed measurements/selected size.
+- Only evaluation steps were paused for benchmarking. Parent sruns/training
+  remain; tmux fulltest_batched_node{25,34}_20261104 automatically resumes
+  their pool after each active benchmark. sample_model.sh now benchmarks each
+  new model before using its selected batch; sample_model_serial.sh retained.
+  No training, checkpoints, diffusion step counts, guidance or stats changed.
+
 ## Full-test V2M: both Phase3 and UEM families (2026-11-04)
+
+- User explicitly excluded Nano evaluation. The frozen ten-model full-test
+  pool already contains only Edge Phase3 and UEM variants. Node25/job2651408
+  is renamed `v2m-uem-a6000` and runs UEM RGB V2M; its old zs-nano-edge job
+  name was historical. Previous zero-shot comparison is complete, with no
+  Nano inference process remaining. Do not queue additional Nano evaluations.
+  Operation NO_NANO_SCOPE.json records the checked scope; existing results stay.
 
 - User explicitly selected BOTH families and requested the whole test set and
   summary at https://app.notion.com/p/binne/Ablations-40dd2a44f44b8080aad3cda6b5fea7c8 .
@@ -21,6 +403,13 @@
   work. `pool_worker.sh` runs two-case acceptance, full sampling and scoring;
   all predictions and scoring batches resume. Do not interrupt UEM training
   2673623/node32. No original checkpoint/training source was changed.
+- User additionally assigned retained A6000 job2651408/node25 to this pool.
+  Its zero-shot comparison GPU work was finished (CPU publication may continue).
+  Tmux `fulltest_v2m_node25_20261104`, launcher/evidence in operation `node25/`;
+  first claimed model is `uem_rgb` (original final350 RGB-only V2M). Same
+  frozen cohort/checkpoints/samplers/scoring; native smoke precedes full sampling.
+  Existing per-model locks preserve node34's Phase3 baseline work. Do not infer
+  completion from this launch note; inspect owner files/logs/COMPLETE markers.
 - GT scoring is complete: R@3=91.7031±0.1399%, FID0, raw skating14.0764cm/s,
   mean foot penetration1.0481cm. A separate text cache extends the original by
   six missing captions using the same frozen encoder; original entries retained.
