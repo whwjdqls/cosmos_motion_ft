@@ -1,5 +1,42 @@
 # Shared Agent Context
 
+## Yonsei fresh Phase 2 no-shape / two PRO6000s (2026-11-05 evening)
+
+- User requested Phase2 without shape, explicitly two GPUs. Fresh200k run
+  `edge_selfcross_finalhidden_knorm_captiononly_noshape_nymeria_bones50_gbs256_camhead_w1_1_5_contact_yonsei_20261105`
+  uses retained2622173/node58,2×PRO6000,128/rank,accum1,global256.
+  Same completed Self→cross final-hidden+Knorm caption-only20260921 recipe;
+  only shape token disabled and unused shape encoder frozen. No core edit.
+- Full DDP update/save/strict-resume and bitwise shape-invariance gates passed.
+  Production relaunch tmux `phase2_no_shape_pro2_live_20261105`; operation
+  `operations/phase2_no_shape_pro2_20261105` under Scratch2 cosmos.
+  Consult actual logs/W&B and PRODUCTION_RUNNING.json for live optimizer state.
+  W&B scene_motion/cosmos-motion-ft/cfj632ue. Only positive10k checkpoints.
+- Production reached20/200000 around21:00KST, finite loss/gradients, zero
+  skipped/guarded updates; early recent0.4141updates/s,21.13GiB peak allocated
+  rank0. Treat this as cold-start throughput; at that rate200k needs a later
+  allocation/resume. Actual latest state is in logs/receipt/W&B.
+- Training BONES audit125933unique/585312rows,missing0. Held-out validation
+  missing6849/6993unique; exact baseline saved Nymeria+BONES visualization
+  arrays reused, SHA-verified, only new run-local ablation metadata changed.
+  Full future BONES benchmarks need held-out file restoration; don't claim
+  full validation coverage. Parent srun and other allocations retained.
+- Details/recovery: `motion_expert_t2m_edge/NO_SHAPE_YONSEI_20261105.md`.
+
+## Current evaluation queue complete / no new retained Phase3 checkpoints (2026-11-05 13:34 KST)
+
+- User authorized remaining evaluations on idle allocations. Compute checkpoint
+  audit found no newer retained Phase3 snapshots than the evaluated ones.
+  All8 retained full-test Phase3/UEM models plus3 final350UEM conditions now
+  have11911-case scores and extended PA/root/UPE/LPE/sJPE results, including
+  the previously pending hidden-FiLM92879. All extended Notion rows are final.
+  Inventory receipt: operations/evaluation_inventory_20261105/COMPLETE.json;
+  checkpoint inspection ran on owned2675047 CPUs. No current queue work remains.
+- Existing p3_joint/p3_camera explicit exclusions were preserved. No duplicate
+  inference launched. Original retained jobs remain allocated; both PRO2
+  requests2616204/2622173 are now onnode58 and idle at this inspection.
+  Five4090s and oneA6000 were also checked idle. No allocation was canceled.
+
 ## Position errors and DisCoRD sJPE backfill (2026-11-05)
 
 - First pass complete10:37KST: all10 completed models plus2GTreferences
