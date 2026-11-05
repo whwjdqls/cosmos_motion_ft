@@ -1,4 +1,4 @@
-"""Bridge-only DDP training with an explicit compute-node acceptance gate."""
+"""Bridge and optional additional-LoRA DDP training with a compute acceptance gate."""
 from __future__ import annotations
 
 import argparse
@@ -26,6 +26,12 @@ from motion_expert_phase3_edge_joint.data import Phase3Dataset, GlobalDrawSample
 from motion_expert_phase3_edge_joint.model import EdgePhase3
 from motion_expert_phase3_edge_joint.objectives import noise_batch, specialist_loss
 from motion_expert_phase3_edge_joint.settings import RECIPE, add_paths, atomic_json, digest_json, require_compute_node, sha256
+from motion_expert_phase3_edge_joint.adapters import (
+    add_training_options, configure_training, trainable_parameters, trainable_state,
+    load_trainable_state, new_optimizer, set_optimizer_lr, new_ema, restore_ema,
+)
+from motion_expert_phase3_edge_joint.runtime import training_execution
+from motion_expert_phase3_edge_joint.validation import maybe_validate
 
 STOP = False
 
@@ -98,11 +104,6 @@ def assert_frozen(model, versions):
                 raise RuntimeError("Frozen specialist was updated or received parameter gradients")
 
 
-def new_optimizer(model):
-    return torch.optim.AdamW(model.bridges.parameters(), lr=RECIPE["lr"],
-                            betas=tuple(RECIPE["betas"]), weight_decay=0.0)
-
-
 def lr_for_step(step):
     warmup, total = RECIPE["warmup"], RECIPE["steps"]
     if step <= warmup:
@@ -119,16 +120,25 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
     for mode in RECIPE["tasks"]:
         meta = bridge_meta(mode, device)
         bridge = LocalModalityBridge(8, 2, 4,
-            conditioning_attention=RECIPE.get("conditioning_attention", "directional")).to(device)
+            conditioning_attention=RECIPE.get("conditioning_attention", "directional"),
+            parameterization=RECIPE.get("bridge_parameterization", "shared")).to(device)
         mask = bridge._attention_mask(meta)
         assert meta.gen_source_start[64].item() == 1
         assert meta.gen_source_end[-1].item() == 96
         assert bridge._source_interval_pair_mask(meta)[-1, -1].item()
         bidirectional = bridge.conditioning_attention == "bidirectional"
+        temporal = torch.cat((meta.gen_frame >= 0, meta.motion_frame >= 0))
+        shape_rows = torch.nonzero(meta.motion_frame < 0).flatten() + 1600
+        assert not mask[shape_rows][:, temporal].any()
+        assert not mask[temporal][:, shape_rows].any()
+        assert torch.equal(mask[:1600, :1600], meta.gen_frame[:, None] == meta.gen_frame[None, :])
+        motion_groups = torch.div(meta.motion_frame[1:] + 3, 4, rounding_mode="floor")
+        assert torch.equal(mask[1601:, 1601:], motion_groups[:, None] == motion_groups[None, :])
         if bidirectional:
-            assert torch.equal(mask, mask.T)
+            temporal_mask = mask[temporal][:, temporal]
+            assert torch.equal(temporal_mask, temporal_mask.T)
             assert mask[:1600, 1600:][meta.gen_clean].any()
-            assert mask[1600:, :1600][meta.motion_clean].any()
+            assert mask[1600:, :1600][meta.motion_frame >= 0].any()
         elif mode == "video2motion":
             assert not mask[:1600, 1600:].any()
         elif mode == "motimg2video":
@@ -151,7 +161,9 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
                 gb, _ = bridge(g, perturb_m, meta)
                 _, mb = bridge(perturb_g, m, meta)
                 assert (ga[meta.gen_clean] - gb[meta.gen_clean]).abs().max().item() > 0
-                assert (ma[meta.motion_clean] - mb[meta.motion_clean]).abs().max().item() > 0
+                temporal_motion = meta.motion_frame >= 0
+                assert (ma[temporal_motion] - mb[temporal_motion]).abs().max().item() > 0
+                torch.testing.assert_close(ma[~temporal_motion], mb[~temporal_motion], rtol=0, atol=0)
             elif mode == "joint":
                 gb, _ = bridge(g, m + 1, meta)
                 _, mb = bridge(g + 1, m, meta)
@@ -163,6 +175,8 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
                                            gb if mode == "video2motion" else mb, rtol=0, atol=0)
         del bridge, mask
     checks.append("causal_Wan_intervals_and_" + RECIPE.get("conditioning_attention", "directional") + "_conditioning_attention")
+    if RECIPE.get("bridge_parameterization", "shared") != "shared":
+        checks.append("bridge_parameterization_" + RECIPE["bridge_parameterization"])
     rows = [dataset[(i, (rank * args.microbatch + i) % len(dataset))] for i in range(args.microbatch)]
     batch = collate(rows)
     versions = frozen_versions(model)
@@ -212,6 +226,7 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
     batch["captions"] = ["" if m == "video2motion" else "The camera wearer walks forward." for m in batch["modes"]]
     inputs, target = noise_batch(batch, device)
     optimizer = new_optimizer(model)
+    ema = new_ema(model)
     model.train()
     losses = []
     for step in range(12):
@@ -220,7 +235,7 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
         loss, _ = specialist_loss(output, target, inputs, mean, std)
         collective_check(torch.isfinite(loss).item(), "Non-finite acceptance loss", device)
         loss.backward()
-        norm = torch.nn.utils.clip_grad_norm_(model.bridges.parameters(), 1.0)
+        norm = torch.nn.utils.clip_grad_norm_(trainable_parameters(model), 1.0)
         collective_check(torch.isfinite(norm).item(), "Non-finite acceptance gradients", device)
         gates = [p for name, p in model.bridges.named_parameters() if "gate_" in name]
         core = [p for name, p in model.bridges.named_parameters() if "gate_" not in name]
@@ -229,7 +244,12 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
             assert all(p.grad is not None and p.grad.abs().max().item() == 0 for p in core)
         if step == 11:
             assert any(p.grad is not None and p.grad.abs().max().item() > 0 for p in core)
+            if len(model.phase3_lora):
+                assert any(p.grad is not None and p.grad.abs().max().item() > 0
+                           for p in model.phase3_lora.parameters())
         optimizer.step()
+        if ema is not None:
+            ema.update(model)
         assert_frozen(model, versions)
         value = loss.detach().clone()
         if world > 1:
@@ -246,19 +266,28 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
     # Save/reload with real optimizer and per-rank RNG; never publish smoke weights as production.
     rng = all_objects(capture_rng_state(), world)
     checkpoint_path = args.out / "preflight_roundtrip.pt"
-    expected_state = {key: value.detach().cpu().clone() for key, value in model.bridges.state_dict().items()}
+    expected_state = {name: {key: value.detach().cpu().clone() for key, value in state.items()}
+                      for name, state in trainable_state(model).items()}
     if rank == 0:
-        atomic_checkpoint(checkpoint_path, {"bridges": expected_state, "optimizer": optimizer.state_dict(), "rng": rng})
+        atomic_checkpoint(checkpoint_path, {**expected_state, "optimizer": optimizer.state_dict(), "rng": rng,
+            "scheduler": {"recipe": RECIPE}, "ema": None if ema is None else ema.state_dict()})
     barrier()
     restored = torch.load(checkpoint_path, map_location="cpu", weights_only=False, mmap=True)
-    model.bridges.load_state_dict(restored["bridges"], strict=True)
+    load_trainable_state(model, restored)
+    restore_ema(ema, model, restored)
     optimizer.load_state_dict(restored["optimizer"])
     restore_rng_state(restored["rng"][rank])
-    for key, value in model.bridges.state_dict().items():
-        assert torch.equal(value.detach().cpu(), expected_state[key])
+    for name, state in trainable_state(model).items():
+        for key, value in state.items():
+            assert torch.equal(value.detach().cpu(), expected_state[name][key])
     digest = hashlib.sha256()
-    for value in model.bridges.state_dict().values():
-        digest.update(value.detach().cpu().contiguous().numpy().tobytes())
+    for state in trainable_state(model).values():
+        for value in state.values():
+            digest.update(value.detach().cpu().contiguous().numpy().tobytes())
+    if ema is not None:
+        for state in ema.state.values():
+            for value in state.values():
+                digest.update(value.detach().cpu().contiguous().numpy().tobytes())
     assert len(set(all_objects(digest.hexdigest(), world))) == 1
     del restored, expected_state
     # One real resumed optimizer update, not just deserialization.
@@ -266,10 +295,16 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
     output = ddp(**inputs)
     loss, _ = specialist_loss(output, target, inputs, mean, std)
     loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.bridges.parameters(), 1.0, error_if_nonfinite=True)
+    torch.nn.utils.clip_grad_norm_(trainable_parameters(model), 1.0, error_if_nonfinite=True)
     optimizer.step()
+    if ema is not None:
+        ema.update(model)
     assert_frozen(model, versions)
     checks.append("DDP_bit_identical_bridge_parameters_and_save_reload_continue")
+    if len(model.phase3_lora):
+        checks.append("additional_lora_registered_synchronized_and_restored_phase1_stays_frozen")
+    if ema is not None:
+        checks.append("matched_bridge_and_lora_EMA_roundtrip")
     barrier()
     if rank == 0:
         checkpoint_path.unlink()
@@ -282,14 +317,16 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
         print("[phase3/preflight] PASSED; disposable weights are not used for production", flush=True)
 
 
+@training_execution
 def main():
-    parser = add_paths(argparse.ArgumentParser())
+    parser = add_training_options(add_paths(argparse.ArgumentParser()))
     parser.add_argument("--microbatch", type=int, default=4)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--acceptance", type=Path)
     parser.add_argument("--resume", default="auto")
     args = parser.parse_args()
+    configure_training(args)
     from motion_expert_phase3_edge_joint.settings import configure_conditioning
     configure_conditioning(args.conditioning_attention, args.clean_motion_timestep)
     require_compute_node()
@@ -336,6 +373,7 @@ def main():
         if world > 1:
             dist.destroy_process_group()
         return
+    ema = new_ema(model)
     if args.acceptance is None:
         raise RuntimeError("Production requires --acceptance from the completed GPU preflight")
     acceptance = json.loads(args.acceptance.read_text())
@@ -356,8 +394,9 @@ def main():
         payload = torch.load(resume, map_location="cpu", weights_only=False)
         if payload["fingerprint"] != fingerprint:
             raise RuntimeError("Resume contract differs from specialist/data/recipe identity")
-        model.bridges.load_state_dict(payload["bridges"], strict=True)
+        load_trainable_state(model, payload)
         optimizer.load_state_dict(payload["optimizer"])
+        restore_ema(ema, model, payload)
         start_step = payload["step"]
         if payload["next_global_draw"] != start_step * 32:
             raise RuntimeError("Invalid saved sampler cursor")
@@ -385,11 +424,14 @@ def main():
         print(f"[phase3/train] fresh bridges or own resume; steps={start_step}->200000 "
               f"world={world} microbatch={args.microbatch} accumulation={accum} global_batch=32", flush=True)
     log = (args.out / "metrics.jsonl").open("a", buffering=1) if rank == 0 else None
+    # Replay a pending milestone after a crash between saving and evaluation.
+    # COMPLETE.json and validation_id make successful replay idempotent.
+    maybe_validate(args, model, start_step, fingerprint, rank, world, log)
+    step = start_step  # A final-step resume may only need to finish validation.
     for step in range(start_step + 1, RECIPE["steps"] + 1):
         before = time.monotonic()
         lr = lr_for_step(step)
-        for group in optimizer.param_groups:
-            group["lr"] = lr
+        set_optimizer_lr(optimizer, lr)
         optimizer.zero_grad(set_to_none=True)
         totals = torch.zeros(6, device=device)
         for micro in range(accum):
@@ -406,14 +448,17 @@ def main():
                                    metrics["video"] * metrics["video_count"],
                                    metrics["motion_count"], metrics["video_count"], metrics["joint_count"]))
             del output, loss, inputs, target
-        norm = torch.nn.utils.clip_grad_norm_(model.bridges.parameters(), 1.0)
-        collective_check(torch.isfinite(norm).item(), "Non-finite bridge gradient; stopping all ranks", device)
+        norm = torch.nn.utils.clip_grad_norm_(trainable_parameters(model), 1.0)
+        collective_check(torch.isfinite(norm).item(), "Non-finite trainable gradient; stopping all ranks", device)
         optimizer.step()
+        if ema is not None:
+            ema.update(model)
         assert_frozen(model, versions)
         stop = torch.tensor(int(STOP), device=device)
         if world > 1:
             dist.all_reduce(stop, op=dist.ReduceOp.MAX)
-        save = step % 10000 == 0 or bool(stop.item()) or step == 200000
+        validation_due = bool(RECIPE.get("validation")) and step % RECIPE["validation"]["every"] == 0
+        save = step % 10000 == 0 or validation_due or bool(stop.item()) or step == 200000
         if step % 10 == 0 or step == start_step + 1:
             if world > 1:
                 dist.all_reduce(totals)
@@ -431,6 +476,10 @@ def main():
                                             "joint": values[5]},
                            "grad_norm": norm.item(), "seconds": time.monotonic() - before,
                            "peak_gib": torch.cuda.max_memory_allocated() / 2**30}
+                if len(model.phase3_lora):
+                    metrics["phase3_lora_lr"] = optimizer.param_groups[1]["lr"]
+                if ema is not None:
+                    metrics.update(ema_decay=ema.decay, ema_updates=ema.num_updates)
                 print("[phase3/train] " + json.dumps(metrics), flush=True)
                 log.write(json.dumps(metrics) + "\n")
                 atomic_json(args.out / "status.json", {**metrics, "job": os.environ.get("SLURM_JOB_ID"), "stage": "training"})
@@ -439,8 +488,11 @@ def main():
             if rank == 0:
                 name = f"step_{step:09d}.pt" if step % 10000 == 0 else "recovery_latest.pt"
                 atomic_checkpoint(checkpoint_dir / name, {
-                    "schema": 1, "fingerprint": fingerprint, "step": step,
-                    "bridges": model.bridges.state_dict(), "optimizer": optimizer.state_dict(),
+                    "schema": 2 if (len(model.phase3_lora) or ema is not None
+                                     or RECIPE.get("bridge_parameterization", "shared") != "shared") else 1,
+                    "fingerprint": fingerprint, "step": step,
+                    **trainable_state(model), "optimizer": optimizer.state_dict(),
+                    "ema": None if ema is None else ema.state_dict(),
                     "scheduler": {"step": step, "lr": lr, "recipe": RECIPE},
                     "rng_by_rank": rng, "next_global_draw": step * 32, "sources": model.provenance,
                 })
@@ -450,6 +502,10 @@ def main():
                     if path.name not in {name, "step_000100000.pt"}:
                         path.unlink()
             barrier()
+        if validation_due:
+            if rank == 0:
+                atomic_json(args.out / "status.json", {"stage": "validation", "step": step})
+            maybe_validate(args, model, step, fingerprint, rank, world, log)
         if stop.item():
             break
     if rank == 0:

@@ -40,6 +40,23 @@ def flatten_metrics(value, prefix="train"):
     return result
 
 
+def event_metrics(record):
+    if record.get("kind") == "validation":
+        return {"val/step": record["step"], **flatten_metrics(record["validation"], "val")}
+    return flatten_metrics(record)
+
+
+def source_finished(source, metrics_path, position, *, target, latest_step, validation):
+    status_file = source / "status.json"
+    terminal = (status_file.is_file()
+                and json.loads(status_file.read_text()).get("stage") in {"complete", "stopped"})
+    if terminal:
+        # Re-stat AFTER reading terminal status: a final validation line may
+        # have arrived after this poll first reached EOF.
+        return metrics_path.stat().st_size == position
+    return bool(not validation and target and latest_step is not None and latest_step >= target)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", type=Path, required=True)
@@ -122,6 +139,8 @@ def main():
     )
     run.define_metric("train/step")
     run.define_metric("train/*", step_metric="train/step")
+    run.define_metric("val/step")
+    run.define_metric("val/*", step_metric="val/step")
     next_remote_event = int(run.step)
     run.summary["source/metrics_path"] = str(metrics_path)
     run.summary["logging/host"] = hostname
@@ -158,7 +177,7 @@ def main():
                         raise ValueError(f"Invalid optimizer step at record {event_index}")
                     latest_step = step
                     if event_index >= next_remote_event:
-                        run.log(flatten_metrics(record), step=event_index)
+                        run.log(event_metrics(record), step=event_index)
                         newly_queued += 1
                         queued_this_poll += 1
                     event_index += 1
@@ -185,7 +204,9 @@ def main():
                 atomic_json(args.state_dir / "status.json", state)
                 if queued_this_poll:
                     print(json.dumps({"event": "METRICS_QUEUED", **state}), flush=True)
-                if args.once or (target and latest_step is not None and latest_step >= target):
+                final_training_record = source_finished(source, metrics_path, stream.tell(), target=target,
+                    latest_step=latest_step, validation=bool(contract.get("recipe", {}).get("validation")))
+                if args.once or final_training_record:
                     break
                 stop.wait(args.poll_seconds)
         run.summary["logging/status"] = "backfill_complete" if args.once else "stream_stopped"

@@ -37,6 +37,212 @@
   requests2616204/2622173 are now onnode58 and idle at this inspection.
   Five4090s and oneA6000 were also checked idle. No allocation was canceled.
 
+## Grouped BF16 Phase3 with periodic fixed71 metrics (2026-11-05)
+
+- Final user steering supersedes the initially prepared40/40/20 bidirectional
+  run: replace the image-joint trainer on GPUs0/4 with **directional50/50 V2M/M2V,
+  no joint objective**, fresh MMDiT/groupedBF16. Dedicated package
+  `motion_expert_phase3_edge_mmdit` pins that recipe in trainer and spawned data
+  workers; no additional LoRA/EMA. Old rank0SIGUSR1 stop was authorized explicitly.
+  Check the operation's launch/status receipts for actual startup/recovery state.
+
+- User selected precision option2 and requested V2M/M2V metrics every10k on
+  W&B, with large sampling batches. New image-joint `launch_mmdit` selects
+  per-modality MMDiT, grouped `bf16_bridge`, validation every10000, sampling32
+  per GPU and VAE decode4. Other recipe settings, frozen sources, shape
+  exclusion, optional LoRA/EMA off defaults are retained. Existing jobs unchanged.
+- `validation.py` shards71 held-out windows across training ranks, scores on
+  rank0, restores training RNG/modes, checkpoints before evaluation and resumes
+  pending milestones idempotently. These are test-monitoring results, with no
+  checkpoint selection. Raw weights, blank captions, native UniPC35/CFG1.
+- W&B sidecar routes metrics to `val/v2m/*` and `val/m2v/*` on `val/step` in
+  the same run; final events are drained. Metrics include matched Body23/TMR
+  reconstruction/FID/retrieval and RGB PSNR/SSIM/LPIPS/DreamSim/I3D400 FVD.
+- Native batch32 passed both modes on GPU0 alongside own trainer3157418;
+  VAE batch4 passed. New video metric code matches prior per-frame results
+  within1.8e-7, exact I3D features; all71 GT TMR retrieval values reproduced.
+  Batch2 vs independent BF16 samples differ≈1–1.9% relativeL2 after3steps:
+  seeds/noise are stable, but output bitwise identity across batches is not claimed.
+- CPU/DDP tests cover OOM retries, RNG/gradient preservation, full71 sharding,
+  collective failure, checkpoint-step replay, W&B axes/final draining. A frozen
+  source snapshot is actually used by the launcher, including lazy evaluators.
+  Full fresh two-GPU production acceptance remains pending allocation; no new
+  training run has started. Never reclaim5/6 from another researcher's jobs.
+- Prepared config/launch plan and smoke receipts:
+  `cosmos/operations/phase3_mmdit_bf16_validation_20261105`; instructions in
+  `motion_expert_phase3_edge_joint/PERIODIC_VALIDATION.md`.
+
+## BF16 attention and projection trials (2026-11-05)
+
+- User requested trying the first two lower-precision choices. Implemented
+  opt-in `execution_policy(grouped_attention=True, precision='bf16_attention')`
+  and `'bf16_bridge'`; default/inherited precision stays FP32. First mode keeps
+  QKVO FP32; second autocasts only compact bridge projections to BF16. Both
+  use BF16 attention matmuls with FP32 score scaling/softmax, norm and master/
+  gate/optimizer storage. Shape exclusion and frozen specialists are retained.
+- Fresh matched FP32 reference is post-shape-exclusion. GPU5/6 had minji jobs
+  (1319536/1321044 at audit); never share/stop foreign jobs. Used prior-authorized
+  sharing of GPU0 with own trainer3157418; timings are contention affected.
+  A later isolated GPU5 attempt was refused before CUDA initialization when
+  another job arrived; no isolated precision result is claimed.
+- Seven MMDiT bridges, BF16 streams, FP32 masters, checkpointing/fresh metadata:
+  FWD+BWD FP32103.368ms, BF16-attention103.105ms, BF16-bridge36.146ms. Observed
+  ratios1.003×/2.860× are NOT isolated/end-to-end training speedups. Minima
+  54.405/53.936/33.122ms show variability. Incremental peaks≈990/975/997MiB.
+- GPU gradient relative-L2 deviations0.266%/0.374%, output relative0.0557%/
+  0.0668%; finite and shape bit-exact. Three disposable optimizer updates in
+  each mode reduced loss2.00358→1.98363; Adam states FP32. All74 focused CPU
+  tests passed, including five precision tests and two-process DDP/recompute.
+- No production run was stopped/resumed/converted. Other three trainers
+  continue; no-joint GPU5/6 run remains stopped at60288. No task-quality claim.
+  Operation `cosmos/operations/benchmark_bridge_bf16_20261105`; details in
+  `motion_expert_phase3_edge_joint/BF16_BRIDGE_BENCHMARK.md`.
+
+## Shape excluded from Phase3 bridges (2026-11-05, supersedes shape-key notes below)
+
+- User superseded a proposed shape residual freeze with complete exclusion
+  from modality-bridge attention. Shape is now removed before bridge norms,
+  Q/K/V and attention, then restored bit-for-bit with no residual update.
+  Motion-expert shape encoding/attention is unchanged.
+- A shared frame-only forward wrapper covers every bridge parameterization
+  and dense/cached/grouped paths. Compact metadata is reused across bridges;
+  caches have new version keys. Parameter counts/state keys are unchanged;
+  nonzero-gate behavior and source fingerprints deliberately change.
+- All38 focused CPU tests passed, including two-process Gloo DDP, gradient
+  parity, optimizer/EMA recovery, BF16/signed-zero identity and shape NaN
+  perturbations. New GPU/data acceptance remains pending; earlier grouped
+  GPU benchmarks used the pre-exclusion implementation. Existing trainers
+  and the uploaded scratch46338 handoff retain their original snapshots.
+  Details: `motion_expert_phase3_edge_joint/SHAPE_EXCLUSION.md`.
+
+## Grouped FP32 bridge benchmark and stopped GPU5/6 run (2026-11-05)
+
+- User requested grouped implementation/speed measurement, then explicitly
+  authorized stopping training on5/6 to benchmark there. Owned no-joint camera
+  trainer444416/444417 stopped gracefully at60288 via rank0SIGUSR1. Recovery:
+  `cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_camera_bidir5050_nojoint_nocamloss_wv1_T97_gbs32_sep1_20261103/checkpoints/recovery_latest.pt`.
+  Verified optimizer56 states/bridges56 tensors, both rank RNGs, draw1929216.
+  Do not auto-resume. Other three trainers continue. After the benchmarks released
+  5/6, minji started processes1282923/1284747 there. They are no longer idle;
+  never terminate/share these foreign-user GPU jobs.
+- Opt-in `execution_policy(grouped_attention=True)` packs local groups with
+  shape as key and self-only query; strict FP32 attention, TF32off, parameters
+  and scientific settings retained. Dense remains default; custom explicit
+  bias is rejected in grouped mode. Bounded content-keyed/per-meta plan caches.
+- Primary isolated H200GPU5 synthetic seven-MMDiT-bridge stack, BF16streams,
+  FP32compute, checkpointing and fresh metadata: FWD17.895→12.173ms (1.470×),
+  FWD+BWD66.470→46.610ms (1.426×), incremental peak1597→990MiB. Not a whole
+  training update; frozen experts/optimizer/data/DDP are excluded. GPU6 one
+  bridge7.089→5.016ms (1.413×). Initial shared-GPU0 trials are secondary only.
+- GPU FP32 single-bridge outputmax2.38e-7/gradientrelativeL2max4.55e-7;
+  seven BF16-stream stack outputmax0.0078125/gradrelL25.83e-5. No bitwise claim.
+  All65 focused CPU tests passed, including9 grouped tests, checkpoint/DDP and
+  mask/gradient parity. Operation `cosmos/operations/benchmark_grouped_fp32_bridge_20261105` and
+  `motion_expert_phase3_edge_joint/GROUPED_ATTENTION_BENCHMARK.md` contain evidence.
+
+## Phase3 temporal locality on both attention axes (2026-11-05)
+
+- Latest user request changes only masking. Both video/video and motion/motion
+  attention are now Wan-group local, as is cross-modal attention: latent0↔motion0,
+  latent1↔motion1–4, …latent24↔motion93–96. Existing directional target-query
+  rules and bidirectional aligned-frame access are retained for every bridge
+  parameterization. Single joint softmax and all forward math stay unchanged.
+- Shape is a global conditioning key but its query reads only itself in both
+  modes, preventing a bridge residual from collecting/relaying cross-time frame
+  information. Its original self-only residual is retained. Frozen specialist
+  attention is untouched; bridge locality is not whole-network disconnection.
+- One canonical mask builder serves `_attention_mask` and cached attention
+  bias, with a new versioned cache key. Source AST audit confirmed constructor,
+  norms/QKVO/gates/residuals/forward methods unchanged. No loss/config changes.
+  Preflight mask assertions were updated for shape's asymmetric key-only role.
+- All25 focused CPU tests passed, including9 new locality tests, zero blocked
+  gradients, repeated three-bridge no-leakage checks, cached gradient parity,
+  joint-softmax verification and two-process CPU DDP. Native GPU preflight is
+  pending. Another31 optimizer/EMA/camera/scratch/loss/objective/data-worker
+  regressions passed, for56 total; mask preflight assertions passed on CPU
+  for all8 policy/parameterization combinations. No current job was changed. Details:
+  `motion_expert_phase3_edge_joint/TEMPORALLY_LOCAL_ATTENTION.md`.
+
+## Phase3 MMDiT-style bridge ablations (2026-11-05)
+
+- User requested testing private generator/motion LayerNorm, output projection,
+  and Q/K/V before trying the additional LoRA. `--bridge-parameterization`
+  selects `separate_norm`, `separate_norm_out`, or full `mmdit`; `shared`
+  preserves legacy defaults/keys/initialization. Mode is fingerprinted and
+  restored from checkpoints; incompatible state/configuration is rejected.
+- Implemented inside `motion_expert_joint_attention/modality_bridge.py`:
+  separate norms/projections, then one joint attention with the original local
+  mask and zero residual gates. LayerNorm's affine weights/bias are untied;
+  token normalization was already independent. No extra FFNs/AdaLN or changes
+  to frozen specialists. The cached-mask policy supports all modes.
+- Full split has234,938,382 trainable bridge params vs117,469,198 shared.
+  Joint/image-joint/pretrained-camera trainers accept it; image-joint launcher
+  forwards it. New LoRA and EMA stay independently opt-in/off by default.
+  Historical scratch model rejects the new modes; source/acceptance gates stay.
+- All11 new bridge tests and10 LoRA tests passed, including two-process CPU
+  DDP, checkpoint recomputation, raw/EMA exact resume, cached gradient parity,
+  and legacy shared parity against HEAD. Full native GPU/data preflight is
+  pending. No jobs started/stopped/restarted. Usage and scope:
+  `motion_expert_phase3_edge_joint/MMDIT_BRIDGE.md`.
+
+## Additional Phase3 LoRA and optional EMA (2026-11-05)
+
+- User requested implementation, then clarified EMA may also be used. New
+  `motion_expert_phase3_edge_joint/adapters.py` adds independent FP32 generation
+  Q/K/V/O deltas on top of frozen Phase1 LoRA, without changing native keys or
+  native frozen guards. Registered separately for DDP/optimizer/checkpoints.
+- Opt in with `--phase3-lora-rank`; new LR defaults1e-5, WD0; bridge LR/WD
+  separately configurable. Optional `--ema-decay` defaults0 and tracks bridges
+  plus new LoRA jointly. Same task losses/schedules; no objective gradient
+  rerouting. New checkpoints/samplers restore complete raw/EMA pairs strictly.
+- Joint/image-joint/pretrained-camera trainers support the flags; image-joint
+  launcher forwards them. Historical scratch recipe rejects new LoRA/EMA;
+  its complete motion/bridge recovery remains supported. Strict production
+  source/acceptance gates remain; never reuse an old baseline acceptance.
+- See `motion_expert_phase3_edge_joint/ADDITIONAL_LORA.md` for usage and limits.
+  All10 new CPU/DDP tests and an actual NVIDIA-LoRA CPU probe passed; existing
+  regressions16/17 pass, with one blocked by missing Git objectf9043d3.
+  Native GPU/data acceptance has not been run;
+  no current trainer, GPU allocation or checkpoint was changed/restarted.
+
+## Phase1/Phase3 loss and optimizer audit (2026-11-05)
+
+- User clarified concern: Phase3 video quality versus Phase1.
+  Training video MSE actually decreases; frozen weights still allow bridge
+  activation drift (including video self-attention). Existing Phase1 gallery
+  uses a different September checkpoint/GT-camera input from current October
+  video-I/O Phase3 source. Matched bridge-decomposition evidence is missing;
+  do not claim the LR or loss weight is proven to cause the quality gap.
+
+- Audited exact current frozen Phase1 video-I/O run51xcizf1:100000 unique
+  W&B two-step scalar records plus saved config/DCP metadata. Final5k raw
+  video0.110927/action0.00017935; both weights10 →1.10927/0.00179350.
+- Current Phase3 has camera loss0; body composite is a different objective.
+  Matched whole-batch scalar video share ≈97% at weight10, ≈77% at weight1.
+  Camera-joint matched40k raw video≈0.200 in both; total gradient norm means
+  28.46 vs2.756 and clipped logged updates100% vs78.4%.
+- P1 effective peak LR2e-5 video/LoRA,8e-5 action; flat500 then linear200k.
+  P3 peak2e-4, warmup1000 then cosine200k. WD0.05 vs0; both batch32/clip1.
+  Details and plot: `migration/FOUNDRY_PHASE1_PHASE3_LOSS_OPTIMIZATION_AUDIT_20261105.md`; local operation
+  `cosmos/operations/compare_phase1_phase3_losses_20261105`. Read-only audit;
+  no training or external-page change. Scalar shares are not gradient shares.
+
+## Latest Phase3 fixed71 motion-guidance2 results (2026-11-05)
+
+- All284 fresh predictions complete/published: image-joint130k, camera joint
+  weight10 90k, camera joint weight1 50k, no-joint weight1 40k; original71
+  windows/seeds0–70, motion/shape guidance2 (explicitly user-selected).
+- Baseline130k PSNR19.319510/LPIPS0.254713/FVD359.052016; camera90k
+  18.865897/0.271381/357.086086; camera50k 19.142216/0.270293/358.000990;
+  no-joint40k 18.924024/0.269894/347.714759. Budgets/exposures differ.
+- Shared frozen specialists/data/source identities and initial noise match;
+  all71 GT I3D feature checks match exactly. Guide video only; reference
+  masks motion/shape keys, not whole bridges. No trained motion-null branch.
+- Notion page40fd2a44f44b80489a0bdecc5d9410bb tables/ZIP verified. Cached
+  Naive FVD has71 descriptors vs426 here; do not directly rank them.
+  All trainers continued; evaluator GPUs0/1/2/5 released. Full handoff:
+  `migration/FOUNDRY_PHASE3_LATEST_M2V_MOTIONCFG2_FIXED71_20261105.md`.
+
 ## Position errors and DisCoRD sJPE backfill (2026-11-05)
 
 - First pass complete10:37KST: all10 completed models plus2GTreferences

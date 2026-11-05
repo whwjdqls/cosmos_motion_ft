@@ -34,3 +34,14 @@ def assert_frozen(model, versions):
 def new_optimizer(model):
     return torch.optim.AdamW(trainable_parameters(model), lr=RECIPE['lr'],
         betas=tuple(RECIPE['betas']), weight_decay=RECIPE['weight_decay'])
+
+
+def checkpoint_state(model):
+    return dict(bridges=model.bridges.state_dict(), motion_state=model.motion.motion_state_dict())
+
+
+def load_checkpoint_state(model, payload, *, weights='raw'):
+    if weights != 'raw' or payload.get('phase3_lora') is not None or payload.get('ema') is not None:
+        raise ValueError('Scratch-motion checkpoints do not support additional LoRA or EMA')
+    model.bridges.load_state_dict(payload['bridges'], strict=True)
+    model.motion.load_motion_state_dict(payload['motion_state'], strict=True)

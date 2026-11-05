@@ -42,6 +42,8 @@ class EdgePhase3(CameraModel):
     def __init__(self, phase1, phase2, device='cuda', activation_checkpointing=True):
         nn.Module.__init__(self)
         configure()
+        if RECIPE.get('bridge_parameterization', 'shared') != 'shared':
+            raise ValueError('Historical scratch-motion recipe requires the shared bridge')
         artifact = require_metadata_only(phase2)
         edge = FullFrozenEdge(phase1, phase2, device)
         if edge.provenance['phase1_metadata_sha256'] != PHASE1_METADATA_SHA256:
@@ -61,6 +63,9 @@ class EdgePhase3(CameraModel):
                 conditioning_attention=RECIPE['conditioning_attention']).to(device=device, dtype=torch.float32)
             for index in RECIPE['bridge_layers']
         })
+        # The shared camera forward includes all registered Phase3 deltas in
+        # its DDP zero anchor. This historical scratch recipe has no new LoRA.
+        self.phase3_lora = nn.ModuleDict()
         self.activation_checkpointing = bool(activation_checkpointing)
         self.provenance = {
             **edge.provenance, 'phase2_step': None, 'phase2_weights_loaded': False,
