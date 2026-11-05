@@ -1,5 +1,32 @@
 # Shared Agent Context
 
+## sep-2 caption-free handover complete (2026-11-05 22:41 UTC)
+
+- Both fresh no-text40/40/20 MMDiT runs passed native two-rank acceptance,
+  all-three-task poisoned-caption invariance at BOTH specialist inputs,
+  fresh4/save/strict resume6, finite production and remote W&B checks.
+  ONLY THEN both old captioned rank0s receivedSIGUSR1. All old workers and
+  loggers have exited. New bidirectional0/3 and directional1/7 reached80
+  updates at this snapshot, about1.37/1.31s per update after old jobs exited.
+- New W&B: bidirectional p3-d47749076808b4bfecc2; directional
+  p3-79f9ba1f501245ec7b18, jungbinc-upenn/cosmos-motion-ft. Both remote recipes
+  verify all captions empty/dropout0 and40/40/20. Only recipe differences
+  versus stopped runs are experiment identity, caption policy and dropout.
+- Old captioned full recovery: bidirectional18651, directional18635;
+  each98 bridge tensors/98 Adam states/two rank RNGs/exact data cursor.
+  Prior10k milestones and final states hardlinked under the operation's
+  preserved/{attention}/ directory. Preserve old immutable resume snapshots;
+  do not auto-resume old captioned or older50/50 experiments.
+- New source worktree: /mnt/local/jinhyung.kim/worktrees/phase3_no_text_20261105/cosmos_motion_ft,
+  local implementationc167aaf (docs99a78ab); each run has359 verified frozen
+  Python files. Published feature186d005, merged master code fixb0a8356.
+  Main working copy remains master; live sources are immutable snapshots.
+- Operation cosmos_storage/operations/phase3_mmdit_no_text_handover_20261105
+  contains COMPLETE, RUNNING_VERIFIED, NO_TEXT_ACCEPTANCE_VERIFIED,
+  REMOTE_WANDB_VERIFIED, OLD_RUNS_PRESERVED and GIT_PUBLICATION receipts.
+  This is handover completion, not200k training completion. Check live logs.
+- Report: https://app.notion.com/p/40fd2a44f44b814fb925c3d86c250284 .
+
 ## Phase3 caption-free requirement (2026-11-05, supersedes caption notes below)
 
 - User explicitly requires NEVER using captions in Phase3. All new Phase3

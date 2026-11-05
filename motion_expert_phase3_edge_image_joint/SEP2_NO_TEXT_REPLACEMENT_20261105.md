@@ -1,5 +1,21 @@
 # Caption-free Phase3 replacements
 
+Handover verified at2026-11-05 22:41UTC. Both new runs reached80 updates with
+finite losses/gradients after all native acceptance and full-state reload gates
+passed. Bidirectional GPUs0/3 averaged about1.37s/update and directional1/7
+about1.31s/update after old workers exited. Only experiment identity, caption
+policy and dropout differ between the new and old recipes; all359 frozen Python
+files per new run were checksum-verified. Code fix merged/pushed asb0a8356.
+
+New W&B: [bidirectional](https://wandb.ai/jungbinc-upenn/cosmos-motion-ft/runs/p3-d47749076808b4bfecc2),
+[directional](https://wandb.ai/jungbinc-upenn/cosmos-motion-ft/runs/p3-79f9ba1f501245ec7b18).
+Remote recipes verify all-task empty captions and dropout0. Both old captioned
+trainers stopped only after BOTH replacements were healthy: bidirectional18651,
+directional18635. Their final recovery states contain98 bridge tensors,98 Adam
+states, both rank RNGs and exact data cursors; prior10k and final checkpoints
+are hardlinked under the operation's `preserved/{attention}/` directories.
+All old workers and loggers exited. New training continues toward200k.
+
 Phase3 must not receive captions for any task. The prior sep-2 directional
 and bidirectional40/40/20 runs accidentally retained dataset captions for
 motion+image→video with10% dropout. Their fixed71 validation already used
