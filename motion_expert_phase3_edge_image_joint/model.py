@@ -1,4 +1,4 @@
-"""Enforce image-only joint conditioning before either specialist is packed."""
+"""Enforce caption-free conditioning for every task before either specialist is packed."""
 from motion_expert_phase3_edge_joint.model import EdgePhase3 as OriginalModel
 from .policy import PHASE1_METADATA_SHA256, captions_for_modes
 

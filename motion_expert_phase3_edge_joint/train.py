@@ -184,7 +184,7 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
     with torch.no_grad():
         for mode in RECIPE["tasks"]:
             batch["modes"] = [mode] * len(rows)
-            batch["captions"] = ["" if mode == "video2motion" else "The camera wearer walks forward."] * len(rows)
+            batch["captions"] = [""] * len(rows)
             inputs, target = noise_batch(batch, device)
             if mode == "motimg2video" and RECIPE.get("clean_motion_timestep") == "zero":
                 assert (inputs["motion_sigma"] == 0).all()
@@ -224,7 +224,7 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
     # Fixed mixed batch, including both tasks even for microbatch=1 across DDP ranks.
     names = list(RECIPE["tasks"])
     batch["modes"] = [names[(rank * len(rows) + i) % len(names)] for i in range(len(rows))]
-    batch["captions"] = ["" if m == "video2motion" else "The camera wearer walks forward." for m in batch["modes"]]
+    batch["captions"] = [""] * len(batch["modes"])
     inputs, target = noise_batch(batch, device)
     optimizer = new_optimizer(model)
     ema = new_ema(model)

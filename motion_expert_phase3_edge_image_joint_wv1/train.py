@@ -3,7 +3,7 @@ import argparse
 from pathlib import Path
 import sys
 import torch
-from motion_expert_phase3_edge_image_joint.train import prepare_trainer as base_prepare
+from .integration import prepare_trainer as base_prepare
 from motion_expert_phase3_edge_joint.settings import sha256
 from .data import Phase3Dataset
 from .policy import configure
@@ -15,6 +15,11 @@ def main():
     args, rest = parser.parse_known_args()
     if args.probe_updates < 0:
         raise ValueError('Probe updates must be nonnegative')
+    for flag, expected in (('conditioning-attention', 'bidirectional'), ('clean-motion-timestep', 'zero')):
+        values = [arg.split('=', 1)[1] if '=' in arg else rest[i + 1]
+                  for i, arg in enumerate(rest) if arg.split('=', 1)[0] == '--' + flag]
+        if any(value != expected for value in values):
+            raise ValueError('The weight-one recipe pins --' + flag + '=' + expected)
     train = base_prepare(args.probe_updates)
     configure()
     train.Phase3Dataset = Phase3Dataset

@@ -10,7 +10,7 @@ training-loss failure or a missing checkpoint.
 
 ## Fix and verification
 
-`validation_metrics.load_scoring_vae` now constructs the fully loaded scoring
+The original runtime `validation_metrics.load_scoring_vae` constructs the fully loaded scoring
 VAE on rank0 while suppressing only the tokenizer constructor's world
 broadcast. The native loader already reads every VAE checkpoint tensor on
 rank0. The helper rejects other ranks and restores the native synchronization
@@ -47,7 +47,10 @@ Evidence under
 - Resume replays pending10k validation using existing predictions. No new
   sampling seeds, guidance, generation settings, losses or trained weights are
   introduced by the fix. Training RNG restoration remains in the inherited
-  validation guard. Future fresh launches use the corrected helper directly.
+  validation guard. After merging the independent upstream fix, new checkout
+  launches initialize the VAE on all ranks before rank-zero scoring. The
+  explicit legacy helper is now named `load_rank_zero_scoring_vae`; the
+  live run keeps its original pinned runtime copy.
 - New tmux `phase3_mmdit_joint_wv1_resume3_20261106`; active trainer log is
   `training.log` in this operation, **not** the old run's `launch/training.log`.
   `resume_worker.sh` restores the original snapshot-first PYTHONPATH and exact
@@ -84,3 +87,7 @@ per update. Video weight1, global32, task mix and LR schedule are retained.
 The operation's `RESUMED_RUNNING.json` checks full validation coverage,
 idempotent event identity, real optimizer progress and the same remote W&B
 run's training/validation axes. The original10k checkpoint remained intact.
+
+For the current W&B destination and future-resume wrapper, see
+[migration/WANDB_DESTINATION_20261106.md](../migration/WANDB_DESTINATION_20261106.md).
+Earlier entity/worker references above describe the initial recovery.

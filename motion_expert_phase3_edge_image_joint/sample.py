@@ -13,9 +13,11 @@ def sample_joint(model, *, caption="", guidance=1.0, **kwargs):
 
 
 def sample(model, *, mode, caption="", guidance=1.0, **kwargs):
+    if guidance != 1.0:
+        raise ValueError("Caption-free Phase3 sampling has no caption guidance; use guidance=1")
     if mode == "joint":
         return sample_joint(model, caption=caption, guidance=guidance, **kwargs)
-    return conditional_sample(model, mode=mode, caption=caption, guidance=guidance, **kwargs)
+    return conditional_sample(model, mode=mode, caption="", guidance=guidance, **kwargs)
 
 
 def main():
@@ -31,7 +33,6 @@ def main():
     payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False, mmap=True)
     check_checkpoint(payload)
     del payload
-    configure()
     base.EdgePhase3, base.sample = EdgePhase3, sample
     base.main()
 

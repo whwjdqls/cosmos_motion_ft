@@ -117,3 +117,20 @@ receipt and `--resume auto`. Only the allocation/GPU count/microbatch may
 change while preserving global32; data cursor is restored, and topology
 changes reseed rank noise as documented by the inherited trainer. Do not
 resume with a later edited checkout or borrow another run's acceptance.
+
+## Merge compatibility (2026-11-06)
+
+The newer Foundary recipes deliberately remove captions from every task.
+This package preserves the existing Yonsei experiment independently: M2V
+caption dropout0.1, blank V2M/joint captions, bidirectional bridges and video
+weight1. Its model, noise wrapper, dataset, sampling and acceptance adapter
+are isolated here. Shared motion packing/noise honors this named legacy
+recipe only; the newer recipes remain caption-free. Regression checks cover
+both policies in one process and spawned workers. Updated checkout sources
+require fresh acceptance; exact live-run recovery still uses its immutable
+snapshot and documented runtime fix.
+
+For newly launched runs, periodic scoring uses the upstream all-rank VAE
+initialization fix. The separately named rank-zero loader is retained for
+explicit legacy scorer recovery; the live run's immutable runtime patch is
+unchanged.

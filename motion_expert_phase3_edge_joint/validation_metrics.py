@@ -25,7 +25,7 @@ def module(path, name):
     return value
 
 
-def load_scoring_vae(path, *, loader=None):
+def load_rank_zero_scoring_vae(path, *, loader=None):
     """Load the rank-zero scorer's complete VAE without a world broadcast.
 
     The native loader reads all checkpoint tensors on rank zero before its
@@ -184,9 +184,19 @@ class VideoMetrics:
 
 
 @torch.inference_mode()
-def video_scores(config, cases, folder, contract, policy):
+def load_scoring_vae(config):
+    """Call on every training rank: the native loader synchronizes parameters."""
+    from motion_expert_phase3_edge.visualize import load_vae
+    return load_vae(Path(config["vae"]), "256", 97, "cuda")
+
+
+@torch.inference_mode()
+def video_scores(config, cases, folder, contract, policy, *, vae=None):
     from .validation import load_case
-    vae = load_scoring_vae(config["vae"])
+    if vae is None:
+        if torch.distributed.is_initialized() and torch.distributed.get_world_size() > 1:
+            raise RuntimeError("Distributed scoring requires the VAE initialized collectively on all ranks")
+        vae = load_scoring_vae(config)
     if vae.get_output_range() != "[-1,1]":
         raise ValueError("Unexpected VAE output range")
     metrics = VideoMetrics(config)
@@ -235,12 +245,12 @@ def video_scores(config, cases, folder, contract, policy):
     return result
 
 
-def score(config, records, folder, contract, policy):
+def score(config, records, folder, contract, policy, *, vae=None):
     # Do not keep TMR and all video evaluators resident simultaneously.
     motion = motion_scores(config, records, folder, contract)
     gc.collect()
     torch.cuda.empty_cache()
-    video = video_scores(config, records, folder, contract, policy)
+    video = video_scores(config, records, folder, contract, policy, vae=vae)
     result = dict(v2m=motion, m2v=video)
     atomic_json(folder / "summary.json", result)
     return result

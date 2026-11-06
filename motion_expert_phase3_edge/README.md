@@ -22,7 +22,7 @@ cache indices to change their source paths.
   of128; original `LocalModalityBridge` semantics, FP32 parameters and attention.
 - Native generator attention, reasoner K normalization for generation, native
   position IDs, motion self/cross attention and normalization remain unchanged.
-  Motion reads final post-norm reasoner memory from raw caption-only text.
+  Motion reads final post-norm reasoner memory with empty caption input in Phase3.
   Generator text independently receives its native image2video formatting.
 - No gradients update either specialist. Gradients through frozen downstream
   operations are retained. Activation checkpointing bounds intermediate memory.
@@ -95,7 +95,7 @@ inspect stage logs and optimizer steps before reporting a running model.
 
 `sample.py` provides native UniPC35, guidance1, motion shift3 and generator
 shift10. It pins the clean first latent on every video sampling step and never
-noises conditioning motion/video. V2M captions remain empty. Fixed cases are a
+noises conditioning motion/video. All Phase3 captions remain empty. Fixed cases are a
 JSON list of `{id, caption, bundle, seed}`; each NPZ bundle contains normalized
 `motion[97,283]`, centered `neutral[30,3]`, `video[48,25,16,16]`, and scalar
 `motion_mean_sha256`/`motion_std_sha256`. Use independently prepared held-out

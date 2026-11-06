@@ -101,5 +101,53 @@ def test_spawned_worker_preserves_weight_one_and_joint_caption_policy(tmp_path):
             collate_fn=checked_collate))
     modes=[mode for batch in batches for mode in batch['modes']]
     assert set(modes) == {'video2motion','motimg2video','joint'}
+    assert any(caption == 'Private target caption' for batch in batches
+               for caption, mode in zip(batch['captions'], batch['modes']) if mode == 'motimg2video')
     for batch in batches:
         assert all(caption == '' for caption,mode in zip(batch['captions'],batch['modes']) if mode != 'motimg2video')
+
+
+def test_legacy_captions_survive_model_noise_and_sampler_without_changing_no_text_recipe():
+    from motion_expert_phase3_edge.captions import conditioning_captions
+    from .model import EdgePhase3, OriginalModel
+    from .objectives import noise_batch
+    from .sample import sample
+    from motion_expert_phase3_edge_image_joint.policy import configure as no_text
+    configure()
+    modes = ['video2motion', 'motimg2video', 'joint']
+    captions = ['inverse secret', 'forward caption', 'joint secret']
+    expected = ['', 'forward caption', '']
+    assert conditioning_captions(captions, modes) == expected
+    raw = dict(motion=torch.zeros(3, 7, 3), video=torch.zeros(3, 2, 3, 2, 2),
+               neutral=torch.zeros(3, 30, 3), modes=modes, captions=captions)
+    assert noise_batch(raw, 'cpu')[0]['captions'] == expected
+    model = EdgePhase3.__new__(EdgePhase3)
+    torch.nn.Module.__init__(model)
+    with patch.object(OriginalModel, 'forward', autospec=True,
+                      side_effect=lambda self, **kwargs: kwargs):
+        inputs = {key: torch.zeros(1) for key in ('motion', 'neutral', 'video', 'motion_sigma', 'video_sigma')}
+        assert model(captions=captions, modes=modes, **inputs)['captions'] == expected
+    with patch('motion_expert_phase3_edge_image_joint_wv1.sample.conditional_sample') as call:
+        sample(object(), mode='motimg2video', caption='forward caption')
+        assert call.call_args.kwargs['caption'] == 'forward caption'
+    no_text()
+    assert conditioning_captions(captions, modes) == ['', '', '']
+    assert noise_batch(raw, 'cpu')[0]['captions'] == ['', '', '']
+    assert RECIPE['cfg_dropout'] == 0
+    assert RECIPE['video_weight'] == 10
+    configure()
+    assert conditioning_captions(captions, modes) == expected
+    assert RECIPE['cfg_dropout'] == .1
+
+
+def test_weight_one_acceptance_adapter_installs_legacy_policy():
+    from .integration import prepare_trainer
+    from .model import EdgePhase3
+    from .objectives import noise_batch
+    # Exercise adapter composition without model/data/CUDA initialization.
+    train = prepare_trainer(4)
+    assert train.EdgePhase3 is EdgePhase3
+    assert train.noise_batch is noise_batch
+    assert RECIPE['video_weight'] == 1
+    assert RECIPE['caption_policy']['motimg2video'] == 'caption_dropout_0.1'
+    assert train.IMAGE_JOINT_PROBE_UPDATES == 4

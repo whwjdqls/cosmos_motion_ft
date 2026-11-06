@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import torch
+from motion_expert_phase3_edge.captions import conditioning_captions
 from losses import t2m_reconstruction_loss
 from cosmos_framework.model.generator.algorithm.loss.flow_matching import compute_flow_matching_loss
 from cosmos_framework.model.generator.diffusion.rectified_flow import RectifiedFlow, TrainTimeSampler
@@ -28,7 +29,7 @@ def noise_batch(batch, device):
     x_video[:, :, 0] = video[:, :, 0]
     return {
         "motion": x_motion, "video": x_video, "neutral": batch["neutral"].to(device),
-        "motion_sigma": ms, "video_sigma": vs, "captions": batch["captions"], "modes": modes,
+        "motion_sigma": ms, "video_sigma": vs, "captions": conditioning_captions(batch["captions"], modes), "modes": modes,
     }, {"motion": motion, "velocity": video_noise - video}
 
 

@@ -30,13 +30,13 @@ class ImageJointTests(unittest.TestCase):
         settings.RECIPE.clear()
         settings.RECIPE.update(self.recipe)
 
-    def test_dataset_removes_only_joint_caption_and_preserves_metadata(self):
+    def test_dataset_removes_all_captions_and_preserves_metadata(self):
         dataset = Phase3Dataset.__new__(Phase3Dataset)
         for mode in ("joint", "video2motion", "motimg2video"):
             original = {"mode": mode, "caption": "private target caption", "draw": 123, "motion": torch.ones(2)}
             with mock.patch.object(OriginalDataset, "__getitem__", return_value=original):
                 actual = dataset[0]
-            self.assertEqual(actual["caption"], original["caption"] if mode == "motimg2video" else "")
+            self.assertEqual(actual["caption"], "")
             self.assertEqual(original["caption"], "private target caption")
             self.assertIs(actual["motion"], original["motion"])
             self.assertEqual(actual["draw"], 123)
@@ -49,8 +49,28 @@ class ImageJointTests(unittest.TestCase):
                                side_effect=lambda self, **kwargs: kwargs):
             actual = model(captions=["joint secret", "inverse secret", "forward caption"],
                            modes=["joint", "video2motion", "motimg2video"], **inputs)
-        self.assertEqual(actual["captions"], ["", "", "forward caption"])
+        self.assertEqual(actual["captions"], ["", "", ""])
         self.assertIs(actual["motion"], inputs["motion"])
+
+    def test_all_tasks_have_no_caption_conditioning_or_dropout(self):
+        recipe = configure()
+        self.assertEqual(recipe["caption_policy"],
+                         {mode: "empty" for mode in recipe["tasks"]})
+        self.assertEqual(recipe["cfg_dropout"], 0.0)
+        raw = self.batch(["video2motion", "motimg2video", "joint"])
+        poisoned, _ = noise_batch(raw, "cpu")
+        self.assertEqual(poisoned["captions"], ["", "", ""])
+        self.assertEqual(raw["captions"], ["secret"] * 3)
+
+    def test_conditional_sampler_removes_caption_before_model(self):
+        from .sample import sample
+        for mode in ("video2motion", "motimg2video"):
+            with mock.patch("motion_expert_phase3_edge_image_joint.sample.conditional_sample",
+                            return_value="sampled") as call:
+                self.assertEqual(sample(object(), mode=mode, caption="private target caption"), "sampled")
+                self.assertEqual(call.call_args.kwargs["caption"], "")
+            with self.assertRaisesRegex(ValueError, "no caption guidance"):
+                sample(object(), mode=mode, caption="secret", guidance=2)
 
     @staticmethod
     def batch(modes):
@@ -87,7 +107,7 @@ class ImageJointTests(unittest.TestCase):
         self.assertEqual(after["video_sigma"][0].item(), 0)
         self.assertTrue(torch.equal(after["motion"][1], raw["motion"][1]))
         self.assertTrue(torch.equal(after["video"][0], raw["video"][0]))
-        self.assertEqual(after["captions"], ["", "secret", ""])
+        self.assertEqual(after["captions"], ["", "", ""])
 
     def test_spawned_worker_restores_joint_policy_and_local_path_translation(self):
         from motion_expert_phase3_edge_joint.data import collate, identity
@@ -149,7 +169,8 @@ class ImageJointTests(unittest.TestCase):
         check_checkpoint({"scheduler": {"recipe": recipe}})
         for field, wrong in (("joint_conditioning", "first_image_and_text"),
                              ("conditioning_attention", "directional"),
-                             ("clean_motion_timestep", "omit")):
+                             ("clean_motion_timestep", "omit"),
+                             ("caption_policy", {"video2motion": "empty", "motimg2video": "caption_dropout_0.1", "joint": "empty"})):
             bad = copy.deepcopy(recipe)
             bad[field] = wrong
             with self.assertRaisesRegex(ValueError, field):

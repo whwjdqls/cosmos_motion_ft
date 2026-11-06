@@ -1,4 +1,4 @@
-"""Reuse the immutable train cache and sampler; remove joint captions."""
+"""Reuse the immutable train cache and sampler; remove all Phase3 captions."""
 from motion_expert_phase3_edge_joint.data import Phase3Dataset as OriginalDataset
 from .policy import captions_for_modes
 

@@ -101,7 +101,7 @@ def test_validation_events_are_idempotent_and_have_optimizer_step_axis():
 
 
 def test_rank_zero_vae_constructor_scope_restored_on_success_and_failure():
-    from .validation_metrics import load_scoring_vae
+    from .validation_metrics import load_rank_zero_scoring_vae
     from cosmos_framework.model.generator.tokenizers import wan2pt2_vae_4x16x16 as wan
     original = wan.sync_model_states
     def loader(*args):
@@ -109,20 +109,20 @@ def test_rank_zero_vae_constructor_scope_restored_on_success_and_failure():
         wan.sync_model_states(nn.Linear(2, 2))
         return 'complete_local_vae'
     with patch('torch.distributed.is_initialized', return_value=True), patch('torch.distributed.get_rank', return_value=0):
-        assert load_scoring_vae('/unused', loader=loader) == 'complete_local_vae'
+        assert load_rank_zero_scoring_vae('/unused', loader=loader) == 'complete_local_vae'
         assert wan.sync_model_states is original
         with pytest.raises(RuntimeError, match='injected'):
-            load_scoring_vae('/unused', loader=lambda *args: (_ for _ in ()).throw(RuntimeError('injected')))
+            load_rank_zero_scoring_vae('/unused', loader=lambda *args: (_ for _ in ()).throw(RuntimeError('injected')))
         assert wan.sync_model_states is original
 
 
 def test_scoring_vae_rejects_nonzero_rank_and_keeps_single_process_loader():
-    from .validation_metrics import load_scoring_vae
+    from .validation_metrics import load_rank_zero_scoring_vae
     with patch('torch.distributed.is_initialized', return_value=True), patch('torch.distributed.get_rank', return_value=1):
         with pytest.raises(RuntimeError, match='rank zero'):
-            load_scoring_vae('/unused', loader=lambda *args: pytest.fail('loader must not run'))
+            load_rank_zero_scoring_vae('/unused', loader=lambda *args: pytest.fail('loader must not run'))
     with patch('torch.distributed.is_initialized', return_value=False):
-        assert load_scoring_vae('/unused', loader=lambda *args: args[1:]) == ('256', 97, 'cuda')
+        assert load_rank_zero_scoring_vae('/unused', loader=lambda *args: args[1:]) == ('256', 97, 'cuda')
 
 
 def test_execution_configuration_requires_grouping_and_restores_saved_choice():
@@ -208,17 +208,29 @@ def validation_worker(rank, directory):
             torch.rand(3)
             (folder / f"sampled{rank}.json").write_text(json.dumps([row["id"] for row in rows]))
             return [32, len(rows) - 32]
-        def score(config, rows, folder, contract, policy):
+        vae_loads = []
+        def load_vae(config):
+            # Reproduce the native loader's collective requirement. Rank-zero
+            # only construction would mismatch/hang against rank one's gather.
+            count = torch.tensor(1.)
+            dist.all_reduce(count)
+            assert count.item() == 2
+            vae_loads.append(rank)
+            return "collectively_initialized_vae"
+        def score(config, rows, folder, contract, policy, *, vae):
+            assert vae == "collectively_initialized_vae"
             all_ids = sum([json.loads((folder / f"sampled{i}.json").read_text()) for i in range(2)], [])
             assert sorted(map(int, all_ids)) == list(range(71))
             return dict(v2m=dict(fid=.5), m2v=dict(fvd=200.))
         with (root / "metrics.jsonl").open("a", buffering=1) if rank == 0 else io.StringIO() as log:
             with patch("motion_expert_phase3_edge_joint.validation.read_configuration", return_value=({}, cases, policy["assets"])), \
                  patch("motion_expert_phase3_edge_joint.validation.sample_cases", side_effect=sampling), \
+                 patch("motion_expert_phase3_edge_joint.validation_metrics.load_scoring_vae", side_effect=load_vae), \
                  patch("motion_expert_phase3_edge_joint.validation_metrics.score", side_effect=score):
                 maybe_validate(args, model, 10000, "fingerprint", rank, 2, log)
                 maybe_validate(args, model, 10000, "fingerprint", rank, 2, log)
                 assert calls == [36 if rank == 0 else 35]
+                assert vae_loads == [rank]  # Successful replay never reloads.
                 if rank == 0:
                     assert len((root / "metrics.jsonl").read_text().splitlines()) == 1
                 with patch("motion_expert_phase3_edge_joint.validation.sample_cases",
