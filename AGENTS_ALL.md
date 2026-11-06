@@ -1,5 +1,183 @@
 # Shared Agent Context
 
+## Optional Phase3 EMA hardened and validation selection added (2026-11-06)
+
+- User requested optional EMA in the current Phase3 setting. Existing
+  --ema-decay (default0) and raw/EMA checkpoint/inference support retained;
+  added --validation-weights raw|ema (default raw), forwarded through the
+  shared launcher, accepted probes and trainer. EMA scope is bridges plus
+  optional additional Phase3 LoRA only, one update per optimizer step.
+- Resume/inference checks decay/scope, integer update count against saved
+  optimizer step, matching keys/shapes, finite FP32 shadows, and absence/
+  presence consistency. Existing raw checkpoints remain supported. An
+  EMA-off checkpoint cannot silently acquire an invented EMA history.
+- EMA validation temporarily swaps the matched trainable tensors on every
+  rank and restores raw state on success/error, with collective preparation
+  failures and unchanged optimizer/RNG/modes. Native preflight now compares
+  restored EMA tensors/counts exactly and verifies continued count13.
+- All58 focused tests passed on owned2616204 compute CPUs: atomic file/mmap
+  roundtrip, exact raw/EMA continuation with/without LoRA, real two-rank
+  checkpoint resume and collective swap failure, malformed EMA rejection,
+  current MMDiT/no-caption recipe and legacy raw compatibility. Evidence:
+  operations/phase3_optional_ema_20261106/tests_final.log and VERIFIED.json.
+- Active P3 no-caption/video1 still uses its immutable snapshot with EMA
+  disabled. No trainer, live checkpoint, source snapshot or allocation was
+  changed/restarted. Details: motion_expert_phase3_edge_joint/OPTIONAL_EMA.md.
+
+## Yonsei Phase3 replacement: no M2V captions, video weight1 (2026-11-06)
+
+- User explicitly stopped the captioned-M2V joint/video1 run. Rank0 received
+  SIGUSR1; both ranks exited cleanly at17114, saved recovery_latest.pt and
+  latest.json, and the W&B sidecar flushed. Preserve that run as history;
+  do not automatically resume it. Allocation2616204/node58 is retained.
+- New dedicated package motion_expert_phase3_edge_image_joint_wv1_notext
+  launches a FRESH200k matched ablation. Only M2V text is removed; V2M/joint
+  already had blank text. Caption dropout0, all other scientific settings
+  retain weight1, native motion/contact losses, global32=2x16accum1,
+  bidirectional groupedBF16 seven MMDiT bridges and40/40/20 tasks, same frozen
+  P1/P2/cache/stats and checksum-pinned fixed71 validation every10k.
+- Run edge_p3_mmdit_bidir_joint402020_groupedbf16_wv1_notext_T97_gbs32_yonsei_20261106
+  under Scratch2 cosmos_motion_ft_runs/motion_expert_phase3_edge. Operation
+  operations/phase3_mmdit_bidir_joint_wv1_notext_yonsei_20261106; tmux
+  phase3_mmdit_wv1_notext_yonsei_20261106. W&B jungbinc-upenn/cosmos-motion-ft.
+- The launcher checks exact saved-plan parity, fresh native two-rank
+  acceptance, fresh4/reload2 probes, then production. Consult RECIPE_PARITY,
+  launch/status/training logs and production receipt for actual progress;
+  preparation is not a claim that production has started. Phase2 no-shape
+  allocation2622173 remains untouched. Details in the new package README.
+- Production verified around09:45KST: first update1, then10/20, finite losses
+  and nonzero gradients, video_weighted==video_loss, ~2.27seconds/update,
+  peak17.80GiB. All30 focused tests, real two-rank poisoned-caption/gradient/
+  reload acceptance, fresh4 and own resume4->6 passed. Frozen specialist/data/
+  shared-bridge hashes match the stopped run; full recipe matches the plan.
+  W&B p3-d9fc2424b97b1163e3b2 is streaming underjungbinc-upenn. Operation
+  PRODUCTION_RUNNING.json records the acceptance and actual optimizer updates.
+
+## Merge compatibility / Yonsei and Foundary (2026-11-06)
+
+- New Foundary Phase3 recipes are caption-free. The dedicated Yonsei
+  image_joint_wv1 package preserves its existing M2V caption/dropout0.1,
+  empty V2M/joint captions, bidirectionality and video weight1. It has its
+  own acceptance adapter; shared caption compatibility is explicit to this
+  experiment only. Never switch the live run to the new no-text policy.
+- Merge verification: 41 focused tests passed on owned2675047/node32 CPUs
+  (recipe/caption isolation, loss gradients, spawned workers, GPU ownership
+  guards, BF16 policy and two-rank validation). Live trainers untouched.
+- New checkout validation initializes the native VAE on all ranks before
+  rank-zero scoring. load_rank_zero_scoring_vae is separately retained for
+  legacy recovery. Live trainers keep immutable snapshots/runtime fixes.
+
+## W&B account corrected to jungbinc-upenn (2026-11-06)
+
+- User supplied/selects credential for usernamejungbinc, default/team
+  jungbinc-upenn. Official login verified and saved privately; never echo or
+  write the key in repository/logs. Removed old inline API-key override from
+  ~/.bash_profile; future shells use saved login and WANDB_ENTITY=jungbinc-upenn.
+  Old Slurm allocations retain env: unset WANDB_API_KEY INSIDE compute process.
+- Both active runs now receive complete/live logs underjungbinc-upenn/cosmos-motion-ft:
+  P2cfj632ue uses official beta_sync live transaction/media replay (embedded
+  trainer left running); P3p3-eed7a56cdcf72f3f4569 has a new-team sidecar,
+  complete history/10k validation backfilled. Only old sidecar stopped; no
+  GPU trainer/weights/schedule changed. scene_motion copies retained.
+- Current validation view https://wandb.ai/jungbinc-upenn/cosmos-motion-ft?nw=xikr5ab126f
+  readback verified13point charts,11cards,GT references; linked in targetrunnotes.
+- Operation Scratch2cosmos/operations/wandb_login_switch_20261106 has current
+  phase2_sync.log/phase3_logger.log and verification receipts. Tmux
+  wandb_phase2_jungbinc_sync_20261106 / wandb_phase3_jungbinc_20261106.
+  For future P3resume use operation/future_resume.sh with PHASE3_ALLOCATION;
+  old recovery launcher hard-codes scene_motion, so don't reuse it unchanged.
+- Details `migration/WANDB_DESTINATION_20261106.md`. Historical links below
+  describe prior logging locations, not the newly selected account.
+
+## Phase3 W&B validation view (2026-11-06)
+
+- User clarified missing visible metrics refers to Phase3p3-eed7a56cdcf72f3f4569.
+  Remote actual history and summary both contain one10k validation event;
+  sidecar is streaming. No missing upload or training fix was necessary.
+- Dedicated saved view https://wandb.ai/scene_motion/cosmos-motion-ft?nw=yowy3nwtcw4
+  now has13explicit val/step point plots,11latest-value cards and matchingGT
+  references; original run notes link it. Readback verified sections, axes,
+  point marks and run filter. Existing views/history/training unchanged.
+- Details `motion_expert_phase3_edge_image_joint_wv1/WANDB_VALIDATION_VIEW_20261106.md`;
+  operation Scratch2cosmos/operations/wandb_validation_audit_20261106.
+
+## Phase3 validation VAE collective fix / resume10k (2026-11-06)
+
+- Status check found Phase2no-shape healthy near45k; P3video1 reached10k,
+  saved valid full checkpoint and generated142validation predictions, then
+  stalled: rank0VAE sync_model_states broadcast vsrank1result collective.
+  Suppress only rank0scoring VAE constructor broadcast, restore afterward.
+- Real2rank NCCL VAE decode is bitwise identical to non-distributed loading;
+  collective completes.12validation tests passed. Checkpoint10k verified:
+  draw320000,2rankRNGs,98optimizer/bridge entries; hash7df1f378... .
+- Only deadlocked work step2616204.13 killed; original PRO2 allocation kept.
+  New tmux phase3_mmdit_joint_wv1_resume3_20261106 reloads own10k from original
+  immutable source snapshot, unchanged fingerprint/acceptance/global32/recipe.
+  Scorer-only runtime fix is separately SHA-pinned and added to future saves'
+  provenance, not silently included in the old source fingerprint. No source
+  snapshot or existing checkpoint edited, no fingerprint checks disabled.
+- Operation Scratch2cosmos/operations/phase3_validation_vae_sync_fix_20261106;
+  its training.log is now active (old launch/training.log is historical).
+  It reuses existing142predictions to finish pending10k validation, then train.
+  Consult actual metrics/COMPLETE/RESUMED_RUNNING receipt for recovery status.
+  W&B original p3-eed7a56cdcf72f3f4569 retained. Phase2 unaffected.
+- Recovery verified around04:53KST: all71V2M+71M2V scored, one complete10k
+  validation event, then real optimizer updates10001/10010/10020 at~2.3s.
+  Finite gradients/losses and video-weight1 retained; same W&B streams val
+  and training steps. Check RESUMED_RUNNING.json for acceptance receipt.
+  Phase2 concurrently~46.4k, zero skipped/guarded updates,~1.8updates/s.
+- Details `motion_expert_phase3_edge_joint/VALIDATION_VAE_SYNC_FIX_20261106.md`.
+
+## Yonsei new Phase3 bidirectional joint MMDiT / video weight1 (2026-11-05)
+
+- User authorized spare PRO6000s for fresh bidirectional+joint+video weight1.
+  Uses retained2616204/node58, renamedp3-mmdit-joint-w1, two PRO6000s;
+  separate2622173 Phase2 no-shape continues. No allocation canceled.
+- Dedicated package `motion_expert_phase3_edge_image_joint_wv1` pins existing
+  image-only joint40/40/20 tasks, bidirectional clean-motionE0, weight1,
+  groupedBF16 MMDiT, shape excluded from bridges, global32=2x16accum1.
+  Original supplied-shape Phase2Self-cross captionB256200k and exact staged
+  video-I/O Phase1EMA200k metadata b2b3374b... are frozen sources.
+- Source/checkpoint/data/native two-GPU acceptance passed: loss.422->.281,
+  native weight1 denominator, zero-bridge exact specialist parity, both joint
+  branch gradients, frozen specialists, strict DDP update/save/reload.
+  Fresh4/reload2 disposable probes also passed; actual fresh production
+  reached20 around21:48KST, finite losses/nonzero gradients, both GPUs99%,
+  ~20GB/device, ~2.3seconds/update initially. Actual logged weight1 contribution
+  verified. Consult actual launch/status.json/metrics/W&B for latest state.
+  W&B scene_motion/cosmos-motion-ft/p3-eed7a56cdcf72f3f4569. At early speed,
+  200k needs a later allocation/resume; preserve source snapshot and global32.
+- Operation `cosmos/operations/phase3_mmdit_bidir_joint_wv1_yonsei_20261105`
+  on Scratch2; tmux `phase3_mmdit_bidir_joint_wv1_yonsei_20261105`.
+  Run `edge_p3_mmdit_bidir_joint402020_groupedbf16_wv1_T97_gbs32_yonsei_20261105`
+  under Scratch2 cosmos_motion_ft_runs/motion_expert_phase3_edge.
+- Fixed71 validation every10k, UniPC35/CFG1, sampling32/GPU OOM backoff.
+  All pinned assets/bundles verified, full71GT motion and GT video/VAE smoke
+  passed. 26focused tests passed. Base interpreter/env untouched; DreamSim
+  supplied by existing isolated metric package path (not its venv interpreter,
+  which broke TE cuDNN lookup). Exact environment/GT receipts in operation.
+- Fixed legacy loss/logger's hard-coded video10 to use recipe video_weight;
+  default10 retained. Launcher/validation now accept owned Yonsei/Grasp Slurm
+  and explicit storage roots, preserving Foundary guards. Native cache mapping
+  stays empty. Production runs from an immutable source snapshot.
+- Details and recovery: `motion_expert_phase3_edge_image_joint_wv1/README.md`.
+
+## Newest Phase3 Yonsei readiness inspection (2026-11-05 evening)
+
+- User asked whether newest Phase3 can run. Owned2616204/node58 has two idle
+  PRO6000s; separate2622173 Phase2 no-shape trainer was untouched.
+- Compute read-only audit confirmed exact required video-I/O P1EMA200k
+  metadata b2b3374b..., four trained video projections and all shard paths;
+  original supplied-shape P2Self-cross caption-onlyB256200k, full112503cache
+  with3successful sample probes, and71held-out bundle paths are present.
+- Latest dedicated recipe is directional50/50V2M/M2V MMDiT groupedBF16,
+  global32, shape excluded from bridges, original shape-conditioned P2.
+  New launcher/validation enforce Foundary hosts and/mnt/local; training
+  env lacks DreamSim. Need a Yonsei site port, explicit empty cache path map,
+  pinned validation config and fresh real two-rank acceptance before launch.
+  No new Phase3 training started and no core/env changes made by this check.
+- Details: `motion_expert_phase3_edge_joint/YONSEI_READINESS_20261105.md`;
+  Scratch2 operation `cosmos/operations/phase3_readiness_yonsei_20261105`.
 ## sep-2 caption-free handover complete (2026-11-05 22:41 UTC)
 
 - Both fresh no-text40/40/20 MMDiT runs passed native two-rank acceptance,

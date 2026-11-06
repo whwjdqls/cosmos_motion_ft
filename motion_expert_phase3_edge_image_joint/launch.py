@@ -1,4 +1,4 @@
-"""Explicit two-GPU Foundary launch; never queue, transfer, or stop other jobs."""
+"""Explicit two-GPU site launch; never queue, transfer, or stop other jobs."""
 from __future__ import annotations
 
 import argparse
@@ -80,6 +80,8 @@ def configure_attention_policy(experiment_package, requested):
     attention = requested or os.environ.get(key, "directional" if two_task else "bidirectional")
     if attention not in {"directional", "bidirectional"}:
         raise ValueError("Unknown conditioning attention policy")
+    if experiment_package in {"motion_expert_phase3_edge_image_joint_wv1", "motion_expert_phase3_edge_image_joint_wv1_notext"} and attention != "bidirectional":
+        raise ValueError("The weight-one recipe requires bidirectional conditioning")
     os.environ["PHASE3_IMAGE_JOINT_CONDITIONING_ATTENTION"] = attention
     if two_task:
         os.environ["PHASE3_MMDIT_CONDITIONING_ATTENTION"] = attention
@@ -90,7 +92,7 @@ def freeze_sources(repo, snapshot):
     from motion_expert_phase3_edge_joint.settings import sha256
     # Include lazily loaded evaluators: later repository edits must not change
     # the definition of the 10k/20k/... points within a running experiment.
-    packages = ("motion_expert_phase3_edge_joint", "motion_expert_phase3_edge_image_joint", "motion_expert_phase3_edge_mmdit",
+    packages = ("motion_expert_phase3_edge_joint", "motion_expert_phase3_edge_image_joint", "motion_expert_phase3_edge_mmdit", "motion_expert_phase3_edge_image_joint_wv1", "motion_expert_phase3_edge_image_joint_wv1_notext",
                 "motion_expert_joint_attention", "motion_expert_t2m_edge", "motion_expert_phase3_edge",
                 "native_phase_training", "nymeria_world", "nymeria_baselines", "shape_aware_TMR", "migration")
     sources = sorted({p for name in packages for p in (repo / name).rglob("*.py")})
@@ -112,18 +114,22 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
     parser.add_argument("--conditioning-attention", choices=("directional", "bidirectional"))
     parser.add_argument("--shared-gpu-pids", help="Explicitly coordinated resident PIDs owned by this user; default requires empty GPUs")
     parser.add_argument("--check-only", action="store_true", help="Check local inputs/resources without creating a run or using a GPU")
-    parser.add_argument("--wandb-entity", default="jungbinc-upenn")
+    parser.add_argument("--wandb-entity", default=os.environ.get("WANDB_ENTITY", "jungbinc-upenn"))
     parser.add_argument("--wandb-project", default="cosmos-motion-ft")
     args = parser.parse_args()
     host = socket.gethostname().split(".")[0]
-    if host not in {"lg-gwangmo-4xh200-sep-1", "lg-gwangmo-4xh200-sep-2"}:
+    site = os.environ.get("COSMOS_SITE", "custom")
+    from native_phase_training.compute_access import require_compute_access
+    if site in {"yonsei", "grasp"}:
+        if not os.environ.get("SLURM_JOB_ID"):
+            raise RuntimeError("This site requires an owned Slurm allocation")
+        require_compute_access()
+    elif site != "custom" or host not in {"lg-gwangmo-4xh200-sep-1", "lg-gwangmo-4xh200-sep-2"}:
         raise RuntimeError(f"This launcher is for the two Foundary nodes, got {host}")
+    from motion_expert_phase3_edge_joint.site_paths import storage_path
     for key in ("phase1", "phase2", "cache", "out"):
         path = getattr(args, key)
-        if not path.is_absolute() or not path.resolve().is_relative_to("/mnt/local"):
-            raise ValueError(f"--{key} must be an absolute node-local /mnt/local path")
-        if key != "out" and not path.exists():
-            raise FileNotFoundError(f"Missing node-local --{key}: {path}; stage the exact dependency on this node first")
+        storage_path(path, must_exist=key != "out")
     if not (args.cache / "index.json").is_file() or not args.phase2.is_file():
         raise ValueError("Need the validated Phase3 cache and selected Phase2 checkpoint file")
     if args.workers < 0:
@@ -133,7 +139,9 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
         raise ValueError("Specify exactly two distinct coordinated GPUs")
     available = gpu_rows()
     uuids = [available[i] for i in indices]
-    os.environ.update(CUDA_VISIBLE_DEVICES=",".join(uuids), FOUNDRY_GPU_UUIDS=",".join(uuids))
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(uuids)
+    if site == "custom":
+        os.environ["FOUNDRY_GPU_UUIDS"] = ",".join(uuids)
     for key in ("RANK", "LOCAL_RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT"):
         os.environ.pop(key, None)
     from native_phase_training.compute_access import require_compute_access
@@ -171,7 +179,8 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
     if shutil.disk_usage(existing_parent).free < 32 * 2**30:
         raise RuntimeError("Need at least 32 GiB of free local storage for checkpoints/probes")
     with ExitStack() as stack:
-        lock_root = Path(os.environ.get("FOUNDRY_LOCAL_ROOT", "/mnt/local/" + os.environ["USER"])) / "locks"
+        lock_root = ((Path(os.environ.get("FOUNDRY_LOCAL_ROOT", "/mnt/local/" + os.environ["USER"])) / "locks")
+                     if site == "custom" else args.out.parent / ".phase3_gpu_locks")
         lock_root.mkdir(parents=True, exist_ok=True)
         for uuid in sorted(uuids):
             suffix = ".handover.lock" if residents else ".lock"
@@ -199,7 +208,7 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
         for name in ("phase3_lora_rank", "phase3_lora_alpha", "phase3_lora_lr", "phase3_lora_weight_decay",
                      "bridge_lr", "bridge_weight_decay", "ema_decay", "bridge_parameterization",
                      "bridge_attention_backend", "bridge_precision", "validation_config", "validation_every",
-                     "validation_batch_size", "validation_decode_batch_size"):
+                     "validation_batch_size", "validation_decode_batch_size", "validation_weights"):
             value = getattr(args, name)
             if value is not None:
                 common += ["--" + name.replace("_", "-"), str(value)]

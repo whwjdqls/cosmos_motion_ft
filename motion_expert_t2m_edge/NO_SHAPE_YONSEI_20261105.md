@@ -11,7 +11,9 @@ Yonsei experiment, not a resume of the stopped Foundary no-shape experiment.
 - Run name: `edge_selfcross_finalhidden_knorm_captiononly_noshape_nymeria_bones50_gbs256_camhead_w1_1_5_contact_yonsei_20261105`.
 - Output root: `/scratch2/whwjdqls99/cosmos/cosmos_motion_ft_runs/motion_expert_t2m_edge/`.
 - Operation: `/scratch2/whwjdqls99/cosmos/operations/phase2_no_shape_pro2_20261105`.
-- W&B: https://wandb.ai/scene_motion/cosmos-motion-ft/runs/cfj632ue
+- Current W&B: https://wandb.ai/jungbinc-upenn/cosmos-motion-ft/runs/cfj632ue
+  (live transaction/media replay without restarting training; see
+  [account update](../migration/WANDB_DESTINATION_20261106.md)).
 - Source revision: `0d7f6c2d01ba45b5ec2505a30c42b08a6f853dcd`.
 - Launcher: unchanged `train_self_cross_knorm_ddp.sh`, with operation-local
   `env.sh` and `production.sh`. For an owned replacement allocation, source

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import torch
-from motion_expert_phase3_edge.captions import empty_captions
+from motion_expert_phase3_edge.captions import conditioning_captions
 from losses import t2m_reconstruction_loss
 from cosmos_framework.model.generator.algorithm.loss.flow_matching import compute_flow_matching_loss
 from cosmos_framework.model.generator.diffusion.rectified_flow import RectifiedFlow, TrainTimeSampler
@@ -29,7 +29,7 @@ def noise_batch(batch, device):
     x_video[:, :, 0] = video[:, :, 0]
     return {
         "motion": x_motion, "video": x_video, "neutral": batch["neutral"].to(device),
-        "motion_sigma": ms, "video_sigma": vs, "captions": empty_captions(batch["captions"], modes), "modes": modes,
+        "motion_sigma": ms, "video_sigma": vs, "captions": conditioning_captions(batch["captions"], modes), "modes": modes,
     }, {"motion": motion, "velocity": video_noise - video}
 
 
@@ -65,9 +65,9 @@ def specialist_loss(output, target, inputs, mean, std):
             tensor_kwargs_fp32={"device": device, "dtype": torch.float32},
             normalize_by_active=False,
         )
-        total = total + 10.0 * loss * len(vi) / batch
+        total = total + RECIPE["video_weight"] * loss * len(vi) / batch
         metrics["video"] = loss.detach()
-    metrics["video_weighted"] = 10.0 * metrics["video"]
+    metrics["video_weighted"] = RECIPE["video_weight"] * metrics["video"]
     metrics["motion_count"] = total.detach().new_tensor(len(mi))
     metrics["video_count"] = total.detach().new_tensor(len(vi))
     metrics["joint_count"] = total.detach().new_tensor(sum(m == "joint" for m in modes))

@@ -14,8 +14,10 @@ def main():
         parser.add_argument("--" + name.replace("_", "-"), type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    if not args.out.resolve().is_relative_to("/mnt/local") or args.out.exists():
-        raise ValueError("Use a new /mnt/local configuration file")
+    from motion_expert_phase3_edge_joint.site_paths import storage_path
+    storage_path(args.out, must_exist=False)
+    if args.out.exists():
+        raise ValueError("Use a new site-local configuration file")
     config = {key: str(local_path(value)) for key, value in vars(args).items() if key != "out"}
     import torch
     import lpips

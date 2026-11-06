@@ -100,6 +100,31 @@ def test_validation_events_are_idempotent_and_have_optimizer_step_axis():
         assert event_metrics(dict(step=20, loss=1.)) == {"train/step": 20, "train/loss": 1.}
 
 
+def test_rank_zero_vae_constructor_scope_restored_on_success_and_failure():
+    from .validation_metrics import load_rank_zero_scoring_vae
+    from cosmos_framework.model.generator.tokenizers import wan2pt2_vae_4x16x16 as wan
+    original = wan.sync_model_states
+    def loader(*args):
+        assert wan.sync_model_states is not original
+        wan.sync_model_states(nn.Linear(2, 2))
+        return 'complete_local_vae'
+    with patch('torch.distributed.is_initialized', return_value=True), patch('torch.distributed.get_rank', return_value=0):
+        assert load_rank_zero_scoring_vae('/unused', loader=loader) == 'complete_local_vae'
+        assert wan.sync_model_states is original
+        with pytest.raises(RuntimeError, match='injected'):
+            load_rank_zero_scoring_vae('/unused', loader=lambda *args: (_ for _ in ()).throw(RuntimeError('injected')))
+        assert wan.sync_model_states is original
+
+
+def test_scoring_vae_rejects_nonzero_rank_and_keeps_single_process_loader():
+    from .validation_metrics import load_rank_zero_scoring_vae
+    with patch('torch.distributed.is_initialized', return_value=True), patch('torch.distributed.get_rank', return_value=1):
+        with pytest.raises(RuntimeError, match='rank zero'):
+            load_rank_zero_scoring_vae('/unused', loader=lambda *args: pytest.fail('loader must not run'))
+    with patch('torch.distributed.is_initialized', return_value=False):
+        assert load_rank_zero_scoring_vae('/unused', loader=lambda *args: args[1:]) == ('256', 97, 'cuda')
+
+
 def test_execution_configuration_requires_grouping_and_restores_saved_choice():
     from .adapters import configure_checkpoint
     with pytest.raises(ValueError):

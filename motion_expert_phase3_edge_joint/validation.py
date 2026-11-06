@@ -5,7 +5,7 @@ to the training JSONL. Evaluation cannot advance the training RNG/data cursor.
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 import gc
 import json
 import os
@@ -27,16 +27,14 @@ def add_validation_options(parser):
     parser.add_argument("--validation-batch-size", type=int, default=32,
                         help="Sampling cases per GPU; halve on CUDA OOM without changing seeds")
     parser.add_argument("--validation-decode-batch-size", type=int, default=4)
+    parser.add_argument("--validation-weights", choices=("raw", "ema"), default="raw",
+                        help="Weights used for fixed71 monitoring; EMA requires --ema-decay")
     return parser
 
 
 def local_path(value):
-    path = Path(os.path.expandvars(str(value))).resolve()
-    if not path.is_relative_to("/mnt/local"):
-        raise ValueError(f"Validation inputs/outputs must be node-local: {path}")
-    if not path.exists():
-        raise FileNotFoundError(path)
-    return path
+    from .site_paths import storage_path
+    return storage_path(value)
 
 
 def read_configuration(path):
@@ -85,6 +83,11 @@ def read_configuration(path):
 def configure_validation(args):
     RECIPE.pop("validation", None)
     path = getattr(args, "validation_config", None)
+    weights = getattr(args, "validation_weights", "raw")
+    if weights not in {"raw", "ema"}:
+        raise ValueError("Validation weights must be raw or ema")
+    if weights == "ema" and not getattr(args, "ema_decay", 0):
+        raise ValueError("EMA validation requires --ema-decay > 0")
     if path is None:
         return
     if RECIPE.get("camera_prediction"):
@@ -97,7 +100,7 @@ def configure_validation(args):
         every=args.validation_every, sampling_batch_size=args.validation_batch_size,
         decode_batch_size=args.validation_decode_batch_size,
         modes=["video2motion", "motimg2video"], steps=35, guidance=1.0,
-        motion_shift=3.0, video_shift=10.0, captions="empty", weights="raw",
+        motion_shift=3.0, video_shift=10.0, captions="empty", weights=weights,
         cohort="fixed71_test_monitoring_only_no_checkpoint_selection",
         m2v_scored_rgb_frames=[1, 96], fvd="I3D400_logits_six16frame_segments_per_window")
 
@@ -200,7 +203,7 @@ def append_event(log, path, event):
     log.flush()
 
 
-def maybe_validate(args, model, step, fingerprint, rank, world, log):
+def maybe_validate(args, model, step, fingerprint, rank, world, log, *, ema=None):
     policy = RECIPE.get("validation")
     if not policy or not step or step % policy["every"]:
         return
@@ -228,7 +231,20 @@ def maybe_validate(args, model, step, fingerprint, rank, world, log):
         values = [done]
         dist.broadcast_object_list(values, src=0)
         done = values[0]
-    with preserve_training_state(model):
+    error = None
+    if policy.get("weights", "raw") == "ema" and (ema is None or ema.num_updates != step):
+        error = f"rank{rank}: EMA validation needs the EMA at optimizer step {step}"
+    collective_errors(error)
+    with preserve_training_state(model), ExitStack() as weights_context:
+        if policy.get("weights", "raw") == "ema":
+            error = None
+            try:
+                weights_context.enter_context(ema.average_parameters(model))
+            except Exception as exc:
+                error = f"rank{rank} EMA weights: {type(exc).__name__}: {exc}"
+            # If any rank cannot swap weights, every successful rank restores
+            # its raw weights before propagating the collective failure.
+            collective_errors(error)
         if not done:
             error = None
             try:

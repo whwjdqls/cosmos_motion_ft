@@ -24,6 +24,7 @@ def configure(conditioning_attention=None):
         joint_objective="sum_native_video_velocity_and_motion_x0_physical_losses",
         caption_policy={mode: "empty" for mode in TASKS},
         cfg_dropout=0.0,
+        video_weight=10.0,
         joint_guidance="none_no_text_condition",
         juice_reference={"repository": "https://github.com/Ced3-han/JUICE-Code", "commit": JUICE_COMMIT,
                          "adapted": "independent_modality_times_and_both_targets",
