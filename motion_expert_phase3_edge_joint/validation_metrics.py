@@ -25,6 +25,28 @@ def module(path, name):
     return value
 
 
+def load_scoring_vae(path, *, loader=None):
+    """Load the rank-zero scorer's complete VAE without a world broadcast.
+
+    The native loader reads all checkpoint tensors on rank zero before its
+    initialization broadcast. Other training ranks are waiting for the score
+    result, so that broadcast must not use the training process group.
+    Keep the change scoped to this constructor; training collectives remain.
+    """
+    from unittest.mock import patch
+    import torch.distributed as dist
+    from cosmos_framework.model.generator.tokenizers import wan2pt2_vae_4x16x16 as wan
+    if loader is None:
+        from motion_expert_phase3_edge.visualize import load_vae
+        loader = load_vae
+    if not dist.is_initialized():
+        return loader(Path(path), '256', 97, 'cuda')
+    if dist.get_rank() != 0:
+        raise RuntimeError('Only rank zero constructs the scoring VAE')
+    with patch.object(wan, 'sync_model_states', lambda model: None):
+        return loader(Path(path), '256', 97, 'cuda')
+
+
 def frechet(a, b):
     # Same stable float64 formulation used by the reviewed EgoControl metrics;
     # low-rank covariance is expected for the 71-window cohort.
@@ -164,8 +186,7 @@ class VideoMetrics:
 @torch.inference_mode()
 def video_scores(config, cases, folder, contract, policy):
     from .validation import load_case
-    from motion_expert_phase3_edge.visualize import load_vae
-    vae = load_vae(Path(config["vae"]), "256", 97, "cuda")
+    vae = load_scoring_vae(config["vae"])
     if vae.get_output_range() != "[-1,1]":
         raise ValueError("Unexpected VAE output range")
     metrics = VideoMetrics(config)

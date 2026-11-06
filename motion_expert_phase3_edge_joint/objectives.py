@@ -64,9 +64,9 @@ def specialist_loss(output, target, inputs, mean, std):
             tensor_kwargs_fp32={"device": device, "dtype": torch.float32},
             normalize_by_active=False,
         )
-        total = total + 10.0 * loss * len(vi) / batch
+        total = total + RECIPE["video_weight"] * loss * len(vi) / batch
         metrics["video"] = loss.detach()
-    metrics["video_weighted"] = 10.0 * metrics["video"]
+    metrics["video_weighted"] = RECIPE["video_weight"] * metrics["video"]
     metrics["motion_count"] = total.detach().new_tensor(len(mi))
     metrics["video_count"] = total.detach().new_tensor(len(vi))
     metrics["joint_count"] = total.detach().new_tensor(sum(m == "joint" for m in modes))

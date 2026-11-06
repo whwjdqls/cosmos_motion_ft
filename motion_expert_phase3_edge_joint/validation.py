@@ -31,12 +31,8 @@ def add_validation_options(parser):
 
 
 def local_path(value):
-    path = Path(os.path.expandvars(str(value))).resolve()
-    if not path.is_relative_to("/mnt/local"):
-        raise ValueError(f"Validation inputs/outputs must be node-local: {path}")
-    if not path.exists():
-        raise FileNotFoundError(path)
-    return path
+    from .site_paths import storage_path
+    return storage_path(value)
 
 
 def read_configuration(path):

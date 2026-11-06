@@ -138,7 +138,7 @@ def configure_local_paths():
     import json
     import motion_expert_phase3_edge_joint.data as data
     root = os.environ.get("COSMOS_STORAGE_ROOT")
-    defaults = {} if not root else {
+    defaults = {} if not root or os.environ.get("COSMOS_SITE") != "custom" else {
         prefix: str(Path(root) / "restored" / prefix.lstrip("/"))
         for prefix in ("/lustre/whwjdqls99/cosmos", "/scratch2/whwjdqls99/cosmos")}
     mapping = json.loads(os.environ.get("PHASE3_IMAGE_JOINT_PATH_MAP", json.dumps(defaults)))

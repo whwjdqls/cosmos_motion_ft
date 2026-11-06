@@ -214,12 +214,13 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
                 mask[:, :, 0] = 0
                 expected = ((baseline.float() - target["velocity"]).square() * mask).mean()
                 torch.testing.assert_close(terms["video"], expected, rtol=1e-6, atol=1e-7)
+                torch.testing.assert_close(terms["video_weighted"], expected * RECIPE["video_weight"], rtol=1e-6, atol=1e-7)
             bypass = model(**inputs, bridges_enabled=False)
             torch.testing.assert_close(actual["motion"], bypass["motion"], rtol=0, atol=0)
             torch.testing.assert_close(actual["video"], bypass["video"], rtol=0, atol=0)
             del actual, baseline, bypass
     checks.append("bit_exact_zero_bridge_phase1_and_phase2_parity")
-    checks.append("native_video_weight10_full_denominator")
+    checks.append(f"native_video_weight{RECIPE['video_weight']:g}_full_denominator")
     # Fixed mixed batch, including both tasks even for microbatch=1 across DDP ranks.
     names = list(RECIPE["tasks"])
     batch["modes"] = [names[(rank * len(rows) + i) % len(names)] for i in range(len(rows))]
@@ -469,7 +470,7 @@ def main():
                 metrics = {"step": step, "lr": lr, "loss": values[0],
                            "motion_loss": values[1] / max(values[3], 1),
                            "video_loss": values[2] / max(values[4], 1),
-                           "video_weighted": 10 * values[2] / max(values[4], 1),
+                           "video_weighted": RECIPE["video_weight"] * values[2] / max(values[4], 1),
                            "motion_samples": values[3], "video_samples": values[4], "joint_samples": values[5],
                            "task_samples": {"video2motion": values[3] - values[5],
                                             "motimg2video": values[4] - values[5],
