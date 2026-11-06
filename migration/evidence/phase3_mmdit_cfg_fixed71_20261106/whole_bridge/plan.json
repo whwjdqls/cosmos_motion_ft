@@ -1,0 +1,51 @@
+{
+  "node": "lg-gwangmo-4xh200-sep-1",
+  "runs": [
+    {
+      "attention": "directional",
+      "run_dir": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_temporallocal_noshapebridge_bf16_no_text_v2_T97_gbs32_sep1_20261105T225242Z",
+      "snapshot": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_temporallocal_noshapebridge_bf16_no_text_v2_T97_gbs32_sep1_20261105T225242Z/launch/source_snapshot",
+      "checkpoint": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_phase3_cfg2_fixed71_20261106T032026Z/directional_checkpoint.pt",
+      "step": 10000,
+      "phase1": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/cosmos3_camera/camera_world_edge/edge_phase1_T97_20fps_2gpu_bs16_lora_video_io_exclude5_fd_invdyn_no_text_p1_200k_sep2_20261028/checkpoints/iter_000200000",
+      "phase2": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_t2m_edge/edge_7layer_self_cross_final_hidden_knorm_captiononly_nymeria_bones50_t2m_ti2m_nanoparity_gbs256_camhead_v1_subjectv1_w1_1_5_contact_c0p05_v1_h10_yonsei_20260921/checkpoints/step_000200000.pt",
+      "path_map": {
+        "/lustre/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos",
+        "/scratch2/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos"
+      },
+      "gpu": 7,
+      "out": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_phase3_cfg2_fixed71_20261106T032026Z/whole_bridge/directional"
+    },
+    {
+      "attention": "bidirectional",
+      "run_dir": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_bidirectional5050_temporallocal_noshapebridge_bf16_no_text_v2_T97_gbs32_sep1_20261105T225242Z",
+      "snapshot": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_bidirectional5050_temporallocal_noshapebridge_bf16_no_text_v2_T97_gbs32_sep1_20261105T225242Z/launch/source_snapshot",
+      "checkpoint": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_phase3_cfg2_fixed71_20261106T032026Z/bidirectional_checkpoint.pt",
+      "step": 10000,
+      "phase1": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/cosmos3_camera/camera_world_edge/edge_phase1_T97_20fps_2gpu_bs16_lora_video_io_exclude5_fd_invdyn_no_text_p1_200k_sep2_20261028/checkpoints/iter_000200000",
+      "phase2": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_t2m_edge/edge_7layer_self_cross_final_hidden_knorm_captiononly_nymeria_bones50_t2m_ti2m_nanoparity_gbs256_camhead_v1_subjectv1_w1_1_5_contact_c0p05_v1_h10_yonsei_20260921/checkpoints/step_000200000.pt",
+      "path_map": {
+        "/lustre/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos",
+        "/scratch2/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos"
+      },
+      "gpu": 3,
+      "out": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_phase3_cfg2_fixed71_20261106T032026Z/whole_bridge/bidirectional"
+    }
+  ],
+  "validation_config": "/mnt/local/jinhyung.kim/cosmos/operations/phase3_mmdit_bf16_validation_20261105/validation.json",
+  "guidance": 2.0,
+  "steps": 35,
+  "batch_size": 32,
+  "decode_batch_size": 4,
+  "captions": "empty",
+  "reference_policy": {
+    "video2motion": "disable all seven phase3 bridge modules, including both intra-modal and cross-modal updates",
+    "motimg2video": "disable all seven phase3 bridge modules, including both intra-modal and cross-modal updates"
+  },
+  "formula": "reference + 2 * (conditioned - reference); motion x0 mix is algebraically equivalent to velocity mix",
+  "null_training": "Inference-only bridge conditioning removal; no dropped-modality null training assumed",
+  "publication": "Local results only; no changes to main training, source snapshots or W&B histories",
+  "notion_page_id": "410d2a44-f44b-8098-b1b7-c7af42d2353b",
+  "protocol": "whole_bridge_off_cfg2",
+  "reference_operation": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_phase3_cfg2_fixed71_20261106T032026Z"
+}
