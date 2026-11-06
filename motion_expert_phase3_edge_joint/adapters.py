@@ -7,6 +7,7 @@ and checkpoint discovery. No framework code or native state-dict keys change.
 from __future__ import annotations
 
 import math
+from contextlib import contextmanager
 from itertools import chain
 
 import torch
@@ -91,6 +92,11 @@ def configure_checkpoint(payload, *, bridge_parameterization=None, bridge_attent
                 or cfg["alpha"] <= 0 or cfg["targets"] != list(TARGETS)
                 or cfg["dtype"] != "float32"):
         raise ValueError("Unsupported Phase3 LoRA checkpoint configuration")
+    cfg = RECIPE.get("trainable_ema")
+    if cfg is not None and (not isinstance(cfg, dict) or cfg.get("scope") != "bridges_and_phase3_lora"
+                or not isinstance(cfg.get("decay"), (int, float))
+                or not math.isfinite(cfg["decay"]) or not 0 < cfg["decay"] < 1):
+        raise ValueError("Unsupported Phase3 EMA checkpoint configuration")
 
 
 class LowRankDelta(nn.Module):
@@ -161,14 +167,14 @@ def trainable_state(model):
 
 def _validate_state(model, state):
     modules = trainable_modules(model)
-    if set(state) != set(modules):
+    if not isinstance(state, dict) or set(state) != set(modules):
         raise ValueError("Checkpoint trainable modules differ (missing or unexpected Phase3 LoRA)")
     for name, module in modules.items():
         expected = module.state_dict()
-        if set(state[name]) != set(expected):
+        if not isinstance(state[name], dict) or set(state[name]) != set(expected):
             raise ValueError(f"Checkpoint {name} tensor keys differ")
         for key, value in expected.items():
-            if state[name][key].shape != value.shape:
+            if not isinstance(state[name][key], torch.Tensor) or state[name][key].shape != value.shape:
                 raise ValueError(f"Checkpoint tensor shape differs: {name}.{key}")
 
 
@@ -189,6 +195,7 @@ def load_trainable_state(model, payload, *, weights="raw"):
     if weights == "ema":
         if payload.get("ema") is None:
             raise ValueError("EMA weights requested but this checkpoint has no EMA")
+        validate_checkpoint_ema(model, payload)
         state = payload["ema"]["state"]
         _validate_state(model, state)
     for name, module in trainable_modules(model).items():
@@ -229,14 +236,59 @@ class TrainableEMA:
     def state_dict(self):
         return dict(decay=self.decay, num_updates=self.num_updates, state=self.state)
 
-    def load_state_dict(self, model, payload):
-        if payload["decay"] != self.decay or int(payload["num_updates"]) < 0:
-            raise ValueError("EMA configuration differs from the checkpoint")
-        _validate_state(model, payload["state"])
+    def load_state_dict(self, model, payload, *, expected_updates=None):
+        _validate_ema_state(model, payload, decay=self.decay, expected_updates=expected_updates)
         for name, state in self.state.items():
             for key, value in state.items():
                 value.copy_(payload["state"][name][key])
-        self.num_updates = int(payload["num_updates"])
+        self.num_updates = payload["num_updates"]
+
+    @contextmanager
+    def average_parameters(self, model):
+        """Temporarily use the matched EMA pair, restoring raw tensors on failure."""
+        _validate_ema_state(model, self.state_dict(), decay=self.decay)
+        raw = {name: {key: value.detach().clone() for key, value in state.items()}
+               for name, state in trainable_state(model).items()}
+        try:
+            for name, module in trainable_modules(model).items():
+                module.load_state_dict(self.state[name], strict=True)
+            yield
+        finally:
+            for name, module in trainable_modules(model).items():
+                module.load_state_dict(raw[name], strict=True)
+
+
+def _validate_ema_state(model, saved, *, decay=None, expected_updates=None):
+    if not isinstance(saved, dict):
+        raise ValueError("Missing EMA state")
+    rate, count = saved.get("decay"), saved.get("num_updates")
+    if (not isinstance(rate, (int, float)) or isinstance(rate, bool)
+            or not math.isfinite(rate) or not 0 < rate < 1
+            or (decay is not None and rate != decay)):
+        raise ValueError("EMA configuration differs from the checkpoint")
+    if type(count) is not int or count < 0:
+        raise ValueError("EMA update count must be a nonnegative integer")
+    if expected_updates is not None and count != expected_updates:
+        raise ValueError("EMA update count differs from the checkpoint optimizer step")
+    state = saved.get("state")
+    if not isinstance(state, dict):
+        raise ValueError("Missing EMA tensor state")
+    _validate_state(model, state)
+    for name, tensors in state.items():
+        for key, tensor in tensors.items():
+            if tensor.dtype != torch.float32 or not torch.isfinite(tensor).all().item():
+                raise ValueError(f"EMA tensor must be finite FP32: {name}.{key}")
+
+
+def validate_checkpoint_ema(model, payload):
+    cfg = payload.get("scheduler", {}).get("recipe", {}).get("trainable_ema")
+    if (not isinstance(cfg, dict) or cfg.get("scope") != "bridges_and_phase3_lora"
+            or "decay" not in cfg):
+        raise ValueError("Missing or unsupported EMA checkpoint recipe")
+    step = payload.get("step")
+    if step is not None and (type(step) is not int or step < 0):
+        raise ValueError("Invalid checkpoint optimizer step")
+    _validate_ema_state(model, payload.get("ema"), decay=cfg["decay"], expected_updates=step)
 
 
 def new_ema(model):
@@ -249,4 +301,5 @@ def restore_ema(ema, model, payload):
     if (ema is None) != (saved is None):
         raise ValueError("Resume EMA configuration differs from the checkpoint")
     if ema is not None:
-        ema.load_state_dict(model, saved)
+        validate_checkpoint_ema(model, payload)
+        ema.load_state_dict(model, saved, expected_updates=payload.get("step"))

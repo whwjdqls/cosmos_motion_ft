@@ -80,7 +80,7 @@ def configure_attention_policy(experiment_package, requested):
     attention = requested or os.environ.get(key, "directional" if two_task else "bidirectional")
     if attention not in {"directional", "bidirectional"}:
         raise ValueError("Unknown conditioning attention policy")
-    if experiment_package == "motion_expert_phase3_edge_image_joint_wv1" and attention != "bidirectional":
+    if experiment_package in {"motion_expert_phase3_edge_image_joint_wv1", "motion_expert_phase3_edge_image_joint_wv1_notext"} and attention != "bidirectional":
         raise ValueError("The weight-one recipe requires bidirectional conditioning")
     os.environ["PHASE3_IMAGE_JOINT_CONDITIONING_ATTENTION"] = attention
     if two_task:
@@ -92,7 +92,7 @@ def freeze_sources(repo, snapshot):
     from motion_expert_phase3_edge_joint.settings import sha256
     # Include lazily loaded evaluators: later repository edits must not change
     # the definition of the 10k/20k/... points within a running experiment.
-    packages = ("motion_expert_phase3_edge_joint", "motion_expert_phase3_edge_image_joint", "motion_expert_phase3_edge_mmdit", "motion_expert_phase3_edge_image_joint_wv1",
+    packages = ("motion_expert_phase3_edge_joint", "motion_expert_phase3_edge_image_joint", "motion_expert_phase3_edge_mmdit", "motion_expert_phase3_edge_image_joint_wv1", "motion_expert_phase3_edge_image_joint_wv1_notext",
                 "motion_expert_joint_attention", "motion_expert_t2m_edge", "motion_expert_phase3_edge",
                 "native_phase_training", "nymeria_world", "nymeria_baselines", "shape_aware_TMR", "migration")
     sources = sorted({p for name in packages for p in (repo / name).rglob("*.py")})
@@ -208,7 +208,7 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
         for name in ("phase3_lora_rank", "phase3_lora_alpha", "phase3_lora_lr", "phase3_lora_weight_decay",
                      "bridge_lr", "bridge_weight_decay", "ema_decay", "bridge_parameterization",
                      "bridge_attention_backend", "bridge_precision", "validation_config", "validation_every",
-                     "validation_batch_size", "validation_decode_batch_size"):
+                     "validation_batch_size", "validation_decode_batch_size", "validation_weights"):
             value = getattr(args, name)
             if value is not None:
                 common += ["--" + name.replace("_", "-"), str(value)]

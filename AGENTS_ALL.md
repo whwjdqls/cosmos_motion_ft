@@ -1,5 +1,58 @@
 # Shared Agent Context
 
+## Optional Phase3 EMA hardened and validation selection added (2026-11-06)
+
+- User requested optional EMA in the current Phase3 setting. Existing
+  --ema-decay (default0) and raw/EMA checkpoint/inference support retained;
+  added --validation-weights raw|ema (default raw), forwarded through the
+  shared launcher, accepted probes and trainer. EMA scope is bridges plus
+  optional additional Phase3 LoRA only, one update per optimizer step.
+- Resume/inference checks decay/scope, integer update count against saved
+  optimizer step, matching keys/shapes, finite FP32 shadows, and absence/
+  presence consistency. Existing raw checkpoints remain supported. An
+  EMA-off checkpoint cannot silently acquire an invented EMA history.
+- EMA validation temporarily swaps the matched trainable tensors on every
+  rank and restores raw state on success/error, with collective preparation
+  failures and unchanged optimizer/RNG/modes. Native preflight now compares
+  restored EMA tensors/counts exactly and verifies continued count13.
+- All58 focused tests passed on owned2616204 compute CPUs: atomic file/mmap
+  roundtrip, exact raw/EMA continuation with/without LoRA, real two-rank
+  checkpoint resume and collective swap failure, malformed EMA rejection,
+  current MMDiT/no-caption recipe and legacy raw compatibility. Evidence:
+  operations/phase3_optional_ema_20261106/tests_final.log and VERIFIED.json.
+- Active P3 no-caption/video1 still uses its immutable snapshot with EMA
+  disabled. No trainer, live checkpoint, source snapshot or allocation was
+  changed/restarted. Details: motion_expert_phase3_edge_joint/OPTIONAL_EMA.md.
+
+## Yonsei Phase3 replacement: no M2V captions, video weight1 (2026-11-06)
+
+- User explicitly stopped the captioned-M2V joint/video1 run. Rank0 received
+  SIGUSR1; both ranks exited cleanly at17114, saved recovery_latest.pt and
+  latest.json, and the W&B sidecar flushed. Preserve that run as history;
+  do not automatically resume it. Allocation2616204/node58 is retained.
+- New dedicated package motion_expert_phase3_edge_image_joint_wv1_notext
+  launches a FRESH200k matched ablation. Only M2V text is removed; V2M/joint
+  already had blank text. Caption dropout0, all other scientific settings
+  retain weight1, native motion/contact losses, global32=2x16accum1,
+  bidirectional groupedBF16 seven MMDiT bridges and40/40/20 tasks, same frozen
+  P1/P2/cache/stats and checksum-pinned fixed71 validation every10k.
+- Run edge_p3_mmdit_bidir_joint402020_groupedbf16_wv1_notext_T97_gbs32_yonsei_20261106
+  under Scratch2 cosmos_motion_ft_runs/motion_expert_phase3_edge. Operation
+  operations/phase3_mmdit_bidir_joint_wv1_notext_yonsei_20261106; tmux
+  phase3_mmdit_wv1_notext_yonsei_20261106. W&B jungbinc-upenn/cosmos-motion-ft.
+- The launcher checks exact saved-plan parity, fresh native two-rank
+  acceptance, fresh4/reload2 probes, then production. Consult RECIPE_PARITY,
+  launch/status/training logs and production receipt for actual progress;
+  preparation is not a claim that production has started. Phase2 no-shape
+  allocation2622173 remains untouched. Details in the new package README.
+- Production verified around09:45KST: first update1, then10/20, finite losses
+  and nonzero gradients, video_weighted==video_loss, ~2.27seconds/update,
+  peak17.80GiB. All30 focused tests, real two-rank poisoned-caption/gradient/
+  reload acceptance, fresh4 and own resume4->6 passed. Frozen specialist/data/
+  shared-bridge hashes match the stopped run; full recipe matches the plan.
+  W&B p3-d9fc2424b97b1163e3b2 is streaming underjungbinc-upenn. Operation
+  PRODUCTION_RUNNING.json records the acceptance and actual optimizer updates.
+
 ## Merge compatibility / Yonsei and Foundary (2026-11-06)
 
 - New Foundary Phase3 recipes are caption-free. The dedicated Yonsei

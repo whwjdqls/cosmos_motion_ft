@@ -269,9 +269,10 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
     checkpoint_path = args.out / "preflight_roundtrip.pt"
     expected_state = {name: {key: value.detach().cpu().clone() for key, value in state.items()}
                       for name, state in trainable_state(model).items()}
+    expected_ema = None if ema is None else cpu_tree(ema.state_dict())
     if rank == 0:
         atomic_checkpoint(checkpoint_path, {**expected_state, "optimizer": optimizer.state_dict(), "rng": rng,
-            "scheduler": {"recipe": RECIPE}, "ema": None if ema is None else ema.state_dict()})
+            "step": 12, "scheduler": {"recipe": RECIPE}, "ema": None if ema is None else ema.state_dict()})
     barrier()
     restored = torch.load(checkpoint_path, map_location="cpu", weights_only=False, mmap=True)
     load_trainable_state(model, restored)
@@ -286,11 +287,15 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
         for value in state.values():
             digest.update(value.detach().cpu().contiguous().numpy().tobytes())
     if ema is not None:
+        assert ema.num_updates == expected_ema["num_updates"] == 12
         for state in ema.state.values():
             for value in state.values():
                 digest.update(value.detach().cpu().contiguous().numpy().tobytes())
+        for name, state in ema.state.items():
+            for key, value in state.items():
+                assert torch.equal(value.detach().cpu(), expected_ema["state"][name][key])
     assert len(set(all_objects(digest.hexdigest(), world))) == 1
-    del restored, expected_state
+    del restored, expected_state, expected_ema
     # One real resumed optimizer update, not just deserialization.
     optimizer.zero_grad(set_to_none=True)
     output = ddp(**inputs)
@@ -300,6 +305,7 @@ def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerp
     optimizer.step()
     if ema is not None:
         ema.update(model)
+        assert ema.num_updates == 13
     assert_frozen(model, versions)
     checks.append("DDP_bit_identical_bridge_parameters_and_save_reload_continue")
     if len(model.phase3_lora):
@@ -427,7 +433,7 @@ def main():
     log = (args.out / "metrics.jsonl").open("a", buffering=1) if rank == 0 else None
     # Replay a pending milestone after a crash between saving and evaluation.
     # COMPLETE.json and validation_id make successful replay idempotent.
-    maybe_validate(args, model, start_step, fingerprint, rank, world, log)
+    maybe_validate(args, model, start_step, fingerprint, rank, world, log, ema=ema)
     step = start_step  # A final-step resume may only need to finish validation.
     for step in range(start_step + 1, RECIPE["steps"] + 1):
         before = time.monotonic()
@@ -506,7 +512,7 @@ def main():
         if validation_due:
             if rank == 0:
                 atomic_json(args.out / "status.json", {"stage": "validation", "step": step})
-            maybe_validate(args, model, step, fingerprint, rank, world, log)
+            maybe_validate(args, model, step, fingerprint, rank, world, log, ema=ema)
         if stop.item():
             break
     if rank == 0:

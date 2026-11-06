@@ -4,6 +4,10 @@ Implemented on sep-1 on 2026-11-05; no training job was started or restarted.
 The additional adapter and EMA are opt-in. Existing task/noise/loss settings
 and bridge-only defaults are retained.
 
+The current MMDiT/no-caption recipe also supports bridge-only EMA without
+enabling LoRA. See [optional EMA](OPTIONAL_EMA.md) for raw/EMA validation
+selection, checkpoint integrity checks and exact-resume requirements.
+
 ## Model and trainable scope
 
 Each generation-attention Q/K/V/O projection in all 28 native layers computes
