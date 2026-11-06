@@ -9,6 +9,7 @@ import importlib
 import os
 from pathlib import Path
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -96,7 +97,8 @@ def freeze_sources(repo, snapshot):
                 "motion_expert_joint_attention", "motion_expert_t2m_edge", "motion_expert_phase3_edge",
                 "native_phase_training", "nymeria_world", "nymeria_baselines", "shape_aware_TMR", "migration")
     sources = sorted({p for name in packages for p in (repo / name).rglob("*.py")})
-    sources += [repo / name for name in ("runtime_paths.py", "scripts/phase3_performance.py", "scripts/stream_phase3_wandb.py")]
+    sources += [repo / name for name in ("runtime_paths.py", "scripts/phase3_performance.py", "scripts/stream_phase3_wandb.py",
+                                         "scripts/phase3_agent_entry.py", "scripts/phase3_worker_entry.py")]
     manifest = {str(p.relative_to(repo)): sha256(p) for p in sources}
     for path in sources:
         destination = snapshot / path.relative_to(repo)
@@ -106,6 +108,7 @@ def freeze_sources(repo, snapshot):
 
 
 def main(experiment_package="motion_expert_phase3_edge_image_joint"):
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
     parser = add_training_options(add_bridge_options(argparse.ArgumentParser(description=__doc__)))
     parser.add_argument("--gpus", required=True, help="Two coordinated physical GPU indices, e.g. 2,3")
     for key in ("phase1", "phase2", "cache", "out"):
@@ -201,8 +204,9 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
             str(snapshot / "motion_expert_t2m_edge"), str(snapshot / "motion_expert_joint_attention"),
             str(snapshot / "nymeria_world"), str(snapshot), child_environment.get("PYTHONPATH", "")])
         child_cwd = os.environ["COSMOS_FRAMEWORK_EDGE_ROOT"]
-        command = [sys.executable, "-m", "torch.distributed.run", "--standalone", "--nnodes=1", "--nproc-per-node=2",
-                   "-m", experiment_package + ".train"]
+        command = [sys.executable, str(snapshot / "scripts/phase3_agent_entry.py"),
+                   "--standalone", "--nnodes=1", "--nproc-per-node=2",
+                   str(snapshot / "scripts/phase3_worker_entry.py"), "--module", experiment_package + ".train"]
         common = ["--phase1", str(args.phase1), "--phase2", str(args.phase2), "--cache", str(args.cache),
                   "--microbatch", "16", "--workers", str(args.workers), "--conditioning-attention", attention]
         for name in ("phase3_lora_rank", "phase3_lora_alpha", "phase3_lora_lr", "phase3_lora_weight_decay",
@@ -221,7 +225,7 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
             print(f"[image-joint/launch] {name}: {ops / (name + '.log')}", flush=True)
             with (ops / (name + ".log")).open("x") as log:
                 subprocess.run(command + common + extra, stdout=log, stderr=subprocess.STDOUT, check=True,
-                               env=child_environment, cwd=child_cwd)
+                               env=child_environment, cwd=child_cwd, stdin=subprocess.DEVNULL, start_new_session=True)
 
         stage("preflight", ["--preflight", "--out", str(ops / "preflight")])
         acceptance = ["--acceptance", str(ops / "preflight/acceptance.json")]
@@ -232,7 +236,8 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
         atomic_json(ops / "status.json", {"stage": "starting_fresh_production", "host": host})
         with (ops / "training.log").open("x") as log:
             trainer = subprocess.Popen(command + common + ["--out", str(args.out), "--resume", "none", *acceptance],
-                                       stdout=log, stderr=subprocess.STDOUT, env=child_environment, cwd=child_cwd)
+                                       stdout=log, stderr=subprocess.STDOUT, env=child_environment, cwd=child_cwd,
+                                       stdin=subprocess.DEVNULL, start_new_session=True)
             logger = None
             try:
                 while not (args.out / "metrics.jsonl").is_file():
@@ -242,12 +247,13 @@ def main(experiment_package="motion_expert_phase3_edge_image_joint"):
                 import hashlib
                 run_id = "p3-" + hashlib.sha256(str(args.out.resolve()).encode()).hexdigest()[:20]
                 with (ops / "wandb.log").open("x") as wandb_log:
-                    logger = subprocess.Popen([sys.executable, str(snapshot / "scripts/stream_phase3_wandb.py"),
+                    logger = subprocess.Popen([sys.executable, str(snapshot / "scripts/phase3_worker_entry.py"),
+                        "--script", str(snapshot / "scripts/stream_phase3_wandb.py"),
                         "--run-dir", str(args.out), "--state-dir", str(ops / "wandb_state"),
                         "--name", args.out.name, "--poll-seconds", "2",
                         "--variant", recipe["experiment"], "--group", "edge-phase3-mmdit",
                         "--entity", args.wandb_entity, "--project", args.wandb_project], stdout=wandb_log, stderr=subprocess.STDOUT,
-                        env=child_environment, cwd=child_cwd)
+                        env=child_environment, cwd=child_cwd, stdin=subprocess.DEVNULL, start_new_session=True)
                     url = f"https://wandb.ai/{args.wandb_entity}/{args.wandb_project}/runs/{run_id}"
                     atomic_json(ops / "status.json", {"stage": "trainer_started", "host": host, "pid": trainer.pid, "wandb_url": url})
                     print(f"[image-joint/launch] trainer started; W&B {url} (check logger for remote sync)", flush=True)
