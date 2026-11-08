@@ -1,5 +1,34 @@
 # Shared Agent Context
 
+## sep-2 directional no-joint camera replacements COMPLETE (2026-11-08)
+
+- User requests two FRESH directional/EMA0.999/videoW1/no-joint/camera-prediction
+  no-camera-loss runs: temporal-local on3/5, real global bridge attention on1/7.
+  Both V2M50/M2V50/J0, no captions, global32=2x16/accum1, same P1/P2/local cache.
+- Operation cosmos_storage/operations/phase3_camera_directional_nojoint_local_global_20261108:
+  handover.py verified BOTH native preflights,4→6 full-state save/reloads,
+  finite production and remote W&B before checkpointed SIGUSR1 to either old
+  directional run. Old W1 stopped106584, old W10 stopped141529; full raw/EMA,
+  AdamW, two rank RNGs and exact draw cursors are SHA-verified under preserved/.
+  Do not auto-resume those old runs. Original bidirectional0/6 remains active.
+- New isolated package motion_expert_phase3_edge_camera_directional_nojoint;
+  process-scoped global mask/math override, same BF16/FP32 storage policies,
+  native specialist attention unchanged. No direct camera-motion bridge edges.
+  Camera-aware batched validation uses pure camera noise, never test GT camera.
+  Existing camera-free validation guard and live snapshots are unchanged.
+- Native camera cache642 recordings/112503 windows is already local. No shared
+  copy needed. Source branch codex/sep2-camera-directional-nojoint-local-global-20261108.
+  COMPLETE.json/OLD_RUNS_PRESERVED.json/RUNNING_VERIFIED.json establish cutover.
+- New temporal_local trainer agent600706, ranks601115/601116, GPUs3/5;
+  W&B p3-4f53e31a815764b5b327. New global agent601230, ranks601462/601463,
+  GPUs1/7; W&B p3-bbbe57cdbf3ace605a94. Always verify PID/start identities.
+  New source snapshots each427 files; only recipe identity/scope differ.
+- W&B rejected the local variant's70-char tag. Logger-only recovery620043
+  backfilled the same run without restarting training. Shared logger now bounds
+  tags to64 chars with a hash suffix, keeping full variant/config unchanged.
+  Frozen corrected logger and recovery command/SHA are in operation/logging_source
+  and LOGGER_TAG_RECOVERY.json. Production trainer snapshots remain immutable.
+
 ## GitHub merge and Scratch2 access refresh completed (2026-11-08)
 
 - Local application/evaluation work committed as e8df43e, then GitHub master
