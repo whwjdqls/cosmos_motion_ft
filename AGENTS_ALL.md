@@ -1,5 +1,258 @@
 # Shared Agent Context
 
+## Camera axes and matched caption-conditioned V2M gallery (2026-11-08)
+
+- User requested RGB coordinate axes instead of frustums, more examples and
+  Ours with text. New default camera glyph is axes: optical X red/right,
+  Y green/down, Z blue/forward,18cm display length. Pure camera_geometry.py
+  protects the column-rotation convention; the legacy frustum option remains.
+- Operation: /scratch2/whwjdqls99/cosmos/operations/soma_axes_caption_20261108.
+  Six cases: original first/middle/last plus first sorted eligible captions
+  for kneeling/squatting, sit/stand transition, walking/turning, each in a new
+  recording. Cases were chosen from metadata before inspecting predictions.
+- Both Ours branches were sampled afresh using native singleton UniPC35,
+  shift3/guidance1 and identical checkpoint, latent video, shape, stats and
+  per-case seeds. Baseline bridge200k SHA256 is
+  3dc642508076c2d4199014a8bae82bbec330fc45d8de23cf02eff75089c3bc1d.
+  Text uses the original v2m_caption_comparison_20261016.py intervention,
+  with35 calls verified on each reasoner path. Caption-conditioned V2M is
+  outside this bridge's training tasks. No training/checkpoint code changed.
+- SAMPLING_COMPLETE passed for all12 predictions. Fresh singleton video-only
+  outputs can differ slightly from earlier batched full-test outputs, so the
+  current captions are compared to the freshly sampled paired baseline.
+  Existing quantitative reports and previous gallery artifacts are untouched.
+- Figure layout has GT, Ours video, Ours+text across the first row; EgoEgo,
+  EgoAllo and the caption across the second. Same sparse0/48/96 frames,
+  pelvis-relative heatmaps0–30cm, shared display offsets, measured reference
+  cameras and single rear shadows. Source/manifest/receipts are kept per run.
+  Six geometry/camera tests passed. Full rendering/publication completion must
+  be checked in PAPER_KIT_READY.json and NOTION_COMPLETE.json, respectively.
+- Completed07:45KST: six cases/five methods/three frames, all18 PNG/PDF
+  montage variants. Validation passed dense-source array preservation,
+  uncropped bounds, common observers, matching camera/body offsets, optical
+  RGB axis conventions and independently redecoded RGB pixel equality.
+  Portable kit183files/44,516,036bytes, SHA256
+  cd4b54d3dd0ef30c32e91b63f88474fb5e16a6580a2cb10a8e38cdae7cb5f71c.
+  Notion20attachments downloaded back and byte/SHA256 verified,39 native
+  instruction blocks read back. Latest section block is
+  411d2a44-f44b-815b-89de-cf85d0d130d3 on the same reconstruction page.
+  Publication initially matched an older instructions file by its shared
+  caption; corrected to a unique axes/caption-specific attachment caption.
+  Earlier files were unchanged. Keep attachment captions unique per version.
+
+## Sparse SOMA frames, measured cameras and observed RGB (2026-11-08)
+
+- User requested camera visualization and several sparse frames in one image,
+  with/without matching egocentric video images. Isolated implementation:
+  applications/motion_reconstruction/sparse.py and blender_sparse.py; read the
+  local README for replay. No inference, checkpoints or training changed.
+- Same three cases/four methods as v2. Each method's scene contains frames
+  0/48/96 at20FPS, compared in a2x2 method layout. Three versions: clean,
+  cameras, cameras_video. The last repeats matching observed RGB thumbnails
+  over each timepoint in every method's panel; these are not generated views.
+- Original selected mesh/pose/error arrays remain bitwise identical to v2.
+  A common recorded display translation separates timestamps, moving camera
+  and body together identically across models. This is presentation spacing,
+  not physical displacement. Do not join spaced glyphs into a fake trajectory.
+  The full97 measured camera poses are saved separately from these offsets.
+- Green glyphs show measured upright RGB camera references, not predicted
+  cameras or new conditioning for V2M. Common yaw/origin uses the same578-train
+  recording calibration as the camera baseline evaluation; GT only audits the
+  coordinate convention. Max camera/GT Head rotation discrepancy6.99e-8.
+  Frustum20cm depth/FOV is schematic, not an exact FISHEYE624 field of view.
+- Operation: /scratch2/whwjdqls99/cosmos/operations/soma_sparse_camera_20261108.
+  Gallery has9 PNG/PDF montages and exact RGB source indices. Five tests,
+  framing margins, shared observer matrices, body/camera offsets, original
+  array preservation and independently redecoded RGB pixel parity passed.
+  The93-file prepared-scene replay kit needs no models/source recordings.
+  PAPER_KIT_READY.json and gallery/VALIDATION.json record local completion;
+  Notion completion requires NOTION_COMPLETE.json=published_verified.
+- Published07:20KST to the same Egocentric-motion-Recon-Vis Notion page:
+  all14 sparse attachments downloaded back and byte/SHA256 verified, plus30
+  native instruction blocks read back. Existing v2 content is preserved.
+  Replay ZIP19,032,334bytes, SHA256
+  82bf453a475a21eff8e634e7e2b63af81b61a467f49d0355168fcb48e3af3850.
+  Both retained PRO6000 allocations and the active trainer were left intact.
+
+## SOMA visualization v2: local errors and one rear shadow (2026-11-08)
+
+- New default under applications/motion_reconstruction: per-frame
+  pelvis-relative joint errors, interpolated onto the surface with SOMA skin
+  weights. Subtract each motion's own pelvis independently; retain heading and
+  scale differences. This is translation removal for colors only, not
+  parent-local bone error or Procrustes alignment. Rendered world poses and
+  quantitative benchmark metrics are unchanged. Both world/root-relative
+  errors are saved; `mpjpe_cm` remains the historical global benchmark value.
+- New default `shadow_style=single_back`: one soft directional key from the
+  viewer-facing side, with its ground shadow cast away from the viewer. Ambient
+  illumination adds no additional directional shadow. Explicit `world` errors
+  and `studio_three_light` lighting remain available for legacy replay.
+- New outputs: /scratch2/whwjdqls99/cosmos/operations/soma_error_local_shadow_20261108.
+  Same three cases, four models, original geometry and shared0–30cm palette as
+  v1. The Nov7 operation/kit below is retained as a historical global-error
+  version. Current progress/verification are recorded in the new operation's
+  worker logs, gallery/VALIDATION.json, PAPER_KIT_READY.json and
+  NOTION_COMPLETE.json; do not infer completion from a preview alone.
+- Completed07:00KST: four tests,1224 render PNGs, all three97-frame videos,
+  independent local-error checks, exact v1/v2 pose/vertex preservation,
+  unchanged global metric parity and single rear light direction passed.
+  New68-file portable ZIP is soma_reconstruction_paper_kit_20261108_v2.zip,
+  SHA256 e8bd428616eb021472a6b7df0f9c3f1a6c01216095e96212f2c99a14ae87019b.
+  Notion's existing example media were replaced in place; all17 current
+  attachments were downloaded back and byte/SHA256 verified, with62 native
+  instruction blocks read back. The v1 ZIP remains clearly labeled archival;
+  its original SHA256 is unchanged. Same Notion page as the v1 section below.
+  Failed Notion schema attempts are retained in logs; the corrected updater
+  uses DELETE for old generated blocks and omits media's inner `type` on
+  PATCH (the append/upload shape includes that discriminator).
+
+## SOMA reconstruction mesh/error paper pipeline (2026-11-07)
+
+- User's follow-on goal after EgoEgo scoring: convert our representation to
+  SOMA meshes and visualize per-joint errors on the surface, using paper indigo
+  #7B77FF and muted pink/red; publish at Notion Egocentric-motion-Recon-Vis
+  411d2a44f44b80b6b3c9ea52c2e48941. Implementation is isolated under
+  applications/motion_reconstruction; no inference/training code changed.
+- Uses the full standard SOMA77 skin,18056vertices/36108faces. Every controlled
+  BODY23 global translation/rotation is preserved exactly; missing rig bones
+  follow bind/relaxed-hand transforms. This avoids the older standard-FK
+  visualizer replacing predicted positions. The surface is a visualization
+  template, not a subject-specific SOMA-X identity or inferred body-shape fit.
+- Version1 color is raw23-joint Euclidean position error interpolated over
+  vertices using SOMA LBS influences, not measured per-vertex GT distances.
+  Shared0–30cm OKLab map #7B77FF -> #D8768C; >=30cm saturation is labeled and
+  recorded. No alignment, grounding, smoothing or per-frame color normalization.
+  Optional template-vertex distance is separately named. Proper Y-up->Blender
+  (X,-Z,Y) conversion, no X mirror, one fixed camera for all methods/frames.
+- Three deterministic first/middle/last full-test cases compare GT, original
+  P3baseline200k video, EgoEgoEMA555.8k camera+shape and EgoAllo200k camera+shape.
+  Inputs/steps differ; this is a pipeline gallery, not an equal-input ranking.
+  Cycles OptiX on retained2622173/node58; current P3trainer2616204 untouched.
+  Blender4.5.15 LTS binary downloaded and official SHA256 verified.
+- Operation: /scratch2/whwjdqls99/cosmos/operations/soma_error_visualization_20261107.
+  Gallery/index.html has3 synchronized97-frame/20fps comparisons; paper PNG/PDF
+  figures/contact sheets, vector SVG/PDF legends, colored static GLBs(frame96).
+  Source, exact decoded inputs and full skin are in the21.7MB paper-kit ZIP;
+  replay needs no model checkpoint/training data/server filesystem access.
+- Three geometric/palette tests passed; independent VALIDATION checked1224
+  rendered PNGs, every video, identical cameras, raw-pose preservation, exact
+  frame0 mesh replay, raw-error formula and GLB vertex colors. Mean-joint error
+  agrees with prior quantitative scores within1.04e-8m. Kit inventory readback
+  verified all68 files. Read README.md for mathematical/coordinate contracts.
+- Notion publication completed18:57KST: all17 attachments downloaded back and
+  byte/SHA256 verified, all62 native instruction blocks read back. Receipt is
+  NOTION_COMPLETE.json=published_verified. Page contains3 images/3 videos,
+  six paper PDFs, vector/raster legends, portable code+input kit, full pipeline
+  instructions and the complete EgoEgo/GT metric CSV. Kit SHA256 is
+  0107c76d074b06abe6181132f6f45280a23734d5051e8e2bf3f6093615e521ce.
+  https://app.notion.com/p/binne/Egocentric-motion-Recon-Vis-411d2a44f44b80b6b3c9ea52c2e48941
+
+## EgoEgo final555.8k whole-test evaluation (2026-11-07)
+
+- User requested every motion metric on the entire Nymeria test set. Final
+  supplied-shape EgoEgo finished at555800/epoch349 under minsu1206,15:06KST.
+  Snapshot uses final EMA0.999 (79 parameters, optimizer update555800), matching
+  training validation. No checkpoint/training/package source was changed.
+- Assigned previously idle2622173/node58,2xPRO6000; current Phase3 training
+  2616204 is untouched. Operation: operations/egoego_fulltest_20261107 under
+  Scratch2 Cosmos. Driver: nymeria_baselines/evaluate_egoego_fulltest.py,
+  deliberately outside the fingerprinted egoego_shape training package.
+- Exact prior whole-test cohort/seeds:11911 annotation cases,11677 physical
+  windows,71 recordings,T97/20FPS. Uses native FP32 cosine1000-step x0 DDPM,
+  per-case generators/native draw order, no clipping/CFG. Camera plus provided
+  centered SOMA30 shape only. Train-only578-record head calibration maps the
+  camera-anchored prediction frame to the common body23 benchmark frame; GT
+  only audits its own mapping, never places/grounds predictions.
+- PREPARED and PREFLIGHT_ACCEPTED passed: native singleton bitwise parity,
+  deterministic batched replay, batch2 FP32 deviation3.58e-6 normalized,
+  73 geometry checks spanning all71 recordings, max GT-frame error1.36e-5m.
+  Batch128 was fastest among8/32/64/128/256, estimated0.128sec/case/GPU.
+  Actual production speed must come from rank progress logs, not this estimate.
+- Full sampling was launched through the original retained compute-shell tmux
+  pro6000_extra2_20261028_a after two Slurm RPC launch failures. Logs of failed
+  launches are preserved; neither started a model. Two independent rank workers
+  precede shared all-metric scoring and finalizer. Completion requires root
+  COMPLETE.json, not just the preflight, launcher or checkpoint snapshot.
+- Details and full metric/GT reuse protocol: nymeria_baselines/EGOEGO_EVALUATION.md.
+  Results are RESULTS.md/comparison.csv/summary.json plus all per-case scores,
+  predictions and embeddings; no scene-collision or video score is implied.
+- COMPLETE.json is now complete_verified: all11911 predictions/scores,71
+  recordings,zero failures; worker exit0. Native two-GPU inference took823.7s,
+  actual~0.123sec/case/GPU; scoring per-window pass took~190s after imports.
+  MPJPE17.410861cm, whole-clip PA11.859729cm, Root ADE13.536644cm,
+  UPE14.909022cm/LPE21.302609cm, sJPE0.343693, skating17.641749cm/s,
+  penetration1.023239cm, FID0.0624866,R@3=55.393145+/-0.458503%.
+  GT R@3=91.703069+/-0.139897%,FID0,sJPE0,skating14.076369cm/s,
+  penetration1.048054cm. all_metrics.csv includes all native metric keys,
+  three retrieval seeds, GT and both aggregate weightings. Results were saved
+  locally; the user's follow-on visualization goal also attached the full CSV
+  with GT to the Notion reconstruction-visualization page documented above.
+
+## Habitat-GS human rollout and portable demo data (2026-11-07)
+
+- Completed the user's two-segment rollout in the original first scene,
+  val/interior_0516_840045: "The camera wearer walks forward." then
+  "The camera wearer sits down on a chair." Each clip has97 frames at20fps.
+  Official Phase1 EMA200k I2V uses UniPC35/CFG6/shift10; baseline Phase3
+  raw200k video+caption-to-motion uses the existing evaluation caption
+  intervention with UniPC35/CFG1/shift3. Both reasoner caption paths were
+  audited for all35 calls. No training was changed.
+- Bundle: /scratch2/whwjdqls99/cosmos/applications/habitat_gs/runs/
+  human_walk_sit_20261107; portable sibling .tar.gz is about160MiB, with a
+  .sha256 sidecar. Start at manifest.json and REPLAY.md; comparison video
+  rollout_comparison.mp4 and index.html show generated video, GS camera
+  replay and third-person body/camera/path views with prompt labels.
+- Retains exact generated RGB, VAE latents, normalized/raw motion, original
+  decoder output, scene joint transforms, camera poses/actions, timing,
+  normalization, prompts/seeds/model hashes/settings/logs/source snapshots,
+  GS PLY/navmesh, measured Nymeria FISHEYE624 rays, train head-camera
+  calibration, skeleton and all642 neutral inputs used for the mean shape.
+  Replay needs no model checkpoint or training cache. Data schema, optical
+  versus GL axes, row-major matrix layout and synchronization instructions:
+  applications/habitat_gs/HUMAN_REPLAY.md.
+- Camera follows decoded Head6 through the saved train rigid calibration;
+  the whole body is anchored to the accepted initial simulator camera. Each
+  next input is an independently verified overlay-free final GS render.
+  Camera/head boundary residual is2.22e-16; independently inferred body
+  poses have a23cm mean joint seam, without pose inpainting/interpolation.
+  Unique-time playback has193 samples over0..9.6s; the194-frame presentation
+  retains both conditioning frames. These are construction checks, not GT
+  motion accuracy, chair contact or collision guarantees.
+- Full pipeline passed;10 contract tests and2 geometry tests passed on owned
+  compute. VALIDATION.json/inventory.json record readback checks and hashes.
+  Evidence and packaging receipt: operations/habitat_human_rollout_20261107.
+  Fixed the motion worker's framework cwd after a relative Nemotron config
+  lookup failure, reused the saved video and completed both segments. Used
+  retained2622173/node58; current Phase3 trainer2616204 was untouched.
+- User requested a page-only demo handoff. Published the actual portable
+  archive/checksum, three preview videos, two snapshots, both numeric replay
+  JSONs, manifest, validation and two instruction documents on
+  https://app.notion.com/p/binne/For-DEMO-411d2a44f44b808f9afed037db3398e0 .
+  All13 attachments were downloaded back and byte/SHA256 verified; all107
+  native instruction blocks were read back. Receipt: the operation's
+  NOTION_COMPLETE.json (published_verified,2026-11-07 11:47KST). Inline
+  handoff explains extracting the bundle, live GS versus pre-rendered replay,
+  coordinate/time conventions, source restoration and expiring Notion download
+  URLs. No server-local paths or chat context are required for demo replay.
+
+## W&B display names matched to shared convention (2026-11-07)
+
+- User asked to match the existing W&B naming convention. Live sep-1/sep-2
+  names use [server] phase+architecture | tasks | videoW | EMA | text |
+  attention/precision | T/GBS. Three Yonsei run display names now match it:
+  current P3p3-d9fc2424b97b1163e3b2 is bidirectional40/40/20,videoW1,EMAoff,
+  NoText; stopped P3p3-eed7a56cdcf72f3f4569 has matching M2VText; completed
+  P2cfj632ue is SelfCross/final-hidden/Knorm,NoShape,CaptionOnly,GBS256.
+- Minimal mutation changed displayName only; readback verified configuration,
+  group/tags/notes/state unchanged. No trainer/ID/checkpoint/history changed.
+  P2 W&B state is finished at200000; P3 no-text was running near36010.
+- Each associated Scratch2 operation has wandb_display_name.txt. On future
+  logger resumes, pass its value to --name explicitly so the immutable old
+  directory-name default does not overwrite it. Preserve run IDs/paths.
+- Full names/recovery: migration/WANDB_NAMING.md. Evidence under Scratch2
+  operations/wandb_run_naming_20261107/VERIFIED.json. No other site's names
+  were changed; local checkout was not merged with newer remote code.
+
 ## Optional Phase3 EMA hardened and validation selection added (2026-11-06)
 
 - User requested optional EMA in the current Phase3 setting. Existing

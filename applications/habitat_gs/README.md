@@ -162,9 +162,18 @@ preservation. Simulator installation/rendering and real model inference have
 separate runtime evidence under the bulk root; code existence is not evidence
 that an end-to-end rollout completed.
 
-Future motion rollout will use the original Phase3 sampling path, matched
-motion normalization and train-only rigid head/camera calibration. An inferred
-head pose cannot be treated as the optical camera pose directly.
+Human rollout is implemented as `human_rollout`, `human_motion` and
+`human_replay`; see [HUMAN_REPLAY.md](HUMAN_REPLAY.md) for the data schema and
+coordinate/timing contract. The first successful two-prompt run uses the
+original interior_0516 scene: walk forward, then sit down on a chair. Results
+and the portable `.tar.gz` are under APP_STORAGE/runs/human_walk_sit_20261107.
+The saved operation config is
+`/scratch2/whwjdqls99/cosmos/operations/habitat_human_rollout_20261107/rollout.json`.
+It keeps the original Phase1 profile and reuses the saved baseline Phase3
+200k caption-conditioned V2M evaluation (UniPC35/CFG1/shift3). Camera motion
+comes from decoded Head * train calibration, not inverse dynamics. No scene
+collision correction, grounding or first-motion-pose inpainting is added.
+Replay needs only the saved data and Habitat-GS; inference uses owned compute.
 
 Setup recovery (2026-10-30): interrupted initial submodule downloads left
 Assimp, Bullet, Magnum, and OpenEXR repositories without a valid HEAD.
