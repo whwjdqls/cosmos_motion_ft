@@ -1,0 +1,578 @@
+[
+  {
+    "model": "directional",
+    "mode": "v2m",
+    "metric": "mpjpe_cm",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": 26.951547423508806,
+    "case_bootstrap95": [
+      20.690930328187598,
+      32.95352850332332
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "v2m",
+    "metric": "pa_mpjpe_cm",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": 8.123990632192857,
+    "case_bootstrap95": [
+      6.161132438588979,
+      9.943115798955679
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "v2m",
+    "metric": "root_ade_cm",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": 23.085072014848112,
+    "case_bootstrap95": [
+      16.885416220388258,
+      29.072489135596953
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "v2m",
+    "metric": "skate_cm_s",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": 86.93333075604808,
+    "case_bootstrap95": [
+      79.03434959171392,
+      94.98789318663422
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "v2m",
+    "metric": "mpjpe_cm",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": -5.478755904125496,
+    "case_bootstrap95": [
+      -8.340417975691002,
+      -3.0315370393366052
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "v2m",
+    "metric": "pa_mpjpe_cm",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": -3.1021992491626604,
+    "case_bootstrap95": [
+      -4.4738974829492415,
+      -1.8814242611929068
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "v2m",
+    "metric": "root_ade_cm",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": -5.95300345038864,
+    "case_bootstrap95": [
+      -8.75856874038426,
+      -3.54420846131381
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "v2m",
+    "metric": "skate_cm_s",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": 3.5487624226321635,
+    "case_bootstrap95": [
+      1.6379959420891295,
+      5.692952299805382
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "v2m",
+    "metric": "mpjpe_cm",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": -32.4303033276343,
+    "case_bootstrap95": [
+      -38.7531200318899,
+      -26.160366115435753
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "v2m",
+    "metric": "pa_mpjpe_cm",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": -11.226189881355516,
+    "case_bootstrap95": [
+      -12.597154752720463,
+      -9.828652986199588
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "v2m",
+    "metric": "root_ade_cm",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": -29.03807546523675,
+    "case_bootstrap95": [
+      -35.41423156516443,
+      -22.77558874548741
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "v2m",
+    "metric": "skate_cm_s",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": -83.38456833341591,
+    "case_bootstrap95": [
+      -90.98961413621535,
+      -75.80852693445247
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "m2v",
+    "metric": "dreamsim",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": -0.0065659058975501795,
+    "case_bootstrap95": [
+      -0.011163666188507013,
+      -0.0021771126046357023
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "m2v",
+    "metric": "lpips_alex",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": -0.0063470073598775895,
+    "case_bootstrap95": [
+      -0.013102364686466405,
+      -0.00013870359816194882
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "m2v",
+    "metric": "psnr_db",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": -0.120659975098892,
+    "case_bootstrap95": [
+      -0.2612686446609909,
+      0.016738222689835946
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "m2v",
+    "metric": "ssim",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": -0.0040031145457965385,
+    "case_bootstrap95": [
+      -0.008272929687081387,
+      0.0004313840223651254
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "m2v",
+    "metric": "dreamsim",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": 0.013203783354289095,
+    "case_bootstrap95": [
+      0.0069706588668722504,
+      0.019364027878348254
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "m2v",
+    "metric": "lpips_alex",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": -0.002377719800244854,
+    "case_bootstrap95": [
+      -0.009161958051524331,
+      0.003811045490980562
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "m2v",
+    "metric": "psnr_db",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": -0.658011908682299,
+    "case_bootstrap95": [
+      -0.8229394475863848,
+      -0.49406617025324395
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "m2v",
+    "metric": "ssim",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": -0.03640399273362518,
+    "case_bootstrap95": [
+      -0.04346735964599175,
+      -0.030009700877738445
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "m2v",
+    "metric": "dreamsim",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": 0.019769689251839275,
+    "case_bootstrap95": [
+      0.014790720549005437,
+      0.025130606189527557
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "m2v",
+    "metric": "lpips_alex",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": 0.003969287559632735,
+    "case_bootstrap95": [
+      -0.0030471276707631396,
+      0.01044604936297975
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "m2v",
+    "metric": "psnr_db",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": -0.5373519335834069,
+    "case_bootstrap95": [
+      -0.6900145759779799,
+      -0.37886194490910646
+    ]
+  },
+  {
+    "model": "directional",
+    "mode": "m2v",
+    "metric": "ssim",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": -0.03240087818782864,
+    "case_bootstrap95": [
+      -0.03920089435346091,
+      -0.02583966758063919
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "v2m",
+    "metric": "mpjpe_cm",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": 11.494949879780622,
+    "case_bootstrap95": [
+      6.918732017593484,
+      16.393718723417585
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "v2m",
+    "metric": "pa_mpjpe_cm",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": 3.512152812679641,
+    "case_bootstrap95": [
+      0.9338213152181889,
+      5.638641243970765
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "v2m",
+    "metric": "root_ade_cm",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": 9.539751582582232,
+    "case_bootstrap95": [
+      5.190468663349748,
+      14.38858590469184
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "v2m",
+    "metric": "skate_cm_s",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": 16.556598341853267,
+    "case_bootstrap95": [
+      12.513756132291132,
+      21.426279857938347
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "v2m",
+    "metric": "mpjpe_cm",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": 1.9755801054793345,
+    "case_bootstrap95": [
+      -1.152985658181805,
+      5.129234391776189
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "v2m",
+    "metric": "pa_mpjpe_cm",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": -0.3798320709690164,
+    "case_bootstrap95": [
+      -1.5386099581775525,
+      0.6905023317348133
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "v2m",
+    "metric": "root_ade_cm",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": 1.4788640636793324,
+    "case_bootstrap95": [
+      -1.4607782290697517,
+      4.476238142069374
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "v2m",
+    "metric": "skate_cm_s",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": 8.439589765342609,
+    "case_bootstrap95": [
+      6.172257194780863,
+      10.984344571520587
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "v2m",
+    "metric": "mpjpe_cm",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": -9.519369774301287,
+    "case_bootstrap95": [
+      -14.51716303143283,
+      -4.943074534686518
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "v2m",
+    "metric": "pa_mpjpe_cm",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": -3.8919848836486586,
+    "case_bootstrap95": [
+      -5.541671225310175,
+      -1.7829002352989645
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "v2m",
+    "metric": "root_ade_cm",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": -8.0608875189029,
+    "case_bootstrap95": [
+      -13.046271788664686,
+      -3.5830658968065836
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "v2m",
+    "metric": "skate_cm_s",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": -8.117008576510658,
+    "case_bootstrap95": [
+      -12.937239471193351,
+      -3.617314144995222
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "m2v",
+    "metric": "dreamsim",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": -0.001975149021182262,
+    "case_bootstrap95": [
+      -0.006293274491080935,
+      0.001997435983585218
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "m2v",
+    "metric": "lpips_alex",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": -0.004142845351469788,
+    "case_bootstrap95": [
+      -0.010003728049192653,
+      0.0014428309133309655
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "m2v",
+    "metric": "psnr_db",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": -0.33733126605060737,
+    "case_bootstrap95": [
+      -0.5041177713500217,
+      -0.16625697163279074
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "m2v",
+    "metric": "ssim",
+    "policy": "edge_cfg2",
+    "reference": "cfg1",
+    "mean_change": -0.014399523151592463,
+    "case_bootstrap95": [
+      -0.019491721924335324,
+      -0.0094381817021875
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "m2v",
+    "metric": "dreamsim",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": 0.015121909409341678,
+    "case_bootstrap95": [
+      0.009245131513707235,
+      0.020794713463057092
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "m2v",
+    "metric": "lpips_alex",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": 0.0012460872058170753,
+    "case_bootstrap95": [
+      -0.004624993569347973,
+      0.00691959133180828
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "m2v",
+    "metric": "psnr_db",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": -0.7139858411791178,
+    "case_bootstrap95": [
+      -0.8880673166207023,
+      -0.5448542711390577
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "m2v",
+    "metric": "ssim",
+    "policy": "whole_cfg2",
+    "reference": "cfg1",
+    "mean_change": -0.04168967417760494,
+    "case_bootstrap95": [
+      -0.047839667286096406,
+      -0.03616455480627969
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "m2v",
+    "metric": "dreamsim",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": 0.01709705843052394,
+    "case_bootstrap95": [
+      0.012623846347273237,
+      0.021322796664292543
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "m2v",
+    "metric": "lpips_alex",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": 0.005388932557286862,
+    "case_bootstrap95": [
+      -0.0004465770703494995,
+      0.011447043806152416
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "m2v",
+    "metric": "psnr_db",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": -0.3766545751285104,
+    "case_bootstrap95": [
+      -0.5896633318087584,
+      -0.1722990359079109
+    ]
+  },
+  {
+    "model": "bidirectional",
+    "mode": "m2v",
+    "metric": "ssim",
+    "policy": "whole_cfg2",
+    "reference": "edge_cfg2",
+    "mean_change": -0.027290151026012475,
+    "case_bootstrap95": [
+      -0.03435469472582972,
+      -0.02037760746378907
+    ]
+  }
+]

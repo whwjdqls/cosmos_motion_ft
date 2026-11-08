@@ -1,0 +1,1281 @@
+{
+  "directional_video10": {
+    "run": {
+      "id": "directional_video10",
+      "attention": "directional",
+      "video_weight": 10.0,
+      "run_dir": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z",
+      "snapshot": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z/launch/source_snapshot",
+      "checkpoint": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_inference_camera_fixed71_20261107T092515Z/directional_video10_checkpoint.pt",
+      "checkpoint_source": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z/checkpoints/step_000080000.pt",
+      "step": 80000,
+      "phase1": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/cosmos3_camera/camera_world_edge/edge_phase1_T97_20fps_2gpu_bs16_lora_video_io_exclude5_fd_invdyn_no_text_p1_200k_sep2_20261028/checkpoints/iter_000200000",
+      "phase2": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_t2m_edge/edge_7layer_self_cross_final_hidden_knorm_captiononly_nymeria_bones50_t2m_ti2m_nanoparity_gbs256_camhead_v1_subjectv1_w1_1_5_contact_c0p05_v1_h10_yonsei_20260921/checkpoints/step_000200000.pt",
+      "path_map": {
+        "/lustre/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos",
+        "/scratch2/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos"
+      },
+      "out": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_inference_camera_fixed71_20261107T092515Z/directional_video10",
+      "baseline": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z/validation/step_000080000",
+      "display_name": "[sep-1] P3 MMDiT directional | V2M50/M2V50/J0 | videoW10 | EMA0.999 start50043 (continued) | NoText | LocalAttn BF16 | T97 GBS32",
+      "controls": {
+        "v2m_cfg2": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_v2m_text_fixed71_20261107T075018Z/directional_video10/video_cfg2",
+        "v2m_text_cfg2": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_v2m_text_fixed71_20261107T075018Z/directional_video10/video_text_cfg2",
+        "m2v_cfg1": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z/validation/step_000080000",
+        "m2v_cfg2": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_m2v_wholecfg2_fixed71_20261107T083035Z/directional_video10"
+      }
+    },
+    "ema": {
+      "decay": 0.999,
+      "initialization": {
+        "kind": "initialize_from_raw_at_resume",
+        "source_checkpoint_sha256": "5397ba9506ee4c93f22e34d9f3b6849f777b6df89f6a4454add1fce568b92cc1",
+        "source_fingerprint": "3434fd5849b75ac3ec508ccfb8b0a9e5754e334953fdffbc4700b9930b43cc47",
+        "source_run": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_temporallocal_noshapebridge_bf16_no_text_v2_T97_gbs32_sep1_20261105T225242Z",
+        "source_step": 50043
+      },
+      "num_updates": 29957,
+      "start_step": 50043
+    },
+    "variants": {
+      "v2m_cfg2": {
+        "variant": {
+          "id": "v2m_cfg2",
+          "mode": "video2motion",
+          "text": false,
+          "guidance": 2.0,
+          "batch": 64,
+          "sharding": "contiguous"
+        },
+        "camera_off": {
+          "R32_R01_mean": 30.729166666666668,
+          "R32_R01_seed0": 32.8125,
+          "R32_R01_seed1": 28.125,
+          "R32_R01_seed2": 31.25,
+          "R32_R01_std": 2.386758174456167,
+          "R32_R02_mean": 48.958333333333336,
+          "R32_R02_seed0": 48.4375,
+          "R32_R02_seed1": 43.75,
+          "R32_R02_seed2": 54.6875,
+          "R32_R02_std": 5.4873196629441345,
+          "R32_R03_mean": 57.8125,
+          "R32_R03_seed0": 57.8125,
+          "R32_R03_seed1": 57.8125,
+          "R32_R03_seed2": 57.8125,
+          "R32_R03_std": 0.0,
+          "R32_cases_per_seed": 64,
+          "R32_dropped_per_seed": 7,
+          "acceleration_error_m_s2": 2.5057990930344856,
+          "airborne_percent": 22.68041207940436,
+          "diversity": 1.241502285003662,
+          "fid": 0.20565918009766704,
+          "matching_distance": 0.8756901025772095,
+          "mpjpe_cm": 17.119773967899906,
+          "pa_mpjpe_cm": 7.866849105624108,
+          "penetration_cm": 0.4804080479805404,
+          "relative_root_ade_cm": 7.847292946887688,
+          "root_ade_cm": 15.372432259396769,
+          "root_fde_cm": 20.383010513778828,
+          "skate_cm_s": 12.56929146204616
+        },
+        "camera_on": {
+          "R32_R01_mean": 28.645833333333332,
+          "R32_R01_seed0": 34.375,
+          "R32_R01_seed1": 26.5625,
+          "R32_R01_seed2": 25.0,
+          "R32_R01_std": 5.022734771350497,
+          "R32_R02_mean": 47.916666666666664,
+          "R32_R02_seed0": 42.1875,
+          "R32_R02_seed1": 48.4375,
+          "R32_R02_seed2": 53.125,
+          "R32_R02_std": 5.4873196629441345,
+          "R32_R03_mean": 54.166666666666664,
+          "R32_R03_seed0": 53.125,
+          "R32_R03_seed1": 54.6875,
+          "R32_R03_seed2": 54.6875,
+          "R32_R03_std": 0.9021097956087902,
+          "R32_cases_per_seed": 64,
+          "R32_dropped_per_seed": 7,
+          "acceleration_error_m_s2": 2.6427755735709635,
+          "airborne_percent": 22.157688138508043,
+          "diversity": 1.270334243774414,
+          "fid": 0.25868561148773916,
+          "matching_distance": 0.9232648611068726,
+          "mpjpe_cm": 20.11224962770939,
+          "pa_mpjpe_cm": 9.349915264779643,
+          "penetration_cm": 0.5761665065865472,
+          "relative_root_ade_cm": 11.236706896829354,
+          "root_ade_cm": 18.262781281496437,
+          "root_fde_cm": 29.849884084517686,
+          "skate_cm_s": 12.93374117936047
+        },
+        "paired_changes": [
+          {
+            "model": "directional_video10",
+            "variant": "v2m_cfg2",
+            "metric": "mpjpe_cm",
+            "camera_on_minus_off": 2.992475659809482,
+            "paired_case_bootstrap95": [
+              1.725941199455148,
+              4.330750868826264
+            ]
+          },
+          {
+            "model": "directional_video10",
+            "variant": "v2m_cfg2",
+            "metric": "pa_mpjpe_cm",
+            "camera_on_minus_off": 1.4830661591555339,
+            "paired_case_bootstrap95": [
+              1.051485006600567,
+              1.952935054448359
+            ]
+          },
+          {
+            "model": "directional_video10",
+            "variant": "v2m_cfg2",
+            "metric": "root_ade_cm",
+            "camera_on_minus_off": 2.8903490220996697,
+            "paired_case_bootstrap95": [
+              1.5669136406512747,
+              4.287975400712498
+            ]
+          },
+          {
+            "model": "directional_video10",
+            "variant": "v2m_cfg2",
+            "metric": "acceleration_error_m_s2",
+            "camera_on_minus_off": 0.13697648053647768,
+            "paired_case_bootstrap95": [
+              0.09625537665298498,
+              0.18303622478540515
+            ]
+          },
+          {
+            "model": "directional_video10",
+            "variant": "v2m_cfg2",
+            "metric": "skate_cm_s",
+            "camera_on_minus_off": 0.3644497173143105,
+            "paired_case_bootstrap95": [
+              -0.6824918429721408,
+              1.440137142748375
+            ]
+          }
+        ]
+      },
+      "v2m_text_cfg2": {
+        "variant": {
+          "id": "v2m_text_cfg2",
+          "mode": "video2motion",
+          "text": true,
+          "guidance": 2.0,
+          "batch": 64,
+          "sharding": "contiguous"
+        },
+        "camera_off": {
+          "R32_R01_mean": 42.708333333333336,
+          "R32_R01_seed0": 46.875,
+          "R32_R01_seed1": 39.0625,
+          "R32_R01_seed2": 42.1875,
+          "R32_R01_std": 3.932205435036849,
+          "R32_R02_mean": 58.854166666666664,
+          "R32_R02_seed0": 60.9375,
+          "R32_R02_seed1": 54.6875,
+          "R32_R02_seed2": 60.9375,
+          "R32_R02_std": 3.608439182435161,
+          "R32_R03_mean": 68.75,
+          "R32_R03_seed0": 70.3125,
+          "R32_R03_seed1": 65.625,
+          "R32_R03_seed2": 70.3125,
+          "R32_R03_std": 2.7063293868263707,
+          "R32_cases_per_seed": 64,
+          "R32_dropped_per_seed": 7,
+          "acceleration_error_m_s2": 2.4006887548931046,
+          "airborne_percent": 17.00304903509751,
+          "diversity": 1.163062334060669,
+          "fid": 0.1337935987559622,
+          "matching_distance": 0.7644392848014832,
+          "mpjpe_cm": 11.790036572746828,
+          "pa_mpjpe_cm": 6.249723139212505,
+          "penetration_cm": 0.32494508126680083,
+          "relative_root_ade_cm": 6.567999565790237,
+          "root_ade_cm": 10.325095537577717,
+          "root_fde_cm": 14.64702956260405,
+          "skate_cm_s": 13.625951573042803
+        },
+        "camera_on": {
+          "R32_R01_mean": 38.541666666666664,
+          "R32_R01_seed0": 37.5,
+          "R32_R01_seed1": 37.5,
+          "R32_R01_seed2": 40.625,
+          "R32_R01_std": 1.8042195912175805,
+          "R32_R02_mean": 55.729166666666664,
+          "R32_R02_seed0": 56.25,
+          "R32_R02_seed1": 54.6875,
+          "R32_R02_seed2": 56.25,
+          "R32_R02_std": 0.9021097956087902,
+          "R32_R03_mean": 62.5,
+          "R32_R03_seed0": 62.5,
+          "R32_R03_seed1": 62.5,
+          "R32_R03_seed2": 62.5,
+          "R32_R03_std": 0.0,
+          "R32_cases_per_seed": 64,
+          "R32_dropped_per_seed": 7,
+          "acceleration_error_m_s2": 2.560948427031997,
+          "airborne_percent": 17.003048983940356,
+          "diversity": 1.2025560140609741,
+          "fid": 0.17269332120986425,
+          "matching_distance": 0.7997562885284424,
+          "mpjpe_cm": 15.946344949934684,
+          "pa_mpjpe_cm": 8.101620865660161,
+          "penetration_cm": 0.46443020383184647,
+          "relative_root_ade_cm": 10.587304632481136,
+          "root_ade_cm": 14.512466285115396,
+          "root_fde_cm": 27.58304462309035,
+          "skate_cm_s": 13.757613421955579
+        },
+        "paired_changes": [
+          {
+            "model": "directional_video10",
+            "variant": "v2m_text_cfg2",
+            "metric": "mpjpe_cm",
+            "camera_on_minus_off": 4.156308377187856,
+            "paired_case_bootstrap95": [
+              2.897000906424938,
+              5.541042726368866
+            ]
+          },
+          {
+            "model": "directional_video10",
+            "variant": "v2m_text_cfg2",
+            "metric": "pa_mpjpe_cm",
+            "camera_on_minus_off": 1.851897726447653,
+            "paired_case_bootstrap95": [
+              1.3965226849511336,
+              2.3615153430533016
+            ]
+          },
+          {
+            "model": "directional_video10",
+            "variant": "v2m_text_cfg2",
+            "metric": "root_ade_cm",
+            "camera_on_minus_off": 4.18737074753768,
+            "paired_case_bootstrap95": [
+              2.8701135358760057,
+              5.631896573131983
+            ]
+          },
+          {
+            "model": "directional_video10",
+            "variant": "v2m_text_cfg2",
+            "metric": "acceleration_error_m_s2",
+            "camera_on_minus_off": 0.16025967213889242,
+            "paired_case_bootstrap95": [
+              0.08991144715585339,
+              0.25670454647182156
+            ]
+          },
+          {
+            "model": "directional_video10",
+            "variant": "v2m_text_cfg2",
+            "metric": "skate_cm_s",
+            "camera_on_minus_off": 0.13166184891277635,
+            "paired_case_bootstrap95": [
+              -0.7781021958085853,
+              1.0350176522140981
+            ]
+          }
+        ]
+      },
+      "m2v_cfg1": {
+        "variant": {
+          "id": "m2v_cfg1",
+          "mode": "motimg2video",
+          "text": false,
+          "guidance": 1.0,
+          "batch": 32,
+          "sharding": "native_two_virtual_ranks"
+        },
+        "camera_off": {
+          "dreamsim": 0.14098968561476385,
+          "fvd": 364.59804853329115,
+          "fvd_segments": 426,
+          "gt_self_fvd": 0.0,
+          "lpips_alex": 0.25322208674955227,
+          "psnr_db": 19.66243521708278,
+          "ssim": 0.6111040324663541
+        },
+        "camera_on": {
+          "dreamsim": 0.14504413511341727,
+          "fvd": 373.23713666959065,
+          "fvd_segments": 426,
+          "gt_self_fvd": 0.0,
+          "lpips_alex": 0.26284218826680994,
+          "psnr_db": 19.4854297930366,
+          "ssim": 0.6076011274407832
+        },
+        "paired_changes": [
+          {
+            "model": "directional_video10",
+            "variant": "m2v_cfg1",
+            "metric": "dreamsim",
+            "camera_on_minus_off": 0.004054449498653412,
+            "paired_case_bootstrap95": [
+              0.0020486683269936436,
+              0.006108452973913559
+            ]
+          },
+          {
+            "model": "directional_video10",
+            "variant": "m2v_cfg1",
+            "metric": "lpips_alex",
+            "camera_on_minus_off": 0.009620101517257649,
+            "paired_case_bootstrap95": [
+              0.004603015254549523,
+              0.015614407511396294
+            ]
+          },
+          {
+            "model": "directional_video10",
+            "variant": "m2v_cfg1",
+            "metric": "psnr_db",
+            "camera_on_minus_off": -0.17700542404618058,
+            "paired_case_bootstrap95": [
+              -0.3207917118751109,
+              -0.05028839535276663
+            ]
+          },
+          {
+            "model": "directional_video10",
+            "variant": "m2v_cfg1",
+            "metric": "ssim",
+            "camera_on_minus_off": -0.003502905025571032,
+            "paired_case_bootstrap95": [
+              -0.00819261998316371,
+              0.0007106573089734159
+            ]
+          }
+        ]
+      },
+      "m2v_cfg2": {
+        "variant": {
+          "id": "m2v_cfg2",
+          "mode": "motimg2video",
+          "text": false,
+          "guidance": 2.0,
+          "batch": 32,
+          "sharding": "native_two_virtual_ranks"
+        },
+        "camera_off": {
+          "dreamsim": 0.1581003999101444,
+          "fvd": 403.55873815839914,
+          "fvd_segments": 426,
+          "gt_self_fvd": 0.0,
+          "lpips_alex": 0.2594105265429298,
+          "psnr_db": 18.756353857511648,
+          "ssim": 0.5765118457818571
+        },
+        "camera_on": {
+          "dreamsim": 0.15766152450946017,
+          "fvd": 408.6900405942042,
+          "fvd_segments": 426,
+          "gt_self_fvd": 0.0,
+          "lpips_alex": 0.2651002430157548,
+          "psnr_db": 18.93466613788,
+          "ssim": 0.5863293222317848
+        },
+        "paired_changes": [
+          {
+            "model": "directional_video10",
+            "variant": "m2v_cfg2",
+            "metric": "dreamsim",
+            "camera_on_minus_off": -0.0004388754006842492,
+            "paired_case_bootstrap95": [
+              -0.002318211151680476,
+              0.0016001647403857235
+            ]
+          },
+          {
+            "model": "directional_video10",
+            "variant": "m2v_cfg2",
+            "metric": "lpips_alex",
+            "camera_on_minus_off": 0.005689716472824985,
+            "paired_case_bootstrap95": [
+              0.0028794487167477477,
+              0.00869284264722901
+            ]
+          },
+          {
+            "model": "directional_video10",
+            "variant": "m2v_cfg2",
+            "metric": "psnr_db",
+            "camera_on_minus_off": 0.1783122803683571,
+            "paired_case_bootstrap95": [
+              0.0602265311448785,
+              0.30057772599825267
+            ]
+          },
+          {
+            "model": "directional_video10",
+            "variant": "m2v_cfg2",
+            "metric": "ssim",
+            "camera_on_minus_off": 0.009817476449927809,
+            "paired_case_bootstrap95": [
+              0.006352360005066355,
+              0.013273076879017994
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "bidirectional_video10": {
+    "run": {
+      "id": "bidirectional_video10",
+      "attention": "bidirectional",
+      "video_weight": 10.0,
+      "run_dir": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_bidirectional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z",
+      "snapshot": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_bidirectional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z/launch/source_snapshot",
+      "checkpoint": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_inference_camera_fixed71_20261107T092515Z/bidirectional_video10_checkpoint.pt",
+      "checkpoint_source": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_bidirectional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z/checkpoints/step_000080000.pt",
+      "step": 80000,
+      "phase1": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/cosmos3_camera/camera_world_edge/edge_phase1_T97_20fps_2gpu_bs16_lora_video_io_exclude5_fd_invdyn_no_text_p1_200k_sep2_20261028/checkpoints/iter_000200000",
+      "phase2": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_t2m_edge/edge_7layer_self_cross_final_hidden_knorm_captiononly_nymeria_bones50_t2m_ti2m_nanoparity_gbs256_camhead_v1_subjectv1_w1_1_5_contact_c0p05_v1_h10_yonsei_20260921/checkpoints/step_000200000.pt",
+      "path_map": {
+        "/lustre/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos",
+        "/scratch2/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos"
+      },
+      "out": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_inference_camera_fixed71_20261107T092515Z/bidirectional_video10",
+      "baseline": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_bidirectional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z/validation/step_000080000",
+      "display_name": "[sep-1] P3 MMDiT bidirectional | V2M50/M2V50/J0 | videoW10 | EMA0.999 start50143 (continued) | NoText | LocalAttn BF16 | T97 GBS32",
+      "controls": {
+        "v2m_cfg2": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_v2m_text_fixed71_20261107T075018Z/bidirectional_video10/video_cfg2",
+        "v2m_text_cfg2": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_v2m_text_fixed71_20261107T075018Z/bidirectional_video10/video_text_cfg2",
+        "m2v_cfg1": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_bidirectional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z/validation/step_000080000",
+        "m2v_cfg2": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_m2v_wholecfg2_fixed71_20261107T083035Z/bidirectional_video10"
+      }
+    },
+    "ema": {
+      "decay": 0.999,
+      "initialization": {
+        "kind": "initialize_from_raw_at_resume",
+        "source_checkpoint_sha256": "95b364a192cd3d837f14aa1a6ee89326c855f3ce399bd2d402728f8a4676c182",
+        "source_fingerprint": "82d9a3d9b48a511fe30594885c614bf13db162e12d6678cad78c6fe8ed14ecd2",
+        "source_run": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_bidirectional5050_temporallocal_noshapebridge_bf16_no_text_v2_T97_gbs32_sep1_20261105T225242Z",
+        "source_step": 50143
+      },
+      "num_updates": 29857,
+      "start_step": 50143
+    },
+    "variants": {
+      "v2m_cfg2": {
+        "variant": {
+          "id": "v2m_cfg2",
+          "mode": "video2motion",
+          "text": false,
+          "guidance": 2.0,
+          "batch": 64,
+          "sharding": "contiguous"
+        },
+        "camera_off": {
+          "R32_R01_mean": 32.8125,
+          "R32_R01_seed0": 34.375,
+          "R32_R01_seed1": 28.125,
+          "R32_R01_seed2": 35.9375,
+          "R32_R01_std": 4.133986423538423,
+          "R32_R02_mean": 51.041666666666664,
+          "R32_R02_seed0": 50.0,
+          "R32_R02_seed1": 48.4375,
+          "R32_R02_seed2": 54.6875,
+          "R32_R02_std": 3.2526031241658324,
+          "R32_R03_mean": 61.979166666666664,
+          "R32_R03_seed0": 57.8125,
+          "R32_R03_seed1": 60.9375,
+          "R32_R03_seed2": 67.1875,
+          "R32_R03_std": 4.773516348912334,
+          "R32_cases_per_seed": 64,
+          "R32_dropped_per_seed": 7,
+          "acceleration_error_m_s2": 2.8648072840567207,
+          "airborne_percent": 23.987222030024295,
+          "diversity": 1.2531013488769531,
+          "fid": 0.21387506480359897,
+          "matching_distance": 0.8804736137390137,
+          "mpjpe_cm": 17.71748878691398,
+          "pa_mpjpe_cm": 8.58509308252147,
+          "penetration_cm": 0.2990074449556578,
+          "relative_root_ade_cm": 9.22024756355185,
+          "root_ade_cm": 16.15689661563702,
+          "root_fde_cm": 24.023528289522083,
+          "skate_cm_s": 12.81267426593203
+        },
+        "camera_on": {
+          "R32_R01_mean": 29.166666666666668,
+          "R32_R01_seed0": 26.5625,
+          "R32_R01_seed1": 26.5625,
+          "R32_R01_seed2": 34.375,
+          "R32_R01_std": 4.510548978043952,
+          "R32_R02_mean": 41.666666666666664,
+          "R32_R02_seed0": 40.625,
+          "R32_R02_seed1": 37.5,
+          "R32_R02_seed2": 46.875,
+          "R32_R02_std": 4.773516348912334,
+          "R32_R03_mean": 53.645833333333336,
+          "R32_R03_seed0": 54.6875,
+          "R32_R03_seed1": 51.5625,
+          "R32_R03_seed2": 54.6875,
+          "R32_R03_std": 1.8042195912175805,
+          "R32_cases_per_seed": 64,
+          "R32_dropped_per_seed": 7,
+          "acceleration_error_m_s2": 2.9911707771915785,
+          "airborne_percent": 13.068099161216491,
+          "diversity": 1.2762788534164429,
+          "fid": 0.27825267409193444,
+          "matching_distance": 0.9609739184379578,
+          "mpjpe_cm": 24.136230144912087,
+          "pa_mpjpe_cm": 12.516065075587347,
+          "penetration_cm": 0.567450477046446,
+          "relative_root_ade_cm": 15.971194749409465,
+          "root_ade_cm": 22.4513140782504,
+          "root_fde_cm": 41.8867023084575,
+          "skate_cm_s": 12.8731874303079
+        },
+        "paired_changes": [
+          {
+            "model": "bidirectional_video10",
+            "variant": "v2m_cfg2",
+            "metric": "mpjpe_cm",
+            "camera_on_minus_off": 6.418741357998109,
+            "paired_case_bootstrap95": [
+              4.062185286032691,
+              9.083552088745883
+            ]
+          },
+          {
+            "model": "bidirectional_video10",
+            "variant": "v2m_cfg2",
+            "metric": "pa_mpjpe_cm",
+            "camera_on_minus_off": 3.9309719930658757,
+            "paired_case_bootstrap95": [
+              2.847236437375754,
+              5.102655232522833
+            ]
+          },
+          {
+            "model": "bidirectional_video10",
+            "variant": "v2m_cfg2",
+            "metric": "root_ade_cm",
+            "camera_on_minus_off": 6.2944174626133815,
+            "paired_case_bootstrap95": [
+              3.8345079195462692,
+              9.071283999397616
+            ]
+          },
+          {
+            "model": "bidirectional_video10",
+            "variant": "v2m_cfg2",
+            "metric": "acceleration_error_m_s2",
+            "camera_on_minus_off": 0.1263634931348579,
+            "paired_case_bootstrap95": [
+              0.034727364693256754,
+              0.23435708643658687
+            ]
+          },
+          {
+            "model": "bidirectional_video10",
+            "variant": "v2m_cfg2",
+            "metric": "skate_cm_s",
+            "camera_on_minus_off": 0.06051316437586932,
+            "paired_case_bootstrap95": [
+              -1.5728092729441927,
+              1.5223804392366547
+            ]
+          }
+        ]
+      },
+      "v2m_text_cfg2": {
+        "variant": {
+          "id": "v2m_text_cfg2",
+          "mode": "video2motion",
+          "text": true,
+          "guidance": 2.0,
+          "batch": 64,
+          "sharding": "contiguous"
+        },
+        "camera_off": {
+          "R32_R01_mean": 41.666666666666664,
+          "R32_R01_seed0": 43.75,
+          "R32_R01_seed1": 40.625,
+          "R32_R01_seed2": 40.625,
+          "R32_R01_std": 1.8042195912175805,
+          "R32_R02_mean": 59.895833333333336,
+          "R32_R02_seed0": 60.9375,
+          "R32_R02_seed1": 59.375,
+          "R32_R02_seed2": 59.375,
+          "R32_R02_std": 0.9021097956087902,
+          "R32_R03_mean": 73.4375,
+          "R32_R03_seed0": 71.875,
+          "R32_R03_seed1": 73.4375,
+          "R32_R03_seed2": 75.0,
+          "R32_R03_std": 1.5625,
+          "R32_cases_per_seed": 64,
+          "R32_dropped_per_seed": 7,
+          "acceleration_error_m_s2": 2.743003714147588,
+          "airborne_percent": 16.974008735269308,
+          "diversity": 1.184468150138855,
+          "fid": 0.13637110460726243,
+          "matching_distance": 0.7500371932983398,
+          "mpjpe_cm": 13.88976879050614,
+          "pa_mpjpe_cm": 7.003699125201726,
+          "penetration_cm": 0.13676257703361483,
+          "relative_root_ade_cm": 8.703004158246266,
+          "root_ade_cm": 12.560224533081055,
+          "root_fde_cm": 21.18024743673667,
+          "skate_cm_s": 12.479670259209586
+        },
+        "camera_on": {
+          "R32_R01_mean": 42.708333333333336,
+          "R32_R01_seed0": 48.4375,
+          "R32_R01_seed1": 39.0625,
+          "R32_R01_seed2": 40.625,
+          "R32_R01_std": 5.022734771350497,
+          "R32_R02_mean": 57.291666666666664,
+          "R32_R02_seed0": 57.8125,
+          "R32_R02_seed1": 56.25,
+          "R32_R02_seed2": 57.8125,
+          "R32_R02_std": 0.9021097956087902,
+          "R32_R03_mean": 71.35416666666667,
+          "R32_R03_seed0": 68.75,
+          "R32_R03_seed1": 73.4375,
+          "R32_R03_seed2": 71.875,
+          "R32_R03_std": 2.386758174456167,
+          "R32_cases_per_seed": 64,
+          "R32_dropped_per_seed": 7,
+          "acceleration_error_m_s2": 2.953029026500356,
+          "airborne_percent": 10.062436355461537,
+          "diversity": 1.1885111331939697,
+          "fid": 0.16403079939580967,
+          "matching_distance": 0.7715781927108765,
+          "mpjpe_cm": 20.810874682706846,
+          "pa_mpjpe_cm": 10.948555564237937,
+          "penetration_cm": 0.37012548857158656,
+          "relative_root_ade_cm": 15.732085411633614,
+          "root_ade_cm": 19.62384721133071,
+          "root_fde_cm": 40.89950851466454,
+          "skate_cm_s": 12.455974464160455
+        },
+        "paired_changes": [
+          {
+            "model": "bidirectional_video10",
+            "variant": "v2m_text_cfg2",
+            "metric": "mpjpe_cm",
+            "camera_on_minus_off": 6.921105892200705,
+            "paired_case_bootstrap95": [
+              4.604117463631424,
+              9.5907928697555
+            ]
+          },
+          {
+            "model": "bidirectional_video10",
+            "variant": "v2m_text_cfg2",
+            "metric": "pa_mpjpe_cm",
+            "camera_on_minus_off": 3.9448564390362097,
+            "paired_case_bootstrap95": [
+              2.8489234332632103,
+              5.156101475654031
+            ]
+          },
+          {
+            "model": "bidirectional_video10",
+            "variant": "v2m_text_cfg2",
+            "metric": "root_ade_cm",
+            "camera_on_minus_off": 7.063622678249654,
+            "paired_case_bootstrap95": [
+              4.681388481493882,
+              9.78280880390076
+            ]
+          },
+          {
+            "model": "bidirectional_video10",
+            "variant": "v2m_text_cfg2",
+            "metric": "acceleration_error_m_s2",
+            "camera_on_minus_off": 0.21002531235276814,
+            "paired_case_bootstrap95": [
+              0.03628006841147869,
+              0.45434964125529964
+            ]
+          },
+          {
+            "model": "bidirectional_video10",
+            "variant": "v2m_text_cfg2",
+            "metric": "skate_cm_s",
+            "camera_on_minus_off": -0.023695795049130077,
+            "paired_case_bootstrap95": [
+              -0.9507572277068672,
+              0.7840663696390004
+            ]
+          }
+        ]
+      },
+      "m2v_cfg1": {
+        "variant": {
+          "id": "m2v_cfg1",
+          "mode": "motimg2video",
+          "text": false,
+          "guidance": 1.0,
+          "batch": 32,
+          "sharding": "native_two_virtual_ranks"
+        },
+        "camera_off": {
+          "dreamsim": 0.1406347885937758,
+          "fvd": 369.36672602169983,
+          "fvd_segments": 426,
+          "gt_self_fvd": 0.0,
+          "lpips_alex": 0.254760384271599,
+          "psnr_db": 19.636531572106858,
+          "ssim": 0.6113720577879165
+        },
+        "camera_on": {
+          "dreamsim": 0.1456719730311716,
+          "fvd": 369.2304191269668,
+          "fvd_segments": 426,
+          "gt_self_fvd": 0.0,
+          "lpips_alex": 0.26564379737022703,
+          "psnr_db": 19.39750540984069,
+          "ssim": 0.606220680520708
+        },
+        "paired_changes": [
+          {
+            "model": "bidirectional_video10",
+            "variant": "m2v_cfg1",
+            "metric": "dreamsim",
+            "camera_on_minus_off": 0.005037184437395821,
+            "paired_case_bootstrap95": [
+              0.0028958728248384634,
+              0.0072946431836716724
+            ]
+          },
+          {
+            "model": "bidirectional_video10",
+            "variant": "m2v_cfg1",
+            "metric": "lpips_alex",
+            "camera_on_minus_off": 0.010883413098627885,
+            "paired_case_bootstrap95": [
+              0.0057008603038019,
+              0.01722262811332521
+            ]
+          },
+          {
+            "model": "bidirectional_video10",
+            "variant": "m2v_cfg1",
+            "metric": "psnr_db",
+            "camera_on_minus_off": -0.23902616226617174,
+            "paired_case_bootstrap95": [
+              -0.43794151062207026,
+              -0.06789707674736739
+            ]
+          },
+          {
+            "model": "bidirectional_video10",
+            "variant": "m2v_cfg1",
+            "metric": "ssim",
+            "camera_on_minus_off": -0.005151377267208593,
+            "paired_case_bootstrap95": [
+              -0.01099320869333167,
+              -9.496983549526914e-05
+            ]
+          }
+        ]
+      },
+      "m2v_cfg2": {
+        "variant": {
+          "id": "m2v_cfg2",
+          "mode": "motimg2video",
+          "text": false,
+          "guidance": 2.0,
+          "batch": 32,
+          "sharding": "native_two_virtual_ranks"
+        },
+        "camera_off": {
+          "dreamsim": 0.15896859166907593,
+          "fvd": 397.34352498079716,
+          "fvd_segments": 426,
+          "gt_self_fvd": 0.0,
+          "lpips_alex": 0.25958579146434957,
+          "psnr_db": 18.723060854443922,
+          "ssim": 0.574726555601392
+        },
+        "camera_on": {
+          "dreamsim": 0.15871337376220127,
+          "fvd": 406.35943269182735,
+          "fvd_segments": 426,
+          "gt_self_fvd": 0.0,
+          "lpips_alex": 0.264729895200083,
+          "psnr_db": 18.880982622434278,
+          "ssim": 0.5846413436253938
+        },
+        "paired_changes": [
+          {
+            "model": "bidirectional_video10",
+            "variant": "m2v_cfg2",
+            "metric": "dreamsim",
+            "camera_on_minus_off": -0.0002552179068746701,
+            "paired_case_bootstrap95": [
+              -0.002440120139434724,
+              0.0019248179173175716
+            ]
+          },
+          {
+            "model": "bidirectional_video10",
+            "variant": "m2v_cfg2",
+            "metric": "lpips_alex",
+            "camera_on_minus_off": 0.005144103735733445,
+            "paired_case_bootstrap95": [
+              0.0012867886976635713,
+              0.009104256949003815
+            ]
+          },
+          {
+            "model": "bidirectional_video10",
+            "variant": "m2v_cfg2",
+            "metric": "psnr_db",
+            "camera_on_minus_off": 0.1579217679903541,
+            "paired_case_bootstrap95": [
+              -0.0011872219682579834,
+              0.33310198699224713
+            ]
+          },
+          {
+            "model": "bidirectional_video10",
+            "variant": "m2v_cfg2",
+            "metric": "ssim",
+            "camera_on_minus_off": 0.00991478802400156,
+            "paired_case_bootstrap95": [
+              0.0050186206103508095,
+              0.015134864853325573
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "directional_video1": {
+    "run": {
+      "id": "directional_video1",
+      "attention": "directional",
+      "video_weight": 1.0,
+      "run_dir": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_temporallocal_no_text_wv1_ema0999_T97_gbs32_sep1_20261106T160246Z",
+      "snapshot": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_temporallocal_no_text_wv1_ema0999_T97_gbs32_sep1_20261106T160246Z/launch/source_snapshot",
+      "checkpoint": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_inference_camera_fixed71_20261107T092515Z/directional_video1_checkpoint.pt",
+      "checkpoint_source": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_temporallocal_no_text_wv1_ema0999_T97_gbs32_sep1_20261106T160246Z/checkpoints/step_000040000.pt",
+      "step": 40000,
+      "phase1": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/cosmos3_camera/camera_world_edge/edge_phase1_T97_20fps_2gpu_bs16_lora_video_io_exclude5_fd_invdyn_no_text_p1_200k_sep2_20261028/checkpoints/iter_000200000",
+      "phase2": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_t2m_edge/edge_7layer_self_cross_final_hidden_knorm_captiononly_nymeria_bones50_t2m_ti2m_nanoparity_gbs256_camhead_v1_subjectv1_w1_1_5_contact_c0p05_v1_h10_yonsei_20260921/checkpoints/step_000200000.pt",
+      "path_map": {
+        "/lustre/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos",
+        "/scratch2/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos"
+      },
+      "out": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_inference_camera_fixed71_20261107T092515Z/directional_video1",
+      "baseline": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_temporallocal_no_text_wv1_ema0999_T97_gbs32_sep1_20261106T160246Z/validation/step_000040000",
+      "display_name": "[sep-1] P3 MMDiT directional | V2M50/M2V50/J0 | videoW1 | EMA0.999 start0 (fresh) | NoText | LocalAttn BF16 | T97 GBS32",
+      "controls": {
+        "v2m_cfg2": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_v2m_text_fixed71_20261107T075018Z/directional_video1/video_cfg2",
+        "v2m_text_cfg2": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_v2m_text_fixed71_20261107T075018Z/directional_video1/video_text_cfg2",
+        "m2v_cfg1": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_temporallocal_no_text_wv1_ema0999_T97_gbs32_sep1_20261106T160246Z/validation/step_000040000",
+        "m2v_cfg2": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_m2v_wholecfg2_fixed71_20261107T083035Z/directional_video1"
+      }
+    },
+    "ema": {
+      "decay": 0.999,
+      "num_updates": 40000
+    },
+    "variants": {
+      "v2m_cfg2": {
+        "variant": {
+          "id": "v2m_cfg2",
+          "mode": "video2motion",
+          "text": false,
+          "guidance": 2.0,
+          "batch": 64,
+          "sharding": "contiguous"
+        },
+        "camera_off": {
+          "R32_R01_mean": 34.895833333333336,
+          "R32_R01_seed0": 37.5,
+          "R32_R01_seed1": 34.375,
+          "R32_R01_seed2": 32.8125,
+          "R32_R01_std": 2.386758174456167,
+          "R32_R02_mean": 48.958333333333336,
+          "R32_R02_seed0": 46.875,
+          "R32_R02_seed1": 46.875,
+          "R32_R02_seed2": 53.125,
+          "R32_R02_std": 3.608439182435161,
+          "R32_R03_mean": 63.020833333333336,
+          "R32_R03_seed0": 62.5,
+          "R32_R03_seed1": 64.0625,
+          "R32_R03_seed2": 62.5,
+          "R32_R03_std": 0.9021097956087902,
+          "R32_cases_per_seed": 64,
+          "R32_dropped_per_seed": 7,
+          "acceleration_error_m_s2": 2.3371951969366678,
+          "airborne_percent": 19.050384566030452,
+          "diversity": 1.2218549251556396,
+          "fid": 0.16631245641944403,
+          "matching_distance": 0.8402878642082214,
+          "mpjpe_cm": 14.987204698714573,
+          "pa_mpjpe_cm": 7.164257687853385,
+          "penetration_cm": 0.6445433729406919,
+          "relative_root_ade_cm": 7.37322318485715,
+          "root_ade_cm": 13.413476870513298,
+          "root_fde_cm": 18.532851498416612,
+          "skate_cm_s": 13.661464629038958
+        },
+        "camera_on": {
+          "R32_R01_mean": 33.854166666666664,
+          "R32_R01_seed0": 35.9375,
+          "R32_R01_seed1": 32.8125,
+          "R32_R01_seed2": 32.8125,
+          "R32_R01_std": 1.8042195912175805,
+          "R32_R02_mean": 46.354166666666664,
+          "R32_R02_seed0": 46.875,
+          "R32_R02_seed1": 45.3125,
+          "R32_R02_seed2": 46.875,
+          "R32_R02_std": 0.9021097956087902,
+          "R32_R03_mean": 58.333333333333336,
+          "R32_R03_seed0": 60.9375,
+          "R32_R03_seed1": 54.6875,
+          "R32_R03_seed2": 59.375,
+          "R32_R03_std": 3.2526031241658324,
+          "R32_cases_per_seed": 64,
+          "R32_dropped_per_seed": 7,
+          "acceleration_error_m_s2": 2.398012494537192,
+          "airborne_percent": 21.997967076448486,
+          "diversity": 1.2295082807540894,
+          "fid": 0.18363933344402184,
+          "matching_distance": 0.8645643591880798,
+          "mpjpe_cm": 15.646561885803518,
+          "pa_mpjpe_cm": 7.554736944113242,
+          "penetration_cm": 0.6862669548718259,
+          "relative_root_ade_cm": 8.389356155210818,
+          "root_ade_cm": 14.116598395499546,
+          "root_fde_cm": 19.842704696397128,
+          "skate_cm_s": 13.804749493867579
+        },
+        "paired_changes": [
+          {
+            "model": "directional_video1",
+            "variant": "v2m_cfg2",
+            "metric": "mpjpe_cm",
+            "camera_on_minus_off": 0.6593571870889462,
+            "paired_case_bootstrap95": [
+              -0.27507622070400645,
+              1.5620293272134491
+            ]
+          },
+          {
+            "model": "directional_video1",
+            "variant": "v2m_cfg2",
+            "metric": "pa_mpjpe_cm",
+            "camera_on_minus_off": 0.3904792562598576,
+            "paired_case_bootstrap95": [
+              0.11427582551246405,
+              0.6596196727900915
+            ]
+          },
+          {
+            "model": "directional_video1",
+            "variant": "v2m_cfg2",
+            "metric": "root_ade_cm",
+            "camera_on_minus_off": 0.7031215249862469,
+            "paired_case_bootstrap95": [
+              -0.24584284281804106,
+              1.6146478256289387
+            ]
+          },
+          {
+            "model": "directional_video1",
+            "variant": "v2m_cfg2",
+            "metric": "acceleration_error_m_s2",
+            "camera_on_minus_off": 0.060817297600524525,
+            "paired_case_bootstrap95": [
+              0.035365400639113406,
+              0.08625994925059272
+            ]
+          },
+          {
+            "model": "directional_video1",
+            "variant": "v2m_cfg2",
+            "metric": "skate_cm_s",
+            "camera_on_minus_off": 0.14328486482862016,
+            "paired_case_bootstrap95": [
+              -0.6470420698858272,
+              1.095346147260091
+            ]
+          }
+        ]
+      },
+      "v2m_text_cfg2": {
+        "variant": {
+          "id": "v2m_text_cfg2",
+          "mode": "video2motion",
+          "text": true,
+          "guidance": 2.0,
+          "batch": 64,
+          "sharding": "contiguous"
+        },
+        "camera_off": {
+          "R32_R01_mean": 45.833333333333336,
+          "R32_R01_seed0": 45.3125,
+          "R32_R01_seed1": 45.3125,
+          "R32_R01_seed2": 46.875,
+          "R32_R01_std": 0.9021097956087902,
+          "R32_R02_mean": 60.416666666666664,
+          "R32_R02_seed0": 59.375,
+          "R32_R02_seed1": 59.375,
+          "R32_R02_seed2": 62.5,
+          "R32_R02_std": 1.8042195912175805,
+          "R32_R03_mean": 68.22916666666667,
+          "R32_R03_seed0": 68.75,
+          "R32_R03_seed1": 68.75,
+          "R32_R03_seed2": 67.1875,
+          "R32_R03_std": 0.9021097956087902,
+          "R32_cases_per_seed": 64,
+          "R32_dropped_per_seed": 7,
+          "acceleration_error_m_s2": 2.2551217575518177,
+          "airborne_percent": 15.797879859070543,
+          "diversity": 1.1734565496444702,
+          "fid": 0.12341865085359971,
+          "matching_distance": 0.7485427856445312,
+          "mpjpe_cm": 11.871228020795634,
+          "pa_mpjpe_cm": 6.0863034161968175,
+          "penetration_cm": 0.3937494040165149,
+          "relative_root_ade_cm": 6.461565369661425,
+          "root_ade_cm": 10.541173044434736,
+          "root_fde_cm": 15.68610168809832,
+          "skate_cm_s": 13.805804086822858
+        },
+        "camera_on": {
+          "R32_R01_mean": 42.708333333333336,
+          "R32_R01_seed0": 40.625,
+          "R32_R01_seed1": 40.625,
+          "R32_R01_seed2": 46.875,
+          "R32_R01_std": 3.608439182435161,
+          "R32_R02_mean": 53.125,
+          "R32_R02_seed0": 48.4375,
+          "R32_R02_seed1": 53.125,
+          "R32_R02_seed2": 57.8125,
+          "R32_R02_std": 4.6875,
+          "R32_R03_mean": 63.541666666666664,
+          "R32_R03_seed0": 60.9375,
+          "R32_R03_seed1": 60.9375,
+          "R32_R03_seed2": 68.75,
+          "R32_R03_std": 4.510548978043951,
+          "R32_cases_per_seed": 64,
+          "R32_dropped_per_seed": 7,
+          "acceleration_error_m_s2": 2.316722031158041,
+          "airborne_percent": 16.611006038761893,
+          "diversity": 1.1932756900787354,
+          "fid": 0.14126721649499796,
+          "matching_distance": 0.7695759534835815,
+          "mpjpe_cm": 12.451214631888229,
+          "pa_mpjpe_cm": 6.571284987142221,
+          "penetration_cm": 0.48157639988176654,
+          "relative_root_ade_cm": 7.170397264909156,
+          "root_ade_cm": 11.128089632051932,
+          "root_fde_cm": 17.129325035067513,
+          "skate_cm_s": 13.751396329575021
+        },
+        "paired_changes": [
+          {
+            "model": "directional_video1",
+            "variant": "v2m_text_cfg2",
+            "metric": "mpjpe_cm",
+            "camera_on_minus_off": 0.5799866110925943,
+            "paired_case_bootstrap95": [
+              -0.17552758947434555,
+              1.3182602267922228
+            ]
+          },
+          {
+            "model": "directional_video1",
+            "variant": "v2m_text_cfg2",
+            "metric": "pa_mpjpe_cm",
+            "camera_on_minus_off": 0.4849815709454041,
+            "paired_case_bootstrap95": [
+              0.24116130887817877,
+              0.7282568596958752
+            ]
+          },
+          {
+            "model": "directional_video1",
+            "variant": "v2m_text_cfg2",
+            "metric": "root_ade_cm",
+            "camera_on_minus_off": 0.5869165876171958,
+            "paired_case_bootstrap95": [
+              -0.16185285772760988,
+              1.313259749883182
+            ]
+          },
+          {
+            "model": "directional_video1",
+            "variant": "v2m_text_cfg2",
+            "metric": "acceleration_error_m_s2",
+            "camera_on_minus_off": 0.06160027360622312,
+            "paired_case_bootstrap95": [
+              0.04123029892634548,
+              0.08189841016182597
+            ]
+          },
+          {
+            "model": "directional_video1",
+            "variant": "v2m_text_cfg2",
+            "metric": "skate_cm_s",
+            "camera_on_minus_off": -0.054407757247837495,
+            "paired_case_bootstrap95": [
+              -0.830557608491623,
+              0.6496526695079574
+            ]
+          }
+        ]
+      },
+      "m2v_cfg1": {
+        "variant": {
+          "id": "m2v_cfg1",
+          "mode": "motimg2video",
+          "text": false,
+          "guidance": 1.0,
+          "batch": 32,
+          "sharding": "native_two_virtual_ranks"
+        },
+        "camera_off": {
+          "dreamsim": 0.14463623712809992,
+          "fvd": 349.73927205217296,
+          "fvd_segments": 426,
+          "gt_self_fvd": 0.0,
+          "lpips_alex": 0.2663670356032611,
+          "psnr_db": 19.23406377070947,
+          "ssim": 0.5987436676292983
+        },
+        "camera_on": {
+          "dreamsim": 0.147730725856734,
+          "fvd": 365.2002323494826,
+          "fvd_segments": 426,
+          "gt_self_fvd": 0.0,
+          "lpips_alex": 0.27235675087535294,
+          "psnr_db": 19.13920005358441,
+          "ssim": 0.5975921493342818
+        },
+        "paired_changes": [
+          {
+            "model": "directional_video1",
+            "variant": "m2v_cfg1",
+            "metric": "dreamsim",
+            "camera_on_minus_off": 0.0030944887286340687,
+            "paired_case_bootstrap95": [
+              0.0012643630590132425,
+              0.00486956248846902
+            ]
+          },
+          {
+            "model": "directional_video1",
+            "variant": "m2v_cfg1",
+            "metric": "lpips_alex",
+            "camera_on_minus_off": 0.005989715272091776,
+            "paired_case_bootstrap95": [
+              0.001879494829267861,
+              0.01053971593952292
+            ]
+          },
+          {
+            "model": "directional_video1",
+            "variant": "m2v_cfg1",
+            "metric": "psnr_db",
+            "camera_on_minus_off": -0.09486371712505555,
+            "paired_case_bootstrap95": [
+              -0.21097631048358656,
+              0.018474823058071087
+            ]
+          },
+          {
+            "model": "directional_video1",
+            "variant": "m2v_cfg1",
+            "metric": "ssim",
+            "camera_on_minus_off": -0.001151518295016225,
+            "paired_case_bootstrap95": [
+              -0.005173387264334394,
+              0.0026815312642367965
+            ]
+          }
+        ]
+      },
+      "m2v_cfg2": {
+        "variant": {
+          "id": "m2v_cfg2",
+          "mode": "motimg2video",
+          "text": false,
+          "guidance": 2.0,
+          "batch": 32,
+          "sharding": "native_two_virtual_ranks"
+        },
+        "camera_off": {
+          "dreamsim": 0.15838565861045475,
+          "fvd": 396.7521702591539,
+          "fvd_segments": 426,
+          "gt_self_fvd": 0.0,
+          "lpips_alex": 0.26859306927634824,
+          "psnr_db": 18.516374622292357,
+          "ssim": 0.5653252061587614
+        },
+        "camera_on": {
+          "dreamsim": 0.1591459729407035,
+          "fvd": 407.0228382013047,
+          "fvd_segments": 426,
+          "gt_self_fvd": 0.0,
+          "lpips_alex": 0.2732122641371316,
+          "psnr_db": 18.59877809238546,
+          "ssim": 0.5746409037902497
+        },
+        "paired_changes": [
+          {
+            "model": "directional_video1",
+            "variant": "m2v_cfg2",
+            "metric": "dreamsim",
+            "camera_on_minus_off": 0.0007603143302487655,
+            "paired_case_bootstrap95": [
+              -0.0019170321537260438,
+              0.003524687974123467
+            ]
+          },
+          {
+            "model": "directional_video1",
+            "variant": "m2v_cfg2",
+            "metric": "lpips_alex",
+            "camera_on_minus_off": 0.004619194860783286,
+            "paired_case_bootstrap95": [
+              0.0008033140422318589,
+              0.0085862507341534
+            ]
+          },
+          {
+            "model": "directional_video1",
+            "variant": "m2v_cfg2",
+            "metric": "psnr_db",
+            "camera_on_minus_off": 0.08240347009309605,
+            "paired_case_bootstrap95": [
+              -0.05796145565213133,
+              0.21604673792149015
+            ]
+          },
+          {
+            "model": "directional_video1",
+            "variant": "m2v_cfg2",
+            "metric": "ssim",
+            "camera_on_minus_off": 0.009315697631488236,
+            "paired_case_bootstrap95": [
+              0.005005795837209461,
+              0.013440301631983939
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

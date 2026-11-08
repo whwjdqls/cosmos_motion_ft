@@ -37,6 +37,35 @@ def prepare_trainer(probe_updates=0):
         return contract
 
     train.source_identity = source_identity
+    original_preflight = train.preflight
+
+    def preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerprint):
+        import json
+        from .caption_audit import audit_no_captions
+        original_preflight(args, dataset, model, ddp, mean, std, rank, world, device, fingerprint)
+        train.barrier()
+        path = args.out / "acceptance.json"
+        receipt = json.loads(path.read_text())
+        train.barrier()
+        if rank == 0:
+            path.unlink()
+        train.barrier()
+        assert any(p.detach().abs().max().item() > 0
+                   for name, p in model.bridges.named_parameters() if "gate_" in name)
+        raw = train.collate([dataset[(rank, rank % len(dataset))]])
+        versions = train.frozen_versions(model)
+        audit = audit_no_captions(model, raw, train.noise_batch, device, list(TASKS))
+        train.assert_frozen(model, versions)
+        audits = train.all_objects(audit, world)
+        if rank == 0:
+            receipt["checks"].append("all_enabled_tasks_no_caption_at_both_specialists_nonzero_bridges")
+            receipt["no_text_audits_by_rank"] = audits
+            from motion_expert_phase3_edge_joint.settings import atomic_json
+            atomic_json(path, receipt)
+            print("[phase3/mmdit] NO_CAPTION_ACCEPTANCE_PASSED", flush=True)
+        train.barrier()
+
+    train.preflight = preflight
     return train
 
 

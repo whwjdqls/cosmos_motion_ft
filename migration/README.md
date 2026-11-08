@@ -1,5 +1,13 @@
 # Server Migration
 
+## Sep-1 Phase3 camera and guidance evaluations (2026-11-07)
+
+- [Inference-only camera prediction, matched V2M and M2V](FOUNDRY_PHASE3_INFERENCE_CAMERA_FIXED71_20261107.md): 852 predictions at80k/80k/40k EMA; paired camera-on/off controls and archived inference code.
+- [V2M with and without text](FOUNDRY_PHASE3_V2M_TEXT_FIXED71_20261107.md): fixed71, whole-bridge CFG2, GT text routed only to the frozen motion expert.
+- [M2V whole-bridge CFG1 versus2](FOUNDRY_PHASE3_M2V_WHOLECFG2_FIXED71_20261107.md): matching EMA checkpoints and native video metrics.
+
+These historical comparisons use different checkpoint ages and remain separate from the standardized80k sweep. Reports link exact provenance and artifact archives; no model/default-guidance selection is made.
+
 ## Latest Phase3 motion-guidance2 quantitative results (2026-11-05)
 
 [Verified full71 results for the four latest Phase3 snapshots](FOUNDRY_PHASE3_LATEST_M2V_MOTIONCFG2_FIXED71_20261105.md).

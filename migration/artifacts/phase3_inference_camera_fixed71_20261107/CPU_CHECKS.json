@@ -1,0 +1,6 @@
+{
+  "target_noise_unchanged_by_private_camera_rng": true,
+  "case_noise_batch_and_singleton_match": true,
+  "camera_shape_96x64": true,
+  "cfg_camera_velocity_remains_native_conditional": true
+}

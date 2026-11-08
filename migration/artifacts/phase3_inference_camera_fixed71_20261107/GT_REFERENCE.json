@@ -1,0 +1,32 @@
+{
+  "retrieval": {
+    "R32_R01_mean": 48.958333333333336,
+    "R32_R01_seed0": 48.4375,
+    "R32_R01_seed1": 48.4375,
+    "R32_R01_seed2": 50.0,
+    "R32_R01_std": 0.9021097956087902,
+    "R32_R02_mean": 63.020833333333336,
+    "R32_R02_seed0": 62.5,
+    "R32_R02_seed1": 62.5,
+    "R32_R02_seed2": 64.0625,
+    "R32_R02_std": 0.9021097956087902,
+    "R32_R03_mean": 70.83333333333333,
+    "R32_R03_seed0": 71.875,
+    "R32_R03_seed1": 71.875,
+    "R32_R03_seed2": 68.75,
+    "R32_R03_std": 1.8042195912175805,
+    "R32_cases_per_seed": 64,
+    "R32_dropped_per_seed": 7
+  },
+  "physics": {
+    "acceleration_error_m_s2": 0.0,
+    "airborne_percent": 16.422244659821754,
+    "mpjpe_cm": 0.0,
+    "pa_mpjpe_cm": 2.5735317405480676e-05,
+    "penetration_cm": 1.305681274600432,
+    "relative_root_ade_cm": 0.0,
+    "root_ade_cm": 0.0,
+    "root_fde_cm": 0.0,
+    "skate_cm_s": 18.510006609517085
+  }
+}

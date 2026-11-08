@@ -1,0 +1,18 @@
+{
+  "sources": {
+    "model.py": {
+      "path": "/home/jinhyung.kim/cosmos_motion_ft/motion_expert_phase3_edge_image_joint_camera/model.py",
+      "sha256": "9de780b567a16b449886915ca27da85ce021e5019af1202999b3b4ad0e3f4bba"
+    },
+    "native.py": {
+      "path": "/home/jinhyung.kim/cosmos_motion_ft/motion_expert_phase3_edge_image_joint_camera/native.py",
+      "sha256": "11e783593b35c9f41e11eaa3794f4290d4104d2aa9161982fcb2e13f7c33692e"
+    }
+  },
+  "changes": [
+    "standalone imports",
+    "inference-only provenance label",
+    "empty semantic-caption assertion in native packer"
+  ],
+  "architecture": "identical existing camera forward; unchanged checkpoint bridges and frozen specialists"
+}

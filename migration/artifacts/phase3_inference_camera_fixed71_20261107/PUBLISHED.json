@@ -1,0 +1,74 @@
+{
+  "page": "https://app.notion.com/p/binne/devugged-MMdiT-410d2a44f44b8098b1b7c7af42d2353b",
+  "publication_success": true,
+  "models": 3,
+  "settings_per_model": 4,
+  "windows_per_setting": 71,
+  "predictions": 852,
+  "checkpoints": {
+    "directional_video10": 80000,
+    "bidirectional_video10": 80000,
+    "directional_video1": 40000
+  },
+  "weights": "ema",
+  "camera_initialization": "independent_gaussian_no_GT_camera",
+  "camera_velocity": "conditional_unguided",
+  "attachments": [
+    {
+      "file": "metrics.csv",
+      "file_upload_id": "411d2a44-f44b-81dd-9a11-00b29fe60870"
+    },
+    {
+      "file": "directional_video10_v2m_cfg2_evidence.json",
+      "file_upload_id": "411d2a44-f44b-81cb-a527-00b2caeb226c"
+    },
+    {
+      "file": "directional_video10_v2m_text_cfg2_evidence.json",
+      "file_upload_id": "411d2a44-f44b-8142-be41-00b2e552951f"
+    },
+    {
+      "file": "directional_video10_m2v_evidence.json",
+      "file_upload_id": "411d2a44-f44b-81c9-b1e8-00b25b9604fd"
+    },
+    {
+      "file": "bidirectional_video10_v2m_cfg2_evidence.json",
+      "file_upload_id": "411d2a44-f44b-8187-acb5-00b22b533ed2"
+    },
+    {
+      "file": "bidirectional_video10_v2m_text_cfg2_evidence.json",
+      "file_upload_id": "411d2a44-f44b-8121-a940-00b24351ca5a"
+    },
+    {
+      "file": "bidirectional_video10_m2v_evidence.json",
+      "file_upload_id": "411d2a44-f44b-81df-a16c-00b25c632145"
+    },
+    {
+      "file": "directional_video1_v2m_cfg2_evidence.json",
+      "file_upload_id": "411d2a44-f44b-818b-b271-00b2fca2fcb0"
+    },
+    {
+      "file": "directional_video1_v2m_text_cfg2_evidence.json",
+      "file_upload_id": "411d2a44-f44b-8140-b6f6-00b2fd35262a"
+    },
+    {
+      "file": "directional_video1_m2v_evidence.json",
+      "file_upload_id": "411d2a44-f44b-817d-b780-00b270ee3f78"
+    },
+    {
+      "file": "inference_camera_sources.json",
+      "file_upload_id": "411d2a44-f44b-81fe-b9ad-00b2b9cc26ea"
+    }
+  ],
+  "utc": "2026-11-07T10:29:04.849490+00:00",
+  "all_evaluators_exited": true,
+  "training_pids_alive": [
+    3622861,
+    3622862,
+    354543,
+    354544,
+    361031,
+    361032
+  ],
+  "coupled_native_camera_sampler_parity": true,
+  "scoring_cache_path_recovery_verified": true
+}

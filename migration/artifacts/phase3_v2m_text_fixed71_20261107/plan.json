@@ -1,0 +1,85 @@
+{
+  "node": "lg-gwangmo-4xh200-sep-1",
+  "operation": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_v2m_text_fixed71_20261107T075018Z",
+  "selection_utc": "2026-11-07T07:50:18.893211+00:00",
+  "runs": [
+    {
+      "id": "directional_video10",
+      "attention": "directional",
+      "video_weight": 10.0,
+      "run_dir": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z",
+      "snapshot": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z/launch/source_snapshot",
+      "checkpoint": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_v2m_text_fixed71_20261107T075018Z/directional_video10_checkpoint.pt",
+      "checkpoint_source": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z/checkpoints/step_000080000.pt",
+      "step": 80000,
+      "phase1": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/cosmos3_camera/camera_world_edge/edge_phase1_T97_20fps_2gpu_bs16_lora_video_io_exclude5_fd_invdyn_no_text_p1_200k_sep2_20261028/checkpoints/iter_000200000",
+      "phase2": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_t2m_edge/edge_7layer_self_cross_final_hidden_knorm_captiononly_nymeria_bones50_t2m_ti2m_nanoparity_gbs256_camhead_v1_subjectv1_w1_1_5_contact_c0p05_v1_h10_yonsei_20260921/checkpoints/step_000200000.pt",
+      "path_map": {
+        "/lustre/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos",
+        "/scratch2/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos"
+      },
+      "out": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_v2m_text_fixed71_20261107T075018Z/directional_video10",
+      "baseline": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z/validation/step_000080000",
+      "display_name": "[sep-1] P3 MMDiT directional | V2M50/M2V50/J0 | videoW10 | EMA0.999 start50043 (continued) | NoText | LocalAttn BF16 | T97 GBS32"
+    },
+    {
+      "id": "bidirectional_video10",
+      "attention": "bidirectional",
+      "video_weight": 10.0,
+      "run_dir": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_bidirectional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z",
+      "snapshot": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_bidirectional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z/launch/source_snapshot",
+      "checkpoint": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_v2m_text_fixed71_20261107T075018Z/bidirectional_video10_checkpoint.pt",
+      "checkpoint_source": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_bidirectional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z/checkpoints/step_000080000.pt",
+      "step": 80000,
+      "phase1": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/cosmos3_camera/camera_world_edge/edge_phase1_T97_20fps_2gpu_bs16_lora_video_io_exclude5_fd_invdyn_no_text_p1_200k_sep2_20261028/checkpoints/iter_000200000",
+      "phase2": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_t2m_edge/edge_7layer_self_cross_final_hidden_knorm_captiononly_nymeria_bones50_t2m_ti2m_nanoparity_gbs256_camhead_v1_subjectv1_w1_1_5_contact_c0p05_v1_h10_yonsei_20260921/checkpoints/step_000200000.pt",
+      "path_map": {
+        "/lustre/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos",
+        "/scratch2/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos"
+      },
+      "out": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_v2m_text_fixed71_20261107T075018Z/bidirectional_video10",
+      "baseline": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_bidirectional5050_no_text_wv10_lateema0999_from50k_T97_gbs32_sep1_20261106T184453Z/validation/step_000080000",
+      "display_name": "[sep-1] P3 MMDiT bidirectional | V2M50/M2V50/J0 | videoW10 | EMA0.999 start50143 (continued) | NoText | LocalAttn BF16 | T97 GBS32"
+    },
+    {
+      "id": "directional_video1",
+      "attention": "directional",
+      "video_weight": 1.0,
+      "run_dir": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_temporallocal_no_text_wv1_ema0999_T97_gbs32_sep1_20261106T160246Z",
+      "snapshot": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_temporallocal_no_text_wv1_ema0999_T97_gbs32_sep1_20261106T160246Z/launch/source_snapshot",
+      "checkpoint": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_v2m_text_fixed71_20261107T075018Z/directional_video1_checkpoint.pt",
+      "checkpoint_source": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_temporallocal_no_text_wv1_ema0999_T97_gbs32_sep1_20261106T160246Z/checkpoints/step_000040000.pt",
+      "step": 40000,
+      "phase1": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/cosmos3_camera/camera_world_edge/edge_phase1_T97_20fps_2gpu_bs16_lora_video_io_exclude5_fd_invdyn_no_text_p1_200k_sep2_20261028/checkpoints/iter_000200000",
+      "phase2": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_t2m_edge/edge_7layer_self_cross_final_hidden_knorm_captiononly_nymeria_bones50_t2m_ti2m_nanoparity_gbs256_camhead_v1_subjectv1_w1_1_5_contact_c0p05_v1_h10_yonsei_20260921/checkpoints/step_000200000.pt",
+      "path_map": {
+        "/lustre/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos",
+        "/scratch2/whwjdqls99/cosmos": "/mnt/local/jinhyung.kim/cosmos"
+      },
+      "out": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_v2m_text_fixed71_20261107T075018Z/directional_video1",
+      "baseline": "/mnt/local/jinhyung.kim/cosmos/weka/cosmos_motion_ft_runs/motion_expert_phase3_edge/edge_p3_mmdit_directional5050_temporallocal_no_text_wv1_ema0999_T97_gbs32_sep1_20261106T160246Z/validation/step_000040000",
+      "display_name": "[sep-1] P3 MMDiT directional | V2M50/M2V50/J0 | videoW1 | EMA0.999 start0 (fresh) | NoText | LocalAttn BF16 | T97 GBS32"
+    }
+  ],
+  "validation_config": "/mnt/local/jinhyung.kim/cosmos/operations/phase3_mmdit_bf16_validation_20261105/validation.json",
+  "weights": "ema",
+  "guidance": 2.0,
+  "reference_policy": "all_seven_phase3_bridges_disabled_including_within_modality",
+  "steps": 35,
+  "batch_size": 64,
+  "decode_batch_size": 4,
+  "eligible_gpus": [
+    7,
+    3
+  ],
+  "authorization": "User explicitly approved co-evaluation on GPUs3/7 alongside training with memory caps; latest EMA V2M and V2M+text fixed71 batched",
+  "frames": 97,
+  "captions": "none OR GT caption into frozen motion expert only; video captions always empty",
+  "seeds": "fixed0_to70",
+  "notion_page_id": "410d2a44-f44b-8098-b1b7-c7af42d2353b",
+  "variants": [
+    "video_cfg2",
+    "video_text_cfg2"
+  ],
+  "text_cfg": "retain identical GT caption in bridge-on and bridge-off passes; CFG2 guides video bridge contribution conditional on text"
+}
