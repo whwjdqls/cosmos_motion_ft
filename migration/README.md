@@ -1,5 +1,10 @@
 # Server Migration
 
+## Yonsei Scratch2 retention refresh (2026-11-08)
+
+[Access-time refresh and training-cache identity checks](SCRATCH2_RETENTION_20261108.md)
+records the safe timestamp policy, audit location and permission exceptions.
+
 ## Sep-1 Phase3 camera and guidance evaluations (2026-11-07)
 
 - [Inference-only camera prediction, matched V2M and M2V](FOUNDRY_PHASE3_INFERENCE_CAMERA_FIXED71_20261107.md): 852 predictions at80k/80k/40k EMA; paired camera-on/off controls and archived inference code.

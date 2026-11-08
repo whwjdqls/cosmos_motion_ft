@@ -1,5 +1,33 @@
 # Shared Agent Context
 
+## GitHub merge and Scratch2 access refresh completed (2026-11-08)
+
+- Local application/evaluation work committed as e8df43e, then GitHub master
+  merged as112b348 and pushed. The only conflict was AGENTS_ALL.md; all Yonsei
+  and incoming server sections were preserved. Standard launcher checks passed:
+  46 focused CPU tests and syntax checks for52 changed Python files. No model
+  weights or training recipes were edited during this integration.
+- User requested refreshing all data under /scratch2/whwjdqls99. Full pass
+  completed on CPU job2717529/cnode03:2,429,180 regular files,26,755 symlinks,
+  313,260 directories and34 special entries refreshed; zero file failures.
+  Symlink targets and other filesystems were not traversed. Eighteen read-only
+  directories belong to another account and could not be timestamp-updated;
+  their readable contents were processed. No ownership/permissions changed.
+- Full pass refreshed ACCESS times, atomically preserving file modification
+  times required by training-cache identity checks. An initial ordinary-time
+  pass was stopped before reaching Cosmos; see the complete audit history.
+  Read-only verification of all108,760 distinct Phase3 latent paths confirmed
+  zero size/mtime identity mismatches. Do not run ordinary touch across cached
+  training latents: use access-only semantics. CPU maintenance allocation was
+  released after completion. No periodic job was installed.
+- Audit: /home/whwjdqls99/.codex/maintenance/scratch2_refresh_20261108/FINAL.json.
+  Details, exact scope and exceptions: migration/SCRATCH2_RETENTION_20261108.md.
+- Current Yonsei training state at the preceding status check: allocation
+  2616204 expired11:29KST onNov8 at75,820 logged updates; recoverable no-text/
+  video-weight1 Phase3 checkpoint is70k. Eval allocation2622173 expired13:03
+  after the visualization tasks completed. Git integration did not resume
+  either allocation or change the immutable training source snapshots.
+
 ## Camera axes and matched caption-conditioned V2M gallery (2026-11-08)
 
 - User requested RGB coordinate axes instead of frustums, more examples and
