@@ -1,0 +1,2337 @@
+{
+  "schema": "phase3_80k_fixed71_v1",
+  "step": 80000,
+  "weights": "ema",
+  "frames": 97,
+  "fps": 20,
+  "resolution": [
+    256,
+    256
+  ],
+  "steps": 35,
+  "motion_shift": 3,
+  "video_shift": 10,
+  "seeds": "0..70",
+  "guidance_reference": "all seven whole bridge updates disabled",
+  "m2v_cfg": [
+    1,
+    1.1,
+    1.5
+  ],
+  "v2m_cfg": [
+    1.5,
+    2
+  ],
+  "video_text_v2m_cfg": [
+    1.5,
+    2
+  ],
+  "generator_captions": "always empty",
+  "motion_captions": "GT caption only for video_text_v2m; same caption in both CFG branches",
+  "v2m_batching": "contiguous64+7",
+  "m2v_batching": "virtual even32+4 / odd32+3",
+  "decode_batch_size": 4,
+  "portable_cohort_sha256": "a4792d1aa52edc0de938cbc7a8dc87452dd17d7395bd4412013bc1f70930ce71",
+  "portable_cases": [
+    {
+      "id": "case_00_S01__20230607_s1_barbara_wheeler_act4_5adv12_0",
+      "uuid": "S01/20230607_s1_barbara_wheeler_act4_5adv12",
+      "start": 0,
+      "seed": 0,
+      "split": "test",
+      "caption_sha256": "20bceb16737bd410412d4e4054030f1627bccaea6c42001f3c457baebfa5a57a",
+      "motion_sha256": "676822112a0c6eb837d3536c21c1525504c024b0363f1b8c1ce936efb2c3e5bc",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "4b110fb76146ee77944d297a34a2ee9ab909798f156b412eed52f6820c9924ed",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "c12927f2de2bd6f3c0dc960fd91186887c2a87f019fc75bc680751e6cec78494",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "2599d16d69700b154b90a713f3364a5538621713c9fa36769e00a3bdecf23d4a",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_01_S01__20230612_s1_christina_jones_act1_ixxtbh_0",
+      "uuid": "S01/20230612_s1_christina_jones_act1_ixxtbh",
+      "start": 0,
+      "seed": 1,
+      "split": "test",
+      "caption_sha256": "07ab37f1811806919ee6c2be7204da4fa03f15c81ed0e695706783769b48b0be",
+      "motion_sha256": "3ed3bdb20e7ed5d2f4dc641bfca63191f957bd5bede53a954a54de1408de35c3",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "684b9e43282f13459512f1c07958d1e2c65c7fe88145375452839068ce521888",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "876ee05c81bc0c6f623e5cc4a834a66e89b0e64a9daf4f01c467d936bccbc98a",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "9379a41ffac332cbf070d6d4cba0573e79ad7cc17b26f545fccb2ee3ea39a9cf",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_02_S01__20230705_s0_william_davis_act4_h94ovw_0",
+      "uuid": "S01/20230705_s0_william_davis_act4_h94ovw",
+      "start": 0,
+      "seed": 2,
+      "split": "test",
+      "caption_sha256": "a817c5a37cbdcd26871e7e98c439b9fd41af641b709235e42e944ece7aea51a0",
+      "motion_sha256": "043d5744db9084540d356b6e029e3014a8063cfd159ae0f7888861bafa25f038",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "885bfb81f61db4af2fa1357bcf8d73d0bd1be5d71af508691ada56c0f2cc210d",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "b77cd1f3893e2c2a94fddbc76d2c4354a50056e80ff2c3362623f1025747f519",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "aed9e0ccc2b753d298f541c5b2faa01bd8e378853aa00bd9cad858a29fa98425",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_03_S01__20230706_s1_morgan_terrell_act3_9ops7e_0",
+      "uuid": "S01/20230706_s1_morgan_terrell_act3_9ops7e",
+      "start": 0,
+      "seed": 3,
+      "split": "test",
+      "caption_sha256": "183c71a7f907ccb4b141c5b55620894a8a31984278b1ae6c1a10b33c4e8e62b5",
+      "motion_sha256": "09f8f242a96d63dcddcb5d4020416457639a30cc4aa26ad265e1faad3a4a13ad",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "44083d5551d7139e813de78101c6fb8c158e15f075a2bba5eadbb0d6e04444a2",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "b35e1794bd94965486aa67cc0c14ffd6dd61ec63637fce5c91c95adbc6de2907",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "97a58077d4021910d24368ee6bc6447e69edfed0add54af4a4cd375f6995fdf8",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_04_S01__20230721_s0_mitchell_mcdonald_act3_k11m1g_0",
+      "uuid": "S01/20230721_s0_mitchell_mcdonald_act3_k11m1g",
+      "start": 0,
+      "seed": 4,
+      "split": "test",
+      "caption_sha256": "e26ce0c65dc4f99a89c1b1327539bb0ca5c42a27fa9ca9d13dd42ba1bafbcb9d",
+      "motion_sha256": "238f19330cc5c9d3a5b86afabd77ef1b9e6025a3942fc245a9f6723a1a2ed533",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "b2884073358586217349ab9bba34dd3ab4d16ec7f2f54e2830a9747fea925d91",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "874180fce094cd338193e79f55e7da8726862122667a36a4ce52eac8f1d03a70",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "860c684c7dcb3245c1adc22e85b06f4bc062675fbeabfbd7b42ba8bbb979fca1",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_05_S01__20230726_s1_thomas_nixon_act3_vvy3pz_880",
+      "uuid": "S01/20230726_s1_thomas_nixon_act3_vvy3pz",
+      "start": 880,
+      "seed": 5,
+      "split": "test",
+      "caption_sha256": "525d9095bad125fcfb334dfd36f8b2a0060ad866886d899edf487c9c7a26e7b1",
+      "motion_sha256": "6f57f0ecc416293f22e75ac7751aec617845ff0cf47647ffe6f0ec47bdb0de95",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "5dc7599a1c9ca5089188c81d1832b1133a8bb94bd889d7a8efe8ec9a8a6b24db",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "37a0936899ed0577180d39f5ae48a48d94f2f1d93550e33e4a3cce561e25a5ca",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "27895cdabef5b788067aa7c8d19585b6604dad0b78a4bc365c3c36d415d0cae2",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_06_S01__20230822_s0_kyle_parker_act4_dqa50g_0",
+      "uuid": "S01/20230822_s0_kyle_parker_act4_dqa50g",
+      "start": 0,
+      "seed": 6,
+      "split": "test",
+      "caption_sha256": "534b2612fc1b361588c6fb22e5eefdbee6e6203b0017f354deb4cb82b0c758ae",
+      "motion_sha256": "93f69dc6ca6aec24b9bd11f971fae1a722780a58029079ed936cd88800cc3328",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "a7546599cbf6ebc1817430b35d93d51a774f4123b7327ae9871be91d204c8d02",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "5078a1edddd9c3d56fa994d50a60b1d822e89fb0f76e66bb6f72b658f38d7dca",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "e7f863772ad3ed39f33ac8d1156de741e05fbfab9c2862b3f911fe61d0d37ead",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_07_S02__20230614_s1_matthew_harper_act1_cimupu_0",
+      "uuid": "S02/20230614_s1_matthew_harper_act1_cimupu",
+      "start": 0,
+      "seed": 7,
+      "split": "test",
+      "caption_sha256": "5eb222914beb270d0fdcad9ed2e4ad55a7905acce4b4befd1b78f2abeb16f9c2",
+      "motion_sha256": "58b6143fdc356fb6ae908db65c53392d9d428be9daa9816ee1d7b4f35997000a",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "aa1be8526c542cf677c4c0b129ec74ace19b676b065a6edda925a7e56795d74a",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "1f719045cfe10416bda5fc3bdc495c6d58928ef72f494de12cd7ca67202033ea",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "6bc06faf056a90a2e506ba0e9efac10063decf385f1e5f24ae6ec4135b23a7ce",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_08_S02__20230725_s1_julie_taylor_act4_iemk0l_0",
+      "uuid": "S02/20230725_s1_julie_taylor_act4_iemk0l",
+      "start": 0,
+      "seed": 8,
+      "split": "test",
+      "caption_sha256": "f7d841691585b0933bad21936adec83db3e377c75c70e78b33988ab1619d1360",
+      "motion_sha256": "134517d6fe27e29876ac45b7168d497d27d2a52894466f8abd090321b7f603c3",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "3a31aa643179b5f45b9e80036f32580e487e1221bbc1d8d4e7b0d5fd4f2b1865",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "e720921004191a515b3019bbeb52ed4e193644510b6fd710d7c0498c0fab7476",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "740c469764ec494d1535646ac0e36854a7fd48979ecb6754a46cf1c58ad226f3",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_09_S02__20230908_s0_joel_anderson_act1_qpe9b0_0",
+      "uuid": "S02/20230908_s0_joel_anderson_act1_qpe9b0",
+      "start": 0,
+      "seed": 9,
+      "split": "test",
+      "caption_sha256": "6f6f93e31727835537617464d10cf7bfa577fbe7c7ae126d5da7bd94293d947c",
+      "motion_sha256": "150b3b1f8c86465195af319778e232b8efd2d12708d780de95e043e2625400df",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "65cb151c70676eea2f16c187b630e06d6ed9066c438d8d2d6f2e2732853a7298",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "ebc5ea54e8e61912e621f092d60a34440b0e4a51ef9e069d2af828751eb094c5",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "ad2203c850f2df6a7fb3bb6c40b448124c61ffce99ce7b79eec9d7e7865273d2",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_10_S02__20231003_s1_allen_evans_act0_1w2b7b_0",
+      "uuid": "S02/20231003_s1_allen_evans_act0_1w2b7b",
+      "start": 0,
+      "seed": 10,
+      "split": "test",
+      "caption_sha256": "ab77cef9faac088157508620191d306185f98dd211e74954e0d4a2f6cffe1954",
+      "motion_sha256": "18d2272df9549836fdf709a721bc9ee33f602b964d9c0064f527948e80f3d3a7",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "7d67a0e52c7e486cf57b60c6890aa29d579411a49302391123761d0701604653",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "2d4a712de5fdb6cb71ce60710355c27c75db3357a586f26865dfa271cfb72ed8",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "d441434de9a98169121a4a91af35cacc949c1d78cdf7a0f08bdc6386b8bd6266",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_11_S02__20231011_s1_daniel_kim_act2_6lxp22_0",
+      "uuid": "S02/20231011_s1_daniel_kim_act2_6lxp22",
+      "start": 0,
+      "seed": 11,
+      "split": "test",
+      "caption_sha256": "9f99308a7a6896fa8c04a8a036984fd109eca9047837aeb0d4c6ff065c85344b",
+      "motion_sha256": "fa12ef388f082b852f6f9730825c3281e92582d1ba50dcdffa384749374ce2c1",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "2cd6551080c655c7f5b795e95e4c273686fbafb1e07bc09c97d992b37eb482e8",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "ecee9734aeb516233007f27f8dca4e969f61ce86dd77058ac7b8a1895a07a3ee",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "d4e20c9f5b119c0277dbd49dbdaebc74b41e2691d533068ce2f71d7db0f3cef3",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_12_S02__20231102_s0_samuel_rogers_act0_x6hia4_0",
+      "uuid": "S02/20231102_s0_samuel_rogers_act0_x6hia4",
+      "start": 0,
+      "seed": 12,
+      "split": "test",
+      "caption_sha256": "0f9c959cb0db577ca2c4c2b24ff0f9e8237061e29d2baf9e0398da7436070aa4",
+      "motion_sha256": "149bb1c912656ed6c04269a6123ba5ac9ed0a7477bc0e612deda2f3a02023bfb",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "c5135b20c03eb3877d8a4f258d072b5d22649de45ef8f749a378567ecf54d3d0",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "5f4caa06e71ce40a06f59ca6b6019301346dcdb4c365433cb2d5b686ffefa4a1",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "bd7e3c5034e0b20a8727bd0e5d69f78d188e7c04b56caed65525a3239e24424d",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_13_S02__20231106_s0_nancy_david_act0_bgmt5f_0",
+      "uuid": "S02/20231106_s0_nancy_david_act0_bgmt5f",
+      "start": 0,
+      "seed": 13,
+      "split": "test",
+      "caption_sha256": "780c6ee7fff527bd9e5a338b4ee8fb3487e2c8ec84ebf1f42435bbff83a5c408",
+      "motion_sha256": "c737cf991626d3cf02a99ff1232959b75171203e2a92d9962c6085138b4825ac",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "6247d9657f4efb028bdbd4a8b43d9bc7c267e06771e7a320f2090796689f89ff",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "6a898ac940987414e5488e6eee8c27a47c9c9098b37aa74816dec94a576f165e",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "182de0989b6658bdc0ad40d172b256453a6d934bc3a0107ff0fd6c61c05d9f93",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_14_S02__20231110_s0_thomas_brown_act4_x3t73z_0",
+      "uuid": "S02/20231110_s0_thomas_brown_act4_x3t73z",
+      "start": 0,
+      "seed": 14,
+      "split": "test",
+      "caption_sha256": "c19f40bb11f338b3267b3b2d5ffafd23e6a619d6f4444d6eb52c118c0f2a7e51",
+      "motion_sha256": "e68a058ebf3925e1f52276a22dade9eed206cb52254c6a5b248483b8d376a706",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "f74963ffcb275afd1905d601feb2f98c3e369e873da68bdd285072065e86d16e",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "7d2d106a2132e527d7b45a81013364649e2f39cda0f3ed71ce1afe7d27b93303",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "978f51f8c7b4efcff60931f4b6ea6b9c9c8a7ae968d3221d2177cf41233051ad",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_15_S02__20231128_s1_michael_vargas_act0_yvskcx_0",
+      "uuid": "S02/20231128_s1_michael_vargas_act0_yvskcx",
+      "start": 0,
+      "seed": 15,
+      "split": "test",
+      "caption_sha256": "f0d51dba53d68b2125b70bd0ef76f4af410a4552bd8675d091213782c5dbc02d",
+      "motion_sha256": "36a37682cc9411aa778207cde8b5be6d52b33f88f80a6b99d3ab053e034f78ea",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "b5094ace700cda83f92b1da9775b5f05fe460ead36e136ba666b2f7d31a229bf",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "30edc1dd7f83c77a54f439c009138481aa691e578f7bfc40f41150bf89e35e00",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "84bd268dcbf69386654e92a5dad3c53db470dd2e7d1448c3c608d1b8e4a3236d",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_16_S03__20230817_s1_rebecca_ward_act1_v7qxvk_0",
+      "uuid": "S03/20230817_s1_rebecca_ward_act1_v7qxvk",
+      "start": 0,
+      "seed": 16,
+      "split": "test",
+      "caption_sha256": "6b9c417162794ab3cb374309af651172ef84009236a6f50203df0580a3180fb7",
+      "motion_sha256": "3072fa1eb11030c03d1afc8348d34d9757cfdf69b943b5d834c10aa8d7a0eb59",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "ceedc70e6a27e4095a5caac83b831e5e77192e469b9e82999645ef59b2cce6d2",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "4e3fe2bf7a19d15ffe870101db2efe54e80161f2a19d011dad85933bfce8d027",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "7c7d3422066c25b5a1cdeb17006ba5838b5f495e877e8d294094a7c0cdcf766a",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_17_S03__20230831_s1_ronald_harris_act0_7ob6gu_0",
+      "uuid": "S03/20230831_s1_ronald_harris_act0_7ob6gu",
+      "start": 0,
+      "seed": 17,
+      "split": "test",
+      "caption_sha256": "6df621f46e37fc8e1ea92645a3c2e9e91b8cf04ee0a143e028fc40092d027101",
+      "motion_sha256": "9720792090f2fd7fd2af6bc005c9f6a4039c3c32b032c982c84f36cf9dd225c5",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "6f08772a6bfa113b29d33941663f6f9e1f10a5557658aec26dbb479ae4eb7d44",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "ddebe952177cb9d55bc92310e3cb3319472ce582877684d07d4167386c33dea1",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "1569b621ac2a5b3bf8730fc9259c767b6ce9a504258cf01020f073e6af1c8396",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_18_S03__20230906_s0_pam_nelson_act0_29c839_0",
+      "uuid": "S03/20230906_s0_pam_nelson_act0_29c839",
+      "start": 0,
+      "seed": 18,
+      "split": "test",
+      "caption_sha256": "8baa092263beaf908ebf3ad8a9f89f5be2cc8b6d9a6ea89663d9a4701f1d1b14",
+      "motion_sha256": "503ddf46b8378c3e8a9e2716faf43d6e3e87783cec3a89c0ee933b58dfdabba3",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "b1722d1ada75e695514d8a50a3ed2b4ae18b19adb6b32bb608b8b871efeef9a8",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "f4e128628392ff1d9694644e2bd03d56117dacb86fab4ee95cedf197e2c85cff",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "5ca9939009f614aa6ac83825ca21f5f9a319ea5eb6979d77bb52abcf1448e631",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_19_S04__20230717_s0_danielle_ortiz_act4_8l6m00_0",
+      "uuid": "S04/20230717_s0_danielle_ortiz_act4_8l6m00",
+      "start": 0,
+      "seed": 19,
+      "split": "test",
+      "caption_sha256": "ee09075352cf68bd11fbf734d3eeb07e31a9ea5b36e69545aa6cd13460286a57",
+      "motion_sha256": "8090ca6df9d2108b665c51394a6cebc3921a461d82297bb507cd825d38039c68",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "3cfba03fc72d2a54bd81893ae9c72ae55d9e612dccbeb905d92b0c42120a1741",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "12401ec332dd42b284b1b3f94ff9fe5c812bc8fe38be1accacb5a5a5212a9c06",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "9978cde75b981798c10b0d16a58c2d7a40f2c45436934b5d0374325f2defa6a7",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_20_S05__20230712_s0_laura_wilson_act4_spkfqq_0",
+      "uuid": "S05/20230712_s0_laura_wilson_act4_spkfqq",
+      "start": 0,
+      "seed": 20,
+      "split": "test",
+      "caption_sha256": "561d0118e44026872e126bcdaa4975bde0243f1e3451a72b9ada0e9a490e39b6",
+      "motion_sha256": "92ae65a3c68b841bccbde700df4f509415b021127b3c09db3ad1c69bd5d1bd4d",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "4e281d49611d3a53a13dbf760322b253b2140463ca363057835169676ab61b6f",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "c97d57c2694916423891ed9e65d0434cb1aaab96799e2dff73b1d6edc934cf57",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "5978da5ccef1276c8d0161c11dc1c8a457b5e7a3fa538f768c3bd64bda90abc4",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_21_S05__20230714_s1_jacob_webb_act4_250tg7_0",
+      "uuid": "S05/20230714_s1_jacob_webb_act4_250tg7",
+      "start": 0,
+      "seed": 21,
+      "split": "test",
+      "caption_sha256": "900c876181312d25b840326f12a465c46409814d8880b3e5757882cdb893429a",
+      "motion_sha256": "74fda34abc4cfa75cbf5b356ee9e7f08b8d7ac71faa174db14cb511c93bf8171",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "cbc13462685b45300b8459a6372825fb4baafe33977679ea0fc8a73cec4d1cbd",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "938c46a190a3ca5f9a8116950cbc71abe5197442bcf8643a1364a1ac019b485a",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "a1aaae4a1a9491ede61e826b212243ebddc4345cf8380bb977430410455ff4c7",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_22_S05__20230728_s1_bradley_herman_act3_uwvekz_0",
+      "uuid": "S05/20230728_s1_bradley_herman_act3_uwvekz",
+      "start": 0,
+      "seed": 22,
+      "split": "test",
+      "caption_sha256": "515c95675e5ad9c6ecd9b875c4fe2aabf3c96ea6bcf7b1d916df94953a4aee2f",
+      "motion_sha256": "2230de3c73063ae17d37c42bfe1c60eb9b19bfd9a9062874b2b2ca1301f6a099",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "183d912a4f693ee3f97b2ae762e8547c91cbe4ce1214f22b6d25dffd920c96e0",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "a0f2db9aca67c406d20e8ab8201c6335a35ab285784d56e167c2c0991e73791a",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "a2911345a8d8370487a19918e41d87f88c22a3f5dd8ca12e4c587de79b6dedae",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_23_S05__20230803_s1_jennifer_sexton_act2_s5pwb5_0",
+      "uuid": "S05/20230803_s1_jennifer_sexton_act2_s5pwb5",
+      "start": 0,
+      "seed": 23,
+      "split": "test",
+      "caption_sha256": "5e2f4c3bedcd64cd6390180743d16cb6fa9df191f871505cdb83bb54c7acedd2",
+      "motion_sha256": "13957ecd7585fbeebb1bf5dc2840cacf9f6b4a7e2ac2a5859357320c555a6277",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "ae6510e5a3ff218ba70a763db464080e755db2d64fb81721bdae1cbcdb184cf6",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "9e9b01444a126dd99c2a18d6af2af1120fe79d79bd8aac79cfd0e192bb920c9b",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "28e1ca82f814704fe8df9698ee9f1ad0dd9a585c93afdfedf2ecc8d87bde3f17",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_24_S05__20230817_s1_rebecca_ward_act2_39a7o2_0",
+      "uuid": "S05/20230817_s1_rebecca_ward_act2_39a7o2",
+      "start": 0,
+      "seed": 24,
+      "split": "test",
+      "caption_sha256": "42909efbf2c918aa5784178ba438bccc279fe5024360b5450e7a5a990f68dca9",
+      "motion_sha256": "31c4e8da125b149fdd80582c03978acec6bb6ce7ebe96a235c09a69dacf3465d",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "e26503419937068439c906e6263d379ef39e6421e3f2227b4fa7fb088eee9bc6",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "336c8662c899fb6617e1fc4c313842ec53cc261826b3a8c43962efc1acb61428",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "754997d15c7f152aef359565872cfe7ed509bdde8ba1638b24414aa2ee0563b8",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_25_S06__20230707_s1_elizabeth_tucker_act3_28shs9_0",
+      "uuid": "S06/20230707_s1_elizabeth_tucker_act3_28shs9",
+      "start": 0,
+      "seed": 25,
+      "split": "test",
+      "caption_sha256": "50d89abff9f6f77691285f763d8dadafcbe42b3cd21b2b1cb0318d0d1adb7b47",
+      "motion_sha256": "785b3083e37f6aa74d37ad8ae3b3183b06139259595e2f3e6ba0dddb6705b7a3",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "d0e745219ac1253f04e4d90bb94b038b0996990056657902678a3b653857ea5f",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "86713f3eb0d0ccbbda65f202ef0c6b1f23eeb366964a0ce34da240585964d849",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "e76399602b19ce5201b9e2edcc13be42a891770c07787ad52c647948e263cebd",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_26_S06__20230711_s0_frederick_young_act3_q30n7j_0",
+      "uuid": "S06/20230711_s0_frederick_young_act3_q30n7j",
+      "start": 0,
+      "seed": 26,
+      "split": "test",
+      "caption_sha256": "e8f9d1fb6b0997834bfffabdde01b02cdceb7cad93e2b2d8a0f5e77217af7e70",
+      "motion_sha256": "afdf1307ecbaeed08ac9502042958c1079f2e288fc89f11556df9e8cfad17faf",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "5aca00ee47d6f619eaf17550b56721046d3dd231b1a0a6d4cd14197da390dc76",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "d518231201f39497ca225e6744e03384675748a933a5511a1efd57ee957f53b4",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "485c928e211d57e63050ef07d64cf3145fac5d369a82f5be0dfcd748dd94b1d1",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_27_S06__20230801_s0_aimee_davis_act1_63lfeb_0",
+      "uuid": "S06/20230801_s0_aimee_davis_act1_63lfeb",
+      "start": 0,
+      "seed": 27,
+      "split": "test",
+      "caption_sha256": "60f25a872a707b9ea0c0d5fff1764dd79d105637b2f5e6ab20cfa87fe15e89ef",
+      "motion_sha256": "12fb12cfd1508a8adbfb845022d4776d820265feef352c7379a7a996ad1037f2",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "0e9fd9b7a4aa30369ee6e72082835a34e940d69441709f31ae20abab0c65b8bd",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "4ac53eb0346e74170723c24773d957d5a8e92230c7ff709dc8f700f6bc54d832",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "8a69d5eb31821ec60ece324d0a8a96818b1783300c617bf6e115c45dafacd8f8",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_28_S07__20230615_s0_dawn_heath_act3_k68qig_0",
+      "uuid": "S07/20230615_s0_dawn_heath_act3_k68qig",
+      "start": 0,
+      "seed": 28,
+      "split": "test",
+      "caption_sha256": "596b4475325d6106b7e767be2c13ab82d7744cc8109890c623b8e7ddd42565e5",
+      "motion_sha256": "dea45fbc2e1eae3bd6a11260baeab8e99a1216aabd2a9002233749c66284d32f",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "03f7f2adac0fb5fb690183180cc11a8338afc6a99793e840077a286325cb46d7",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "e8eca83862b0c3d715a8c1166c3bce8eb643cbd508851f2fea7b835dac89d9ea",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "5a058e55099c4a4d11b87a0c8b97486b391d90220191d0ff19a9d4708f64f41b",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_29_S07__20231004_s1_ashley_reyes_act4_mhhxmg_0",
+      "uuid": "S07/20231004_s1_ashley_reyes_act4_mhhxmg",
+      "start": 0,
+      "seed": 29,
+      "split": "test",
+      "caption_sha256": "7774fbe86b74bc898bc4b29b71baa7887671c62752b6f0dc7ed404e24245fea2",
+      "motion_sha256": "265dfd78b0ad000746e2268439f5dbcd5078436d8c6bedb15c25100778cc9d68",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "c5463c694015afc2d47e885bd2a514971bff7da225c27f80ef026b57c89ac33a",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "9f308fde759d267d92ea885db9fe9bc82fd7561cea0eaa2b98a082a76e0e205f",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "b062205eca602c669dc5af577b8674f8f759a74ac857cea865c4dca601aa10b4",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_30_S07__20231012_s1_johnathan_good_act3_r33pvo_0",
+      "uuid": "S07/20231012_s1_johnathan_good_act3_r33pvo",
+      "start": 0,
+      "seed": 30,
+      "split": "test",
+      "caption_sha256": "0a5e3e46d22f8a341582ea7b1a9c930012d439fd44bd20044ac078c26473a573",
+      "motion_sha256": "7964366a36c3c063fda0243c74b01fa36c64542b78ed3b5092f140ef9c592045",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "8f6e69c94163fdd433757ca56438921cb4b516fe6e5c4b9b8f051a5958ab20a6",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "e96dc73ba62a280b3fcf6e3c53b1f6f915d7b3167e517db6c5ef787590539ab5",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "dd0de29f2f551656ffb18d837ed2663d0ad8f2b6b83e77fdde79b4839660bfce",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_31_S07__20231013_s0_shelley_jones_act3_w23p1b_0",
+      "uuid": "S07/20231013_s0_shelley_jones_act3_w23p1b",
+      "start": 0,
+      "seed": 31,
+      "split": "test",
+      "caption_sha256": "97d481b50c67e17ae5a1d25871fc8b445a240776d909af1f0b62198d7aa2e329",
+      "motion_sha256": "f0a7bfa22b1ae4a3134208c7dd53488e00886f05fd0285d28f65f80273b880ee",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "55c620cb0217b73d8b85ad5aa7420105206869ac8e654bbbd37f74689934da12",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "f2cacd5607631da1c2a917b3af64cf7c251a18afc851255cf528a21af094d467",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "d77e4600deca24a1abdb073a358425a4733dd98eba84101bcbd3cd360c1e1f5a",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_32_S07__20231027_s1_stacie_cross_act0_0ii1m7_0",
+      "uuid": "S07/20231027_s1_stacie_cross_act0_0ii1m7",
+      "start": 0,
+      "seed": 32,
+      "split": "test",
+      "caption_sha256": "466837d869b8f1f00cfba739a103a866d7b1d4986a327cb6a2569531362cf6c1",
+      "motion_sha256": "221b7cf4fb9ea820f88a6ebf6714d589c4f9438ff9a703972c1f549211304485",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "127fb4a2223661667c0a348f72e83ddc7d9b550f318416b2e95b1a7165f3004b",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "c1b270867db5d30c280247aeb47cbac45a3d81d78c4988af48deb29710d37ba7",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "3bc35dd129860a7ba19fea5596d311c1d3c5b9dd99b9019528ea23c1a1306dff",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_33_S07__20231121_s1_christopher_martinez_act2_k0tjlc_0",
+      "uuid": "S07/20231121_s1_christopher_martinez_act2_k0tjlc",
+      "start": 0,
+      "seed": 33,
+      "split": "test",
+      "caption_sha256": "54c7a74b0473af662b6ad76f3c5b5f367aced98fb2c9c026b19336e8b6c8fd62",
+      "motion_sha256": "e9465cc6bda7aa8e38e8da77b7bce520541fbadd446a3ef0a48ebebe576d3cc4",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "58f187afa03bef1925a3eaca0452da16d7d7ff2763b7d00bb0e3934bf93015f9",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "c79a0b2f7b2a46a8700cf6c47b6a350b2e3cd53e92b6715125efd8c873f56a8f",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "dcddb642b7176879f623e17626250f711ecfc2933b0b5847ae2c23c29d2408fd",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_34_S08__20230622_s1_sherri_scott_act0_hy4alw_0",
+      "uuid": "S08/20230622_s1_sherri_scott_act0_hy4alw",
+      "start": 0,
+      "seed": 34,
+      "split": "test",
+      "caption_sha256": "c5624c0f417b327a07fe6d6abdf849a6bd77d0389a05b99fffd7357a1d014edb",
+      "motion_sha256": "c783ec54a3ca74609a9edc448927a827f7b67cd0ba9d166ca7141ec036456f6a",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "858f95d17e802d75eb177124e9dee6f866d83df3d07f9e402db3bcf1870042e4",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "c469d5018779823b777df565df0ab2736f8116644505467d1957aad3501e90bf",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "db8dd9a67cfaf4b563cde7e830da06dc014d2310972f27068b1d7096cd9a88bf",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_35_S08__20230703_s0_tommy_ayala_act0_c07rbi_0",
+      "uuid": "S08/20230703_s0_tommy_ayala_act0_c07rbi",
+      "start": 0,
+      "seed": 35,
+      "split": "test",
+      "caption_sha256": "2f6c0d254786bc1af2be0d35dfd0e71b62631abffa7cbd0c58ecf196010d2c89",
+      "motion_sha256": "28b152add01ad1acac05bfa7e5fc19ef8e7d4f9a83ea702d368c8c0f8bcc23d5",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "24aeaf7300e0d1940f1131349e66d544275685d2a8c50519274411ce3e0b156e",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "9ff28ffecbdc402827c842a34eb40d150a39cc56f0dc7d4acb132261dc893b52",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "7c11ea2d1daed4c26e6900c929d0d05ed1889348e14eff02050e17b6e447b062",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_36_S08__20230728_s0_lauren_mayer_act0_wv6a30_0",
+      "uuid": "S08/20230728_s0_lauren_mayer_act0_wv6a30",
+      "start": 0,
+      "seed": 36,
+      "split": "test",
+      "caption_sha256": "3e11c9f82af332ff4be5caec0d25cea466930eb6b485ed985b65306965d47d8c",
+      "motion_sha256": "814b6040d7099cd8b38bafe8712e93d134e868e1c0379e19ee6bec80fd067f58",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "77c7f2e094e791ea70a54ef3a49dfc1e48b05a59a99bb6a57d9cf870b003ff5e",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "099dfa2583861133f1de7a29cb193ca4bcc3e1dcb92b504f81e5b6ee64b221cb",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "4490625573381268fb79c5cc1a4b395f890f56caff821c69f326297231e7d57c",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_37_S08__20230807_s1_vanessa_chavez_act3_srm23t_0",
+      "uuid": "S08/20230807_s1_vanessa_chavez_act3_srm23t",
+      "start": 0,
+      "seed": 37,
+      "split": "test",
+      "caption_sha256": "02d6c7f53c80daf22b59b7cd305eee5a4536cd4483a28b2b188ff2d822868168",
+      "motion_sha256": "f1de9a144cf0cf41064d320cf5e4434aad828c5125b18d9d1535d86177f3e4c5",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "ec822107c852737f7d74653818d094970c564b374c76306fd44027babb3d0715",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "78b13838dd3d69b6585cdbcf4ff19b5b4f3f48014105e87c62e55e25de7a203b",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "b2126fd6784402158d64711e49124df2439ba88b8174fd71d4fa5096b1cc21f4",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_38_S09__20230720_s0_robert_ballard_act4_k3tu8l_0",
+      "uuid": "S09/20230720_s0_robert_ballard_act4_k3tu8l",
+      "start": 0,
+      "seed": 38,
+      "split": "test",
+      "caption_sha256": "966ff5035fd3fe054b1f0f3ca182c31951729ead733ca17b27323d79672050f9",
+      "motion_sha256": "ef2c736102a1a813b7cf71e788bdceac00ff326d2fa422e9590d9b7bbfa81cb5",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "f6210bd592d9410f7b7dac540f6c0bd4e541110151b18112062fde111d0ebd9b",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "4ec06ef8f07be1643c060cbc1f59bde8ada4ea8a3bc84103bcb67637d71a4b24",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "481f57c17f67965a2dcf02b99cfa7e8c9caa0b89128ba351e60203e13d7e2b55",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_39_S10__20230622_s1_sherri_scott_act1_p0za9g_0",
+      "uuid": "S10/20230622_s1_sherri_scott_act1_p0za9g",
+      "start": 0,
+      "seed": 39,
+      "split": "test",
+      "caption_sha256": "936aab08f3df37f901bff8cde6a185cc2795d4e5a37ad1f11362d2e31850a74a",
+      "motion_sha256": "537596bebf4184d197f320cb5ea24bb4c828383a804cdc14733728b98cc75a53",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "223ce178ac3b4a9c9b6a1b3caa234e7c234330873d81ebd798663774ddc005e9",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "ea692e95b7d53537a0496168522e6fd74bc5a566796a4c89b177d08f46853fb9",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "c204a11ab4f57840a2d60ccfaf3e5ec1b841b45adf1cd8fbabd3d301998cdbc6",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_40_S10__20230707_s0_anthony_perez_act0_wghngx_0",
+      "uuid": "S10/20230707_s0_anthony_perez_act0_wghngx",
+      "start": 0,
+      "seed": 40,
+      "split": "test",
+      "caption_sha256": "b9bfbb8c3837b5cd6ea6376ce7c6d20f5d30e0eaf63335f45a4cb3390b1068df",
+      "motion_sha256": "dda1c7e3b89af036ab4405e7a71d471436fd21454030ea9c1a44d79d60dc9c91",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "24bbe51b22a595622f646c989e4390ea1609988e31a9dcbbede341a479aa8fed",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "3da0dbe435f16e826f9b183f95f06cec71ff228ddac42f6f9c9c37cc131547ac",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "f87b922f43c82e81283dc4ede4b0c515450fe12e6af6d0293a5999a340228812",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_41_S10__20230719_s0_shane_smith_act3_sfxa5j_0",
+      "uuid": "S10/20230719_s0_shane_smith_act3_sfxa5j",
+      "start": 0,
+      "seed": 41,
+      "split": "test",
+      "caption_sha256": "82be171e63320970b5a307900ee3037377f3dbfa76781685f5501780afd9d668",
+      "motion_sha256": "e9283f72280c81ede031be60ec7192cdf59e800d79f1d4d7275c4b7d86581e96",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "d3387659ed22a82b05b4f9e7b3c98a9ee48fdde69f9ba46a971ca70a22126a0e",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "47b1c73e9c0904c164ac64f01dcd303355acd5ac794f061218fc2fec2ba76d54",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "635043883368dbfe7c15f4f7e44870d44816071de6343443dd6e03ca1cefa472",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_42_S10__20230828_s1_omar_patterson_act4_seazrw_0",
+      "uuid": "S10/20230828_s1_omar_patterson_act4_seazrw",
+      "start": 0,
+      "seed": 42,
+      "split": "test",
+      "caption_sha256": "89fcc4e4da8645012ecc1c71e6398860829907ab0896eef97326b7839c15d195",
+      "motion_sha256": "c3fd831f5aae1125a0a40af2a7b5d8c968752ba979ad3491c907c68f0fcce59c",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "767997545a532cbb995229528d763b7d9d3e354a4867fa4e9d7dbce51e406bfb",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "88833ed750269adc7e9fc9ce3eddda01801c7a0b9c30712452a7b14d377ba027",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "4df9de8fca0074b4dd0007fa0f8b840ca9e7e5294d81b7c4918cbcfd4c2da422",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_43_S10__20231117_s0_randy_martin_act2_h0cgyy_0",
+      "uuid": "S10/20231117_s0_randy_martin_act2_h0cgyy",
+      "start": 0,
+      "seed": 43,
+      "split": "test",
+      "caption_sha256": "a5b6e041d2342c210122a4306feb39d364d66babd8ac63510dcaac81df94f268",
+      "motion_sha256": "29e6d46053e46d7dea28f38d1960b1b20a02954ac191b5630023afcc30f6c003",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "602cde0b3631f759dba32e127faffefd38bd99e3f5cd1f5534a63f267db382e6",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "ff5e4d1d9420dc2dbbe6c10dbc2b8c7db43403441f36b68145fd6841d4e13455",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "cb19a5a8d323a0cd91bfd281dbe6b08176d4ed77829a7a6e1959197830ab5ac5",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_44_S11__20230816_s1_jeffery_bryant_act1_2a6fxu_0",
+      "uuid": "S11/20230816_s1_jeffery_bryant_act1_2a6fxu",
+      "start": 0,
+      "seed": 44,
+      "split": "test",
+      "caption_sha256": "52449107665fead43d739de3ae6c767f121a2f6300988f90c1795bb284e522ee",
+      "motion_sha256": "1f6f978d17c7dfaaf94fe6bd3a4cf5aaca93586a2d39a3f5425a03361762dca4",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "ad0f89656b053785016ec37b85f4ad4a0d845558bcf63cc6722c345db35733d2",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "9929a01dc2ad6d9d2d61df7681cbcb956795a686e2866e6a300fed6300d5dc54",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "445615fa317a5223ea78a0ff454b9a6655676d36a10b51876f9379293fce6105",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_45_S12__20230609_s1_heather_becker_act0_pxfo7n_0",
+      "uuid": "S12/20230609_s1_heather_becker_act0_pxfo7n",
+      "start": 0,
+      "seed": 45,
+      "split": "test",
+      "caption_sha256": "b76f7871b1fc4ddf87b3f8f970dac48a62b433bd1d0a578f4d5fbe585e6d99af",
+      "motion_sha256": "3cca050e42d6dde34aec23f366117fd318f2518923df311c3c742c731ecfeaef",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "f79d129b67907768836080a9f6455b1212807b3ffdd1165f94fd66512a487147",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "41464ac2e1a1dabbf041a0ff3d359fa5ee7ce3dd6ae22c83b684c3a1d99d790c",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "6b5da2d968722a52f54b02f39f8f58bbf154d7329881b9c55b272936f3bf252a",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_46_S12__20230612_s0_jason_smith_act4_r35kbc_0",
+      "uuid": "S12/20230612_s0_jason_smith_act4_r35kbc",
+      "start": 0,
+      "seed": 46,
+      "split": "test",
+      "caption_sha256": "7345209be620c1726e0bc2dbf6f4567fc766ec21f550d9ce3f049f313bb53223",
+      "motion_sha256": "d4baff51a105ada8e0d8edc884f07471d8d485af4dd0e0dcb6ec2fe3ff7dd173",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "9647c74a3eefdc87a2a3efee577576fc88e9fa40c8d8daafe177704f53390e53",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "ea10f774a4ad8e5d46d9f8cd6a43868497a2b16c552ecae6786d81edfd5d3b3a",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "8c9b7cc8e9b9a3ccbde51c60d1c46ffe0410fe5b9be891292e774c77cd1b024c",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_47_S12__20230706_s0_breanna_reese_act0_cfg468_0",
+      "uuid": "S12/20230706_s0_breanna_reese_act0_cfg468",
+      "start": 0,
+      "seed": 47,
+      "split": "test",
+      "caption_sha256": "dee9a5c434be49d9217b6334a36e8237a039ec5987bb2d2f9913a93c4d689903",
+      "motion_sha256": "4c9ff9fe363a24965466996c55bca37a491abe4b1aa0cfd2750753547c516f09",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "d96cedc46462424855b22576571142c172cf783a5248b5adcd37c75464d593a4",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "0a7545561cf0edfe50872600d8b9d097bc85be7992fb857d0c2be91c11ab9c08",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "467f8e091207c5f35a54a600763f5310fe4ad4079c1f35898f12371af43be312",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_48_S12__20230907_s0_margaret_mccormick_act4_s9mmh0_0",
+      "uuid": "S12/20230907_s0_margaret_mccormick_act4_s9mmh0",
+      "start": 0,
+      "seed": 48,
+      "split": "test",
+      "caption_sha256": "23a1adb6a8d99262f95a3aa6abe59264cb0aa2fc6b34f8d03b132cd6c8948738",
+      "motion_sha256": "ce8a4efb98e1d7e20fe09d269834555f53ea9e9c333939ea3da2683fef0756d4",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "8ea61156ff7b6b67b5ef3b39678127cec013833e3ad5cfb1247eada4ab004518",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "3e97ba8b1c01dbd566d17e662c740d4e00f4368c8dc4225a016fa2a65e3592ac",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "0c0680386b2e3b05ff7cebda41601ce517203b9d55eeb7cbcca064641a27b68a",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_49_S12__20230928_s1_barbara_sandoval_act2_btx6gv_0",
+      "uuid": "S12/20230928_s1_barbara_sandoval_act2_btx6gv",
+      "start": 0,
+      "seed": 49,
+      "split": "test",
+      "caption_sha256": "4dee4b960a3b4f3ca59199b785056fffb8a22eac31de4688ca896105b7415481",
+      "motion_sha256": "8d2578784848d2dd940a767bbfc5fbd24d27273fa1af1f1d5ad30b0a7c721a16",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "2b55bb7b868fe26cdeea507e9273f2098d2ec3ec9ed7afdab24d08129be5f619",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "65419f5a325802d6a31e996a474b3d6d9d730546e366040acd78379944f63cff",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "a527de69c3cabd512bcb771c5a3d08011b6f31b941cf88069c751a30b3791f64",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_50_S12__20231004_s0_corey_coleman_act3_45q7f3_200",
+      "uuid": "S12/20231004_s0_corey_coleman_act3_45q7f3",
+      "start": 200,
+      "seed": 50,
+      "split": "test",
+      "caption_sha256": "93e4db91a320889b3e4b21026ec3fc6def81405117d01053d4dc5cdf62c56334",
+      "motion_sha256": "98333ceb90e2c85e4d9af12c6102f2dbb2e503a1327b882b52062eaa7437b1bc",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "cb06dcdcd1302773011a4ffff5f493b5417c3636c25409aca68994aa9882cd4c",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "fd62f3532a29497d5dd5daa5c0c503d94c230ad0ae16702b80824d20abe30471",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "1938a177fee27d62b14d2a3fa8b98d78b64ccd1091284ccffee98d235e3e6e4d",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_51_S12__20231117_s1_brooke_butler_act2_yhi7zj_0",
+      "uuid": "S12/20231117_s1_brooke_butler_act2_yhi7zj",
+      "start": 0,
+      "seed": 51,
+      "split": "test",
+      "caption_sha256": "9eee2aa745aa50c602dabf046a47c83dd6e1387e8a0dc6e24eb12c5192a4cc8b",
+      "motion_sha256": "8774d141f8bf5b76be95b8a12b2d7a616fc362ac4e45a8d1ac1d6c335fa86a21",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "be974975c5bc201f90152ac8d46b782596ed81fcd370e3fbaca5e7bd40d6a613",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "72cfd0a2c8d0f5226710196a12aee3ef8a844105bacb6a038b4cf45d8e1091c8",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "513140c51667083c954459ed73f6aa176bc66af958692d89afc7b25d06845a03",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_52_S13__20230717_s0_danielle_ortiz_act1_kn2tq7_0",
+      "uuid": "S13/20230717_s0_danielle_ortiz_act1_kn2tq7",
+      "start": 0,
+      "seed": 52,
+      "split": "test",
+      "caption_sha256": "a34b3725c0a4aa7f594ff910efd54666eb6583f87bd8e3ec39f6cbd8d864f9df",
+      "motion_sha256": "f78a85539ec499e52954ac5d6cdacb0bca9c3806780bd18738a0530a8d02b036",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "da530d0ab566cb4821159f434dde4950970af100ec794601359d7e3a4c57cb8e",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "1b13086b963e776e2f9c7dbbc3896a19e4b6c6df72d16464529e609dad606966",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "6187762d7a0b7b26f88df3909ec77281c3a4a21f4b9649d208cd46db0c6aef0d",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_53_S13__20230822_s0_kyle_parker_act3_eetg21_0",
+      "uuid": "S13/20230822_s0_kyle_parker_act3_eetg21",
+      "start": 0,
+      "seed": 53,
+      "split": "test",
+      "caption_sha256": "f76d30f3bba6f87e7ce2d7c2afb50274816852584116cd4f583818a4bbaece69",
+      "motion_sha256": "4e19cadeb21d7d761e40bef622de0fb41cb8fe397abe834313472ab92164c13b",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "9e48e3493f5813c4b1f24c46480acb961013e17a75182d1f5749da71e870159d",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "443ba80c4487286421a2b091acc684417a578478ce2fe7bcab512e59b05fb2ab",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "1eeec3928d7b7cb1bf8bc310f6aa0b41787cedf606d6762643f00117ad77b9d9",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_54_S14__20230607_s0_james_johnson_act0_e72nhq_0",
+      "uuid": "S14/20230607_s0_james_johnson_act0_e72nhq",
+      "start": 0,
+      "seed": 54,
+      "split": "test",
+      "caption_sha256": "98b2b11dd048b2e9ce4d5049f417dd249c74a235323f65bb3d2ff579ac0b5ce6",
+      "motion_sha256": "d685bc2ce75abb730f1af875b2946885d585c8180d3fdc61c55db98000c7c79a",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "862d56b9f8f8eb1d63ff51b341efa502e11903ebab295612a439dcfef78e5fe2",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "716c3a11c77d062ff359eaedef442660bb84ef64de1896d58118469566aacf88",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "3cdfaeb93dc09850903aa05f95c7f1bfa89c1c2b88250e6d098dc4170a49085d",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_55_S14__20230630_s0_gloria_carr_act3_6gxzvl_0",
+      "uuid": "S14/20230630_s0_gloria_carr_act3_6gxzvl",
+      "start": 0,
+      "seed": 55,
+      "split": "test",
+      "caption_sha256": "c9ee8ef1e69ec7f9600a14980a72a225f290255a14e4d69a08188305e042c52a",
+      "motion_sha256": "4f9ac394953e1b02ef962172fd384201d9a71afafde2a5ebd5576a3b7922f780",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "6a07dccdbbb117d4d5e2288ba3d64c59465a8ea80e293ef7a04bd491a0cfac70",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "270e319c3e1d6ca1e0e2ad2aaba7381439c360f441484ebc303921ac4c267b52",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "3c1d48710977072ab26f07c12c003203889768bf9de223a33a144a8d0cfb9de1",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_56_S14__20230726_s1_thomas_nixon_act1_k0zomm_0",
+      "uuid": "S14/20230726_s1_thomas_nixon_act1_k0zomm",
+      "start": 0,
+      "seed": 56,
+      "split": "test",
+      "caption_sha256": "075399bc65f5d99e99fadee95660bcfdae30a9e62f82e7aae337832695b300be",
+      "motion_sha256": "df4bf1d0d5f5af41b5ac08f80138cc826c74e22b06e4a1666fcd8c9d91406587",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "0eca9e24d14cd182b378c7ed73ef39e9a657b32caf7c862717b3ef7c512ce731",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "ea9368908830ca3dcc2992264aec97f9c1a227ab4df894115d793acf043f6479",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "a39126e7a3e8c8b281f7ac7d9927dc57ed66f37a8725c855350dcece492ddf12",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_57_S16__20230913_s1_austin_lopez_act2_4ubdk3_0",
+      "uuid": "S16/20230913_s1_austin_lopez_act2_4ubdk3",
+      "start": 0,
+      "seed": 57,
+      "split": "test",
+      "caption_sha256": "88e817eafb32e968fd5a5a15303294543bbb4fc1ef18bf0c5145f419b59a2166",
+      "motion_sha256": "4d82563c88aa10ce878bbfeebb94cb28531060188c3f4a0258ad28808a22b47f",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "02437c565a7f7eab84fb1efdd9c07b9b4e329ca723a3cd4dfa6998efdb47aef7",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "cf3ad092becbb39d049012c8f409448baa4a47b1b1e81ad93704551748f6799e",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "7646cf8d4db5b3955dcc5049e29a5681f843ab683afae8e6d677d2b49c5866e1",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_58_S16__20230925_s0_suzanne_romero_act1_s6o3mq_0",
+      "uuid": "S16/20230925_s0_suzanne_romero_act1_s6o3mq",
+      "start": 0,
+      "seed": 58,
+      "split": "test",
+      "caption_sha256": "6073835a51661c418acef5eb25c0b3da0f16324e9255d3bbec0357c28251b604",
+      "motion_sha256": "f4ea7dfae08636bb58554b5a71761b444f52dd415315280ecc6e71134ce172a1",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "cca93bcb3b2ecc77dd2b99feec6fdb592f7f4e026d852a4536eb60a0509eced3",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "f07a1e37c52484bb3671043e051f94c13822d3fcf52781b8af28eeb483671143",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "d3d7c57a9694846528122d4f81daf56852204adf7062c20f62c3368795657603",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_59_S16__20230926_s1_megan_mejia_act1_bxit2f_0",
+      "uuid": "S16/20230926_s1_megan_mejia_act1_bxit2f",
+      "start": 0,
+      "seed": 59,
+      "split": "test",
+      "caption_sha256": "7deda32295c6c48fc34d10f0903bac724aee7cc872da95d264030fc3fe257109",
+      "motion_sha256": "6213511968c503e13f8022c0f7b2060596e51c9e8c4a5f831c0844d3f40f764e",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "1e75b9ef111dff2023122beb5bc2b4f45bd0e67010a37fa36dc771aa66b81334",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "a358b5452365963059f9bbaedbe7c58f671081335d6fe35639c551c9d8f905a1",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "963bab7d90ab5ba4a2ff0a892e3559d7fd6e6c51bea21f0cf7b7f6ba9640f3f4",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_60_S16__20230926_s1_megan_mejia_act3_g2y140_0",
+      "uuid": "S16/20230926_s1_megan_mejia_act3_g2y140",
+      "start": 0,
+      "seed": 60,
+      "split": "test",
+      "caption_sha256": "91fd41150f1f263c23736166d70e4284ccbcb84a37ed53d042e837fe593f4865",
+      "motion_sha256": "4c49679ede43292c96c693067a9fb70f2e8aa9a2f755a73593cec7ab92e9ff2b",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "de598c14704162383a01ddf8aeaf1586bf58395895f588b98d8d640ec40ba3ee",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "663cf55690888201043666ebf2ec066dec5dc04bdc6f00d4293847bff8210393",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "d0b6e2cbe30c6ff5bf93c18f1aac012a05970e42dc6411ee19548a304b13d8ac",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_61_S16__20231003_s1_allen_evans_act1_8mgvm8_0",
+      "uuid": "S16/20231003_s1_allen_evans_act1_8mgvm8",
+      "start": 0,
+      "seed": 61,
+      "split": "test",
+      "caption_sha256": "05fb50071809293b071b707cc6bbf8d3a210acddcbb8d43a90c7e787b6120737",
+      "motion_sha256": "f837c0e223e268135f8976b793f1e88007cff905d8b325cd4bd8a906a7a07e8b",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "a81228b38804cfe429e2ad7f83d287563517a6fef9490c86ef3e040cbfdbc9c4",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "674135678c15fe9c4a21fd22319b7403a4f9e735291db902c51d938cc8ea9d93",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "3c8d6122f98ba54d128b7e993dccf2498728199078c768ad6b9adca9dfbfaa38",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_62_S16__20231017_s0_emily_farmer_act1_zeh5ol_0",
+      "uuid": "S16/20231017_s0_emily_farmer_act1_zeh5ol",
+      "start": 0,
+      "seed": 62,
+      "split": "test",
+      "caption_sha256": "60a7d92b77771f305d3aea20747494895489a0c00323321e61a923e45ea091f5",
+      "motion_sha256": "208e22613f8ff7687efa01d07787b27f9bea9fba0dbe695a859cc553b1f554a0",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "595589684d1e55a333492f72ead775c417db81e50d5ffcf61e902658213df889",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "a3c55a1670c88e85164b6f088bbb713c9435dc3c533f1ce13b7e8c30caf8e0c1",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "6d83f77fbea79fa9990bd6fe32d8c3918cc911a65950c7ff9ddd73536ce0eba7",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_63_S16__20231106_s1_amanda_rodgers_act1_t0mhqi_0",
+      "uuid": "S16/20231106_s1_amanda_rodgers_act1_t0mhqi",
+      "start": 0,
+      "seed": 63,
+      "split": "test",
+      "caption_sha256": "a29c52f2e148d7ae8d03deaebf871445376d6d546ccbe327f44e4fb396672f08",
+      "motion_sha256": "7815be2c48d1c9a9e45914c64138d1088474d391cc5ba027776ef3b47d554242",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "cfaf7c7a698b7752da00517dddf2f9f022aa7e9ad3c22b95e3db70a1e0fa1448",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "32d0046b276a72436aebf071f0785edecc9b7650a83c729d76b5876798fd48ba",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "d1e36219cd29a07658b3f54a28023e906327be96953ccd840f4979df58021651",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_64_S17__20230918_s0_kevin_shaw_act2_5g4k0z_0",
+      "uuid": "S17/20230918_s0_kevin_shaw_act2_5g4k0z",
+      "start": 0,
+      "seed": 64,
+      "split": "test",
+      "caption_sha256": "dd341238c13c515db6bc53e2754d68f63690fd1ef6ef225d5381e2152a8990ed",
+      "motion_sha256": "e2376e7c5874bd539ba5199a4d8b46bb6fff3c4f1a679ad93a6e8fba0d5f7cf0",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "b9929642823153870c48b34539e6174c273a02b5a16db7d33c6a6f7477d39ea8",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "29b5b670cff817f9b8ac79e8a9800988cbd532a6ba7c9f613e11667cf86b90f4",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "0d54b93d9ea0289fb842d593e1f64ca8a0e86d12a56d877bcc736d6341415863",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_65_S17__20230919_s0_andrew_taylor_act2_8ndt6i_0",
+      "uuid": "S17/20230919_s0_andrew_taylor_act2_8ndt6i",
+      "start": 0,
+      "seed": 65,
+      "split": "test",
+      "caption_sha256": "bbb19b601f6fe36c24c88fdb5fc449e620f2de903f291f5326328da0edcb7147",
+      "motion_sha256": "a0bb1ca4edda2e99121ab0215e6d59ecdd70b16555a8b4045b9efd646d67ff2a",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "602265790e958355b30d4f5a95dd58488955077abf6bd44364beffd1d3c3a99e",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "fe7e579363b36c02fc01490417d3fd4e3991ecd8a00021adef1c5b46d6997a07",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "c3882fe6a466825f95aa0d7d28c127fe14c6a5652ac1c690b2ad090a2fe6bb08",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_66_S19__20230608_s0_shelby_arroyo_act3_h8gcy2_0",
+      "uuid": "S19/20230608_s0_shelby_arroyo_act3_h8gcy2",
+      "start": 0,
+      "seed": 66,
+      "split": "test",
+      "caption_sha256": "7cafb1c8ce955bb90e5fd6a21b3970c4532961e5f9bc372554cdef0e53228271",
+      "motion_sha256": "7752ad95cd7b7284c1b210c92298fdc4e882027f33b5d33943f3cde988124822",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "205d8fad02f1899bf9c3f5af94d0cd35642029f800e97ff7123a403e88cc9e02",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "73f6baefcd47149a32db8f12bfa85776a4056796dc079a666a60ac2bafbf8145",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "01f84ae9ba1ee272246b54f04a2ac1d51e204a3bfc6e90077a49d8f138d690cd",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_67_S19__20230919_s1_jessica_webster_act3_sry5zc_1700",
+      "uuid": "S19/20230919_s1_jessica_webster_act3_sry5zc",
+      "start": 1700,
+      "seed": 67,
+      "split": "test",
+      "caption_sha256": "7ecf8ed57233f112d1ac062f83ffe0597f869d509f9e8b42fb1d86a3c03fa15e",
+      "motion_sha256": "a60fb9b65f669b7c6d0f569e543d841bc02daf235cd2f9c64d5a37b3af049f8d",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "1bc44531f6da03a53fd975299823591a2a1f3cd560d45790f5570539bf0a91ed",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "e5298031202757a8fa1ad81abc63a4685f80e65edd41af76aaaaf80cafd7d04e",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "4499016adc1304d3222a4d44d422580dbfb9ba6be54b9ba3e78249af8e6c288c",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_68_S19__20230926_s1_megan_mejia_act4_qfzkks_800",
+      "uuid": "S19/20230926_s1_megan_mejia_act4_qfzkks",
+      "start": 800,
+      "seed": 68,
+      "split": "test",
+      "caption_sha256": "876acad67a9f3e6cd5e473bff03403d0a6120d9fc52b4687337cb4176999254b",
+      "motion_sha256": "2ccc2a70c7b526a5824b590411a0f0eae9b6685fe47348104f980283091b67b7",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "2b24629cfa80e82ddb6dcc2a7008206137715c806bbe315276143cbfa12217b1",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "8933e1cb273fe4d5969b3422364b5f77c854b33005bd86c34431224c4757d1e4",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "418f4d0a116493385c7fb62d3171bdb8dc09067f5e5bcdb8919907ded010eb9f",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_69_S19__20231020_s0_anthony_chen_act1_vhzag9_1740",
+      "uuid": "S19/20231020_s0_anthony_chen_act1_vhzag9",
+      "start": 1740,
+      "seed": 69,
+      "split": "test",
+      "caption_sha256": "e4e578ce30a48f9de60990e5858c15e468531e913066b28d1f3eaacbd5eaddee",
+      "motion_sha256": "6fdec7ba8e6c4c6428736c84c6b43e1d705aa29e913f666daf49ccd4797e3aa0",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "5e29eecff017d9189d53537e9ae511c544cf3d2bf9d010690be8452e7539ee9d",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "8ce63fa133c2872bab12585378f455d8c72041ef3f777bfa11c79a25de8cf6ac",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "5add636ed1dfea85827726aca917da046d4b450943efb8466946b92659ea2baf",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    },
+    {
+      "id": "case_70_S19__20231117_s0_randy_martin_act4_hernaf_0",
+      "uuid": "S19/20231117_s0_randy_martin_act4_hernaf",
+      "start": 0,
+      "seed": 70,
+      "split": "test",
+      "caption_sha256": "210a3f7760af811841c39615c983d3e9904524e352d89cee6539fa1aee65fab9",
+      "motion_sha256": "3b20e1b4597f15780040bd9cb2aa96fe647b4dab440bde51b4a4df5183dcbb72",
+      "motion_shape": [
+        97,
+        283
+      ],
+      "neutral_sha256": "0ef744d596f3bc6b8bb55baa031c171fbed2c8b073bb29f1d137a9562456e287",
+      "neutral_shape": [
+        30,
+        3
+      ],
+      "video_sha256": "7fcae568ad3a83a8aa35e9c39a57d6bfdd087aa3e3fec2ed572dd2bb1c58ebc0",
+      "video_shape": [
+        48,
+        25,
+        16,
+        16
+      ],
+      "rgb_sha256": "f13f78f7233af6d76e012505838403cc508eb438dbefc9c9ec690cc4e9a54e01",
+      "rgb_shape": [
+        97,
+        256,
+        256,
+        3
+      ]
+    }
+  ],
+  "evaluator_sha256": {
+    "body_adapter": "63ab10a62392aed8d6172b6fa85561cb6f0756d14e82e743e7aeff8e6113afa8",
+    "cases": "e1bec2334ee67ea4b87e53897ef9f19388b2d591ee79ec847bb50f3be4f2703b",
+    "dreamsim_files": {
+      "checkpoints/dino_vitbase16_pretrain.pth": "bf34ad0f424b9029b593e8dc3ed553bf26e88bcba0d32bf3e62a6209cb64c85e",
+      "clip_vitb16_pretrain.pth.tar": "21bb58dddc9747d635638eaef19a50404fa71ef62b837c4181c92568a5d78779",
+      "dino_vitb16_pretrain.pth": "491ec6200b350dd7d532cea1b040846cbc1b4ae038299331168fdd3e0361e262",
+      "ensemble_lora/adapter_config.json": "188f2c0640295f91a4375efd0a1594e5985bb38c90a9040cec8c5f4b9f8f0e20",
+      "ensemble_lora/adapter_model.safetensors": "a33ba2cbfc52a96f1fa220d7d036fd17e00d5fc9b467be2f97a5482e8a2b09c1",
+      "open_clip_vitb16_pretrain.pth.tar": "963c665c8ba6edd6ef7a7549f3f72fe20586494223300030f5b2efbe36f04319"
+    },
+    "i3d_preprocess_source": "47453a2f829e59f613273319b5d2aa838ed0408fea8533bfc00dceb71820504a",
+    "i3d_source": "694bbaf3e6d8c037b9c3e9c3788988a4a4598cc819264b0f16899061172ba695",
+    "i3d_weights": "2609088c2e8c868187c9921c50bc225329a9057ed75e76120e0b4a397a2c7538",
+    "lpips_alexnet": "7be5be791159472b1fbf3c69796f7cb30dca7ad8466c2df70058c37116cdee02",
+    "lpips_linear": "df73285e35b22355a2df87cdb6b70b343713b667eddbda73e1977e0c860835c0",
+    "text_cache": "c7418424b3d1e77597898e7964dbc11aa1169ad67f3ac65ec937ad22a3676f5e",
+    "tmr_checkpoint": "91f9d8adec6bcaa448571dade670da0f94916e448b875a0853eda29ef44a1e21",
+    "tmr_stats": {
+      "mean.npy": "9ac9d47414dc8e777a2c0212c350b5dbbea5f43a31564bcc4b748ea9ae218f07",
+      "std.npy": "8f662b94d580ad5e522235a07a237a354c2b66ca508902f4377a6d45a265147f"
+    },
+    "vae": "20eb789667fa5e60e7516bf509512f6cb61f01b0aa0695eadaea930c13892b36"
+  },
+  "motion_metrics": "unaligned Body23; whole-clip similarity PA; UPE14/LPE9; four-end-effector mean sJPE at20FPS",
+  "motion_fid": "Nymeria91f9d8 matched Body23 completion, all71; R32 three groupings64 scored/7 dropped",
+  "video_metrics": "native future RGB1..96; I3D400 six16frame segments/window,426 descriptors",
+  "cross_server_rule": "Compare portable arrays/captions and evaluator hashes, not local path/config JSON hashes. Different/superset text caches require selected71 embedding parity before ranking."
+}

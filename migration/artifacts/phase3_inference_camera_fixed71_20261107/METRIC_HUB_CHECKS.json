@@ -1,0 +1,6 @@
+{
+  "repeated_initialization_uses_pinned_path": true,
+  "success_restores_path": true,
+  "failure_restores_path": true,
+  "original_guard_unchanged": true
+}

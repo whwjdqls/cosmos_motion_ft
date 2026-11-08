@@ -1,0 +1,14 @@
+{
+  "legacy_sha256": "1df927ecb2e2dc6efb5677d94eb3f11588d7842dc3664b890b2d53064216a029",
+  "legacy_source": "/home/jinhyung.kim/cosmos_motion_ft/motion_expert_phase3_edge_image_joint_camera/sample.py",
+  "modes": {
+    "motimg2video": {
+      "coupled_motion_video_camera_native_bit_exact": true
+    },
+    "video2motion": {
+      "coupled_motion_video_camera_native_bit_exact": true
+    }
+  },
+  "passed": true,
+  "runner_sha256": "b9e7c9eaf477a30af65ad8e42643df242272a2d4a0c44403e99d29567896ecef"
+}
