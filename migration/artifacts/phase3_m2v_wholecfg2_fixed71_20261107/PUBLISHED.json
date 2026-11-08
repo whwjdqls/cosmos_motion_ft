@@ -1,0 +1,19 @@
+{
+  "utc": "2026-11-07T08:56:51.565229+00:00",
+  "page": "https://app.notion.com/p/binne/devugged-MMdiT-410d2a44f44b8098b1b7c7af42d2353b",
+  "publication_success": true,
+  "models": 3,
+  "windows_per_model": 71,
+  "cfg2_predictions": 213,
+  "weights": "ema",
+  "whole_bridge_cfg": 2.0,
+  "captions": "empty",
+  "all_evaluators_exited": true,
+  "all_training_ranks_alive": true,
+  "attachment_ids": [
+    "411d2a44-f44b-817e-ad5f-00b2f252817f",
+    "411d2a44-f44b-81a7-a345-00b255784121",
+    "411d2a44-f44b-817c-a765-00b22386fecf",
+    "411d2a44-f44b-812c-84a2-00b2c3acb6fd"
+  ]
+}

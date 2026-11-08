@@ -1,0 +1,7 @@
+{
+  "text_injection": true,
+  "empty_restore": true,
+  "exception_restore": true,
+  "caption_leak_guard": true,
+  "training_source_unchanged": true
+}

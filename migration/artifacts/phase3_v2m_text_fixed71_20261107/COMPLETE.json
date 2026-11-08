@@ -1,0 +1,28 @@
+{
+  "page": "https://app.notion.com/p/binne/devugged-MMdiT-410d2a44f44b8098b1b7c7af42d2353b",
+  "utc": "2026-11-07T08:18:45.872127+00:00",
+  "uploaded": [
+    "metrics.csv",
+    "directional_video10_evidence.json",
+    "bidirectional_video10_evidence.json",
+    "directional_video1_evidence.json"
+  ],
+  "attachment_ids": [
+    "411d2a44-f44b-8132-b2b7-00b227692c50",
+    "411d2a44-f44b-8199-bd80-00b254534da5",
+    "411d2a44-f44b-81f6-838c-00b2cf551f8f",
+    "411d2a44-f44b-8147-9d8a-00b2e9bb59d0"
+  ],
+  "update_success": true,
+  "models": 3,
+  "windows_per_condition": 71,
+  "total_predictions": 426,
+  "batch_sizes": [
+    64,
+    7
+  ],
+  "weights": "ema",
+  "whole_bridge_cfg": 2.0,
+  "all_evaluators_exited": true,
+  "all_six_training_ranks_still_alive": true
+}

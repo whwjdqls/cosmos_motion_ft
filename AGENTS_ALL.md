@@ -253,6 +253,294 @@
   operations/wandb_run_naming_20261107/VERIFIED.json. No other site's names
   were changed; local checkout was not merged with newer remote code.
 
+## sep-2 exact80k evaluation and100k preservation (2026-11-08)
+
+- Exact80k fixed71 matrix published at https://app.notion.com/p/412d2a44f44b80a596efe81457114ea2:
+  available15/21 settings,1065 outputs;37 numeric rows and17 fresh-download
+  attachment SHA checks pass. Other-node sections preserved; no model/CFG
+  selected. D/videoW10 exact80k was pruned: only cached nativeCFG1 M2V is usable;
+  six requested settings remain pending, never relabel100k/110k as80k.
+- Current text condition matches sep-1: caption enters motion expert ONLY,
+  generator native V2M captions stay empty, same text in both CFG branches.
+  This differs from the older both-specialist text evaluation. All training
+  remains NoText. New batch71 vs native cached32 packing is recorded.
+- Both native426/N−1 FVD (matching sep-1) and additional global71/population
+  I3D/CD-FVD are reported separately. Portable71 inputs/captions match; different
+  text-cache files require selected71 embedding parity before pooled retrieval.
+- All THREE sep-2 exact100k checkpoints are now preserved and SHA/full-state
+  verified in cosmos_storage/preserved_milestones/phase3_100k_20261108. These
+  are node-local retained hardlinks outside pruning, not shared backups or
+  independent copies. The watcher completed; do not treat its PID as live.
+- Read nymeria_baselines/SEP2_80K_FIXED71_20261108.md and
+  migration/PHASE3_100K_PRESERVED_SEP2_20261108.md. Evaluation GPU4 released;
+  trainers/source snapshots were left unchanged. Never kill the production B
+  controller merely because it lives in an older evaluation operation.
+
+## Directional 70k CFG sweep complete (2026-11-07)
+
+- User selected directional/video-weight10 step70000 EMA. Evaluated 15 V2M
+  and14 M2V settings on the exact71 windows/seeds, empty captions, UniPC35,
+  motion shift3/video shift10, batches64/71. No cohort resampling.
+- Best tested by declared primary metrics: V2M whole-bridge-off CFG2.5,
+  MPJPE18.001958cm; M2V whole-bridge-off CFG1.1, DreamSim0.138729.
+  V2M2.5 vs2 paired MPJPE CI includes0; whole-off2 has better acceleration
+  error/TMR FID. M2V1.1 vs bestcross1.5 DreamSim CI also includes0.
+  Exploratory fixed71 tuning, not an independent/global optimum claim.
+- Full quantitative tables, plot, six fixed videos and two evidence ZIPs
+  published as a NEW top toggle on devugged MMdiT, earlier results preserved:
+  https://app.notion.com/p/410d2a44f44b8098b1b7c7af42d2353b . All85 table
+  rows match; all9 attachments fresh-download size/SHA verified.
+- Operation cosmos_storage/operations/eval_directional70k_cfg_sweep_20261107T092224Z
+  has COMPLETE.json, full arrays/features/metrics, guidance/native acceptance,
+  source manifests and publication/download receipts. GPU4 released;
+  all three trainers continue unchanged,382 frozen source hashes verified.
+- Details: nymeria_baselines/DIRECTIONAL70K_CFG_SWEEP_20261107.md.
+  Production B controller remains in the OLD EMA evaluation operation;
+  never terminate it or broadly kill all processes matching evaluation paths.
+
+## Matching latest M2V fixed71 EMA CFG2 complete (2026-11-07)
+
+- User requested M2V to match the latest V2M/text evaluation. Same pinned EMA
+  B60000, D/video10-70000, fresh D/video1-40000; exact71 windows/seeds,
+  213 generated clips, no skipped cases. Full clean283-D motion, supplied
+  shape, one initial image, no captions; native UniPC35/video shift10,
+  all-seven-whole-bridges-disabled CFG2. Batch64/71/71 respectively.
+- PSNR/SSIM/LPIPS/DreamSim/I3D-FVD/VideoMAE CD-FVD:
+  B18.435320/.563804/.269510/.159872/327.612078/315.485667;
+  D10 18.607550/.567669/.267646/.159007/336.092539/323.091724;
+  D1 18.350652/.560034/.273314/.160690/333.829863/321.261816.
+  Different training ages; no matched-step or causal weight comparison.
+- GT video features freshly computed once and match old canonical71 exactly
+  for both evaluators (maxdiff0), reused identically for all models; heavy
+  evaluators loaded once. Same lossless pixels/future frames1-96, original
+  FP32 feature definitions and71-clip population-covariance FVD. Native CFG1,
+  DreamSim batch parity and all213 initial-latent preservation checks pass.
+- New top M2V toggle on devugged MMdiT preserves all earlier V2M/text results:
+  https://app.notion.com/p/410d2a44f44b8098b1b7c7af42d2353b . All22 table
+  rows exact;6 videos +1 evidence ZIP fresh-download size/SHA verified.
+- Operation cosmos_storage/operations/eval_latest_m2v_ema_fixed71_cfg2_20261107T083008Z
+  has COMPLETE.json, per-case/horizon metrics, latent/pixel SHA manifests,
+  all features and publication receipts. GPU4 released, trainers unchanged.
+  Details: nymeria_baselines/LATEST_M2V_EMA_FIXED71_CFG2_20261107.md.
+
+## Latest V2M with and without text, fixed71 EMA CFG2 complete (2026-11-07)
+
+- Newest complete checkpoints at selection: B60000, D/video10-70000,
+  fresh D/video1-40000. Exact previous71 windows/seeds,426 motion predictions,
+  EMA,35-step UniPC/shift3, whole-seven-bridges-disabled CFG2 reference.
+- Video+text is an explicit inference-only caption intervention into BOTH
+  frozen specialists; same caption in the reference. All live Phase3 training
+  remains caption-free. Native CFG1/blank-intervention bit-exact parity and
+  actual caption delivery/effect checks pass. Batch64 for five combinations,
+  batch71 for D/video1 with text; no skipped windows or GPU resampling.
+- MPJPE cm video/text: B27.37547/19.79250, D10 18.46537/14.99788,
+  D1 17.27264/12.72125. Different checkpoint ages; no matched-step claim.
+- Published a NEW top toggle at devugged MMdiT, preserving previous results:
+  https://app.notion.com/p/410d2a44f44b8098b1b7c7af42d2353b . All40 table
+  rows read back exactly;18 videos and3 evidence ZIPs downloaded/SHA verified.
+- Operation cosmos_storage/operations/eval_latest_v2m_text_ema_fixed71_cfg2_20261107T074917Z
+  has COMPLETE.json and publication/verification evidence. GPU4 released;
+  all three trainers continue unchanged. Two CPU report-only bugs were fixed;
+  generated motions and semantic scores were preserved.
+- Reproduction/protocol: nymeria_baselines/LATEST_V2M_TEXT_EMA_FIXED71_CFG2_20261107.md.
+
+## Latest EMA fixed71 CFG2 evaluation complete (2026-11-07)
+
+- All426 predictions and metrics complete: B53491, D60000, fresh Dvideo1-20000;
+  EMA bridge weights, same exact71 windows/seed order, empty captions,35-step
+  native UniPC, whole-seven-bridges-disabled CFG2 for V2M+M2V. Mixed ages.
+- Published full tables,12 fixed videos and16.5MB evidence ZIP in
+  https://app.notion.com/p/410d2a44f44b8098b1b7c7af42d2353b ;28 table rows
+  readback-exact and all13 files download/SHA verified; old10k content preserved.
+- Operation cosmos_storage/operations/eval_latest_ema_fixed71_cfg2_20261107T014607Z.
+  Canonical I3D grouping restores GT features exactly; no samples resampled.
+- User authorized a brief B full-state save/restart to get current EMA. B's
+  live controller is this operation/checkpoint_bidirectional.py, not the old
+  after50k retry. Same native fingerprint, optimizer/RNG/cursor and W&B name.
+  Native run/launch/status.json is authoritative for PID. All three train;
+  temporary eval GPUs1/3 released. Detailed metrics/repro:   nymeria_baselines/LATEST_EMA_FIXED71_CFG2_20261107.md.
+
+
+## W&B names follow the current sep-1 convention (2026-11-07)
+
+- User requested renaming the three active sep-2 runs using sep-1's descriptive
+  format: [node] P3 MMDiT direction | task percentages | videoW | EMA decay,
+  exact start step and fresh/continued | NoText | LocalAttn BF16 | T97 GBS32.
+- sep-2 uses V2M40/M2V40/J20; old B/D EMA starts50017/50819 and video10;
+  fresh D video1 starts0. Same IDs/history/config; display-name metadata only.
+- Read migration/WANDB_RUN_NAMES_SEP2_20261107.md and node-local operations/
+  WANDB_DISPLAY_NAMES.json. Each run has wandb_display_name.txt. On logger
+  restart pass that name via --name; current immutable loggers do not read
+  override files automatically. Never revert to directory basenames.
+
+## sep-1 100k checkpoints: independent preservation COMPLETE (2026-11-08)
+
+- User explicitly requests preserving100k checkpoints separately from rotating
+  training checkpoints. Protected root:
+  `/mnt/local/jinhyung.kim/cosmos/checkpoints/phase3_milestones_100k_20261108`.
+- DirectionalW10, bidirectionalW10 and directionalW1 exact100k full recovery states are saved
+  as independent copied files (not hardlinks), separate inodes/linkcount1,
+  fullSHA verified. Raw bridges, EMA, AdamW/scheduler, two rank RNGs and draw
+  cursor are intact. Independent source snapshots and contract metadata saved.
+- W1's exact100k was copied and verified at2026-11-08 05:42UTC. RootCOMPLETE,
+  STATUS and all3 PRESERVED receipts confirm completion. The detached watcher
+  and its tmux session exited normally; WATCHER.json is historical metadata.
+- These are node-local sep-1 copies; no shared-storage transfer performed.
+  Keep this protected archive in future cleanup. Training is untouched.
+
+## sep-1 standardized80k seven-setting sweep COMPLETE (2026-11-08)
+
+- Latest user steering: DO NOT PICK A MODEL YET. Finish measurements/comparisons
+  and publish, without a model/default-guidance choice or recommendation.
+- User requests every current variant exactly80k on fixed71, to compare with
+  other-server rows on https://app.notion.com/p/412d2a44f44b80a596efe81457114ea2 .
+  M2V CFG1/1.1/1.5; V2M and video+text→motion eachCFG1.5/2.
+- Operation `/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_all_variants_80k_standard_20261108T021836Z`.
+  Three evaluators completed on owned/coordinated co-eval GPUs7/3/1 with30% caps;
+  all eval workers exited and six training ranks remained active. Do not duplicate.
+- Exactly80k EMA for three models. Stable IDs: sep1_dir5050_w10_lateEMA,
+  sep1_bidir5050_w10_lateEMA, sep1_dir5050_w1_EMA0. Registry records exact
+  EMA starts50043/50143/0 and counts29957/29857/80000. Do not rename unqualified.
+- Canonical V2M uses contiguous64+7; M2V native even32+4/odd32+3, decode4.
+ 8settings/568 predictions reused with audits;13settings/923 samples new.
+ W1/80k V2M32 results from previous sweep are not silently mixed into64 protocol.
+- Whole bridge reference; GT text only in frozen motion expert for video+text,
+  same text in both guidance branches. Video captions remain empty always.
+  Base V2M/M2V empty; training caption policy never changed.
+- Notion now contains the full21-setting/1491-output matrix, figures, per-case
+  evidence, paired guidance comparisons and9 fixed-case videos/9contact sheets.
+  8settings/568 outputs reused;13settings/923 newly sampled. AUDIT/COMPLETE/
+  PUBLISHED and REPORT_PUBLISHED.md record completion. No model/default CFG
+  selected, per the user's latest explicit steering. Other-node results remain
+  independently supplied/verified; do not claim the global comparison complete.
+- protocol.json provides portable per-case GT motion/neutral/video/RGB/caption
+  hashes and evaluator identities. Cohort SHA a4792d1aa52edc0de938cbc7a8dc87452dd17d7395bd4412013bc1f70930ce71.
+  Other-server pooling requires parity; do not compare different I3D protocols.
+
+## sep-1 latest CFG1.5/2 V2M/M2V fixed71 sweep COMPLETE (2026-11-08)
+
+- User requests all three active models, latest checkpoints, both directions,
+  whole-bridge-dropped CFG1.5 and2, quantitative and qualitative comparison on
+  https://app.notion.com/p/410d2a44f44b8098b1b7c7af42d2353b .
+- Pinned selection: directional/bidirectional videoW10 at120k; directional
+  videoW1 at80k. EMA, empty captions, no inference camera, native35steps.
+- Operation `/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_cfg15_cfg2_both_fixed71_20261107T231929Z`.
+  Workers completed on already allocated own co-evaluation GPUs7/3/1,
+  each30% process memory cap. All three ran concurrently; only the CPU
+  scheduler was replaced to adopt the first two without restarting them.
+  GPU_ALLOCATION_EXTENSION.json records own-resident UID/PID checks and adoption.
+  All evaluators exited; all six training ranks stayed active and unchanged.
+  Inspect RUNNING/ERROR/ALL_METRICS_COMPLETE before launching anything.
+- Sampling32 with native even/odd virtual-rank positions, decode4; matched
+  71windows/seeds0–70.852 new outputs audited. Includes UPE/LPE/sJPE, existing
+  native TMR/physics/RGB metrics, six predetermined qualitative cases.
+- Full quantitative tables, paired intervals, figure, evidence ZIP/CSV, twelve
+  synchronized comparison videos and twelve contact sheets are published.
+  COMPLETE/PUBLISHED/AUDIT markers and REPORT_PUBLISHED.md record completion.
+- CFG1.5 beats2 on every reported M2V fidelity metric for all three. V2M MPJPE
+  at1.5/2: directionalW10 16.59/15.56cm; bidirectionalW10 19.33/19.27;
+  directionalW1 14.27/13.97. sJPE and acceleration worsen at2 in every model.
+  Only directionalW10's extra MPJPE improvement has a paired95% interval
+  excluding0; video/EMA/age differences prevent a causal training-weight claim.
+- Qualitative failures are retained: case00 all predict bent knees versus
+  uprightGT; case14 W1 closer than bidirectionalW10. Turning M2V cases retain
+  viewpoint/scene differences. Gallery not a separate human preference study.
+
+## sep-1 gate/core clipping comparison COMPLETE (2026-11-06)
+
+- User explicitly requests actual AdamW ΔW/W, global clip1 vs gate1/core1,
+  accounting for scale invariance. Keep investigating this; user cancelled the
+  side investigation of legacy sampling. Do not change production clipping.
+- Both isolated128-update comparisons finished on owned GPUs4/2,
+  source10k checkpoints. Global native, separate/same-gradient replay and
+  separate native arms share batches/noise/optimizer state initially.
+- Operation `/mnt/local/jinhyung.kim/cosmos/operations/phase3_gate_clip_adamw_20261106/experiment_20261106T032640Z`; ACTIVE pointer at parent directory. Check statuses/COMPLETE
+  before any launch. Four optimizer-control CPU tests passed. Report published:
+  https://app.notion.com/p/410d2a44f44b80a8b2aec94037f851d5 .
+- Final32 identical-gradient replay QKV/O actual updates increase1.52–1.54x
+  directional and1.78–1.85x bidirectional. AdamW compensates much of raw scaling;
+  core updates are not frozen. Native-separate total held-out loss is0.58%/0.72%
+  worse after128 updates on16 fixed windows. No production clipping change.
+- See migration/FOUNDRY_GATE_CORE_CLIPPING_20261106.md for design, actual-update
+  metrics, scale/epsilon controls, partial results and finite-horizon caveats.
+
+## Foundary sep-1 bridge stability audit (2026-11-06)
+
+- Old caption-trained directional18842/bidirectional18878 audits and old10k
+  comparisons are published at https://app.notion.com/p/410d2a44f44b800aa692ec6abae46238.
+  All gates nonzero/states finite, but progressive early attention saturation
+  and gate-dominated offline gradients are observed; do not claim fully healthy.
+- User explicitly chose waiting for current caption-free10k checkpoints without
+  restarting training. Both current10k stability audits and native71 validations are complete and
+  published. The separate clipping comparison above is also complete.
+- Current10k findings: about99.99% of offline squared gradient norm is gate
+  scalars; early attention is saturated; block23 motion residuals are effectively
+  inactive in BOTH models (~5–6e-7 RMS ratio). Most other gates are active.
+- Completed sep-1 no-joint10k V2M FID0.618/0.759, MPJPE35.32/38.99cm
+  (directional/bidirectional). M2V DreamSim0.1548/0.1518. Same-node regressions
+  versus old models are verified. Cross-node case/text-cache hashes differ;
+  exact joint/no-joint cohort matching is UNVERIFIED, so do not claim advantage.
+- User clarified poor10k outputs were sep-2 joint40/40/20. Remote matched
+  metrics show bidirectional V2M regression; no sep-2 attention/gate probe was
+  performed here. Validation is CFG1/35 steps/empty captions on both nodes.
+- Read migration/FOUNDRY_PHASE3_STABILITY_20261106.md and local operation
+  /mnt/local/jinhyung.kim/cosmos/operations/phase3_stability_20261106/.
+  Do not duplicate launchers or confuse sep-1 50/50 with sep-2 40/40/20 runs.
+
+## Foundary sep-1 caption-free50/50 handover completed (2026-11-05)
+
+- User requires NEVER using dataset captions in Phase3. Fresh directional GPUs4/7
+  and bidirectional GPUs2/3 replace the old captioned runs. Preserve sep-1's
+  50%V2M/50%M2V, no joint objective; do not confuse sep-2's40/40/20 recipe.
+- Both passed two-rank/two-task native poisoned-caption invariance with nonzero
+  bridge gates and empty inputs at BOTH specialists, plus fresh4/strict reload6.
+  Both fresh production runs reached10 before the user's immediate-stop request
+  was applied to old rank0s. Verified beyond40, finite, remote W&B synced.
+- New W&B directional p3-1841eb77997bc0da105e, bidirectional
+  p3-8012b39423adff404c6e; jungbinc-upenn/cosmos-motion-ft. Fresh bridges,
+  global32=2x16, groupedBF16 MMDiT, no extra Phase3 LoRA/EMA; same sources,
+  optimizer/losses and fixed71/every10k validation. Only recipe differences:
+  experiment identity, empty caption policy and dropout0.
+- Old directional18842 and bidirectional18878 full recovery states and prior10k
+  checkpoints preserved. Old GPU ranks exited and W&B streams flushed.
+  Never auto-resume captioned bridge weights into the fresh no-text runs.
+- Operation `/mnt/local/jinhyung.kim/cosmos/operations/phase3_no_caption_two_task_handover_20261105T225242Z` contains actual cutover, native acceptance, preserved-state,
+  running and remote-W&B receipts. COMPLETE means handover complete, not200k.
+  Live processes use immutable per-run launch/source_snapshot code.
+- See migration/FOUNDRY_PHASE3_NO_CAPTION_20261105.md for outputs and evidence.
+
+## sep-2 strict20k resume and whole-bridge CFG2 evaluation (2026-11-06)
+
+- Both fresh caption-free40/40/20 joint runs stopped around06:51UTC;
+  directional explicitly loggedSIGHUP, bidirectional had no model/OOM trace.
+  Full20k state and validation were complete; unsaved tails20590/20930 repeat.
+  Strict resume retained359-file snapshots,98 bridge/Adam states,two-rank RNG,
+  draw640000, acceptance and native fingerprints. No model/recipe migration.
+- Current GPUs: bidirectional0/4 (GPU3 occupied), directional1/7. At07:44UTC
+  verification they reached20340/20330 with finite updates and same original
+  W&B p3-d47749076808b4bfecc2 / p3-79f9ba1f501245ec7b18. Inspect live logs.
+  Same global32=2x16/accum1, no captions, native losses/video10, LoRA/EMA off.
+- Operation cosmos_storage/operations/phase3_no_text_resume20k_20261106T072751Z
+  and pointer operations/phase3_mmdit_no_text_current_ops.txt have audit,
+  strict-reload, running/W&B and publication receipts. Existing20k validation
+  was reused without generating predictions. Do not auto-resume stopped old
+  captioned/50-50 jobs or blindly rerun stale20k recovery commands.
+- External operation wrappers protect live agent/workers/logger fromSIGHUP;
+  native TERM/INT/QUIT and training SIGUSR1 handlers remain. Repository shared
+  launcher now snapshots equivalent scripts/phase3_{agent,worker}_entry.py
+  for future launches. Live jobs keep immutable original sources; Git updates
+  do not patch or restart them. Preserve other nodes' site/EMA/recipe changes.
+- Separate fixed71 CFG2 evaluation of these joint models'10k weights is
+  complete:284 predictions,12 videos+ZIP, all13 remote downloadSHA checks passed.
+  It uses batch64 and WHOLE bridges disabled in the reference, including their
+  within-modality updates. It does NOT use sep-1 no-joint/batch32 or edge-only
+  target-query masking. All model captions empty; retrieval text scores only.
+  FVD pools71 descriptors with population covariance, distinct from periodic426.
+- Reports/docs: motion_expert_phase3_edge_image_joint/SEP2_RESUME20K_HANGUP_20261106.md
+  and nymeria_baselines/MMDIT_JOINT10K_FIXED71_BRIDGE_OFF_CFG2_20261106.md.
+  Training: https://app.notion.com/p/40fd2a44f44b814fb925c3d86c250284 .
+  Evaluation: https://app.notion.com/p/410d2a44f44b8098b1b7c7af42d2353b .
+
 ## Optional Phase3 EMA hardened and validation selection added (2026-11-06)
 
 - User requested optional EMA in the current Phase3 setting. Existing

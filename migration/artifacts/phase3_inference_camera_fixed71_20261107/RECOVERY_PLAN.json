@@ -1,0 +1,11 @@
+{
+  "reason": "DreamSim changes torch.hub directory; second VideoMetrics LPIPS identity guard correctly rejects changed path",
+  "generated_predictions_preserved": 568,
+  "completed_variant_scores_preserved": 6,
+  "scoring_only_jobs": 2,
+  "remaining_new_generation": 284,
+  "asset_guard_retained": true,
+  "patch": "process-local pinned_metric_hub restores original hub on success/error; no files or source snapshots modified",
+  "initial_runner": "run_eval.initial.py",
+  "scheduler_pid": 2490746
+}

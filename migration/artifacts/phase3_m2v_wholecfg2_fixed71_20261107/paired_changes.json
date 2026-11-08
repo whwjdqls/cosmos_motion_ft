@@ -1,0 +1,110 @@
+[
+  {
+    "model": "directional_video10",
+    "metric": "dreamsim",
+    "cfg2_minus_cfg1": 0.017110714295380552,
+    "paired_case_bootstrap95": [
+      0.012101323060481482,
+      0.022168841392693803
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "metric": "lpips_alex",
+    "cfg2_minus_cfg1": 0.006188439793377553,
+    "paired_case_bootstrap95": [
+      0.0024654912520939228,
+      0.009745483548206766
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "metric": "psnr_db",
+    "cfg2_minus_cfg1": -0.9060813595711346,
+    "paired_case_bootstrap95": [
+      -1.0684739754023689,
+      -0.7413169143170536
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "metric": "ssim",
+    "cfg2_minus_cfg1": -0.03459218668449723,
+    "paired_case_bootstrap95": [
+      -0.040367196141490765,
+      -0.029231934616027373
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "metric": "dreamsim",
+    "cfg2_minus_cfg1": 0.018333803075300137,
+    "paired_case_bootstrap95": [
+      0.012876594840535816,
+      0.023636107541568262
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "metric": "lpips_alex",
+    "cfg2_minus_cfg1": 0.004825407192750479,
+    "paired_case_bootstrap95": [
+      -0.00020542790060258965,
+      0.009513829021184196
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "metric": "psnr_db",
+    "cfg2_minus_cfg1": -0.9134707176629367,
+    "paired_case_bootstrap95": [
+      -1.082957067120243,
+      -0.7377079236815235
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "metric": "ssim",
+    "cfg2_minus_cfg1": -0.03664550218652462,
+    "paired_case_bootstrap95": [
+      -0.04267100159077743,
+      -0.03106773587910046
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "metric": "dreamsim",
+    "cfg2_minus_cfg1": 0.013749421482354822,
+    "paired_case_bootstrap95": [
+      0.009120193001827304,
+      0.01815310105366606
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "metric": "lpips_alex",
+    "cfg2_minus_cfg1": 0.002226033673087186,
+    "paired_case_bootstrap95": [
+      -0.00416476189787322,
+      0.00815250725722997
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "metric": "psnr_db",
+    "cfg2_minus_cfg1": -0.7176891484171015,
+    "paired_case_bootstrap95": [
+      -0.9413369928307379,
+      -0.4856162941616749
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "metric": "ssim",
+    "cfg2_minus_cfg1": -0.03341846147053679,
+    "paired_case_bootstrap95": [
+      -0.03983556519633054,
+      -0.02684550251431345
+    ]
+  }
+]

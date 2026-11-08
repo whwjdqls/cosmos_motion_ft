@@ -1,0 +1,542 @@
+[
+  {
+    "model": "directional_video10",
+    "variant": "v2m_cfg2",
+    "metric": "mpjpe_cm",
+    "camera_on_minus_off": 2.992475659809482,
+    "paired_case_bootstrap95": [
+      1.725941199455148,
+      4.330750868826264
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "v2m_cfg2",
+    "metric": "pa_mpjpe_cm",
+    "camera_on_minus_off": 1.4830661591555339,
+    "paired_case_bootstrap95": [
+      1.051485006600567,
+      1.952935054448359
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "v2m_cfg2",
+    "metric": "root_ade_cm",
+    "camera_on_minus_off": 2.8903490220996697,
+    "paired_case_bootstrap95": [
+      1.5669136406512747,
+      4.287975400712498
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "v2m_cfg2",
+    "metric": "acceleration_error_m_s2",
+    "camera_on_minus_off": 0.13697648053647768,
+    "paired_case_bootstrap95": [
+      0.09625537665298498,
+      0.18303622478540515
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "v2m_cfg2",
+    "metric": "skate_cm_s",
+    "camera_on_minus_off": 0.3644497173143105,
+    "paired_case_bootstrap95": [
+      -0.6824918429721408,
+      1.440137142748375
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "v2m_text_cfg2",
+    "metric": "mpjpe_cm",
+    "camera_on_minus_off": 4.156308377187856,
+    "paired_case_bootstrap95": [
+      2.897000906424938,
+      5.541042726368866
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "v2m_text_cfg2",
+    "metric": "pa_mpjpe_cm",
+    "camera_on_minus_off": 1.851897726447653,
+    "paired_case_bootstrap95": [
+      1.3965226849511336,
+      2.3615153430533016
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "v2m_text_cfg2",
+    "metric": "root_ade_cm",
+    "camera_on_minus_off": 4.18737074753768,
+    "paired_case_bootstrap95": [
+      2.8701135358760057,
+      5.631896573131983
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "v2m_text_cfg2",
+    "metric": "acceleration_error_m_s2",
+    "camera_on_minus_off": 0.16025967213889242,
+    "paired_case_bootstrap95": [
+      0.08991144715585339,
+      0.25670454647182156
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "v2m_text_cfg2",
+    "metric": "skate_cm_s",
+    "camera_on_minus_off": 0.13166184891277635,
+    "paired_case_bootstrap95": [
+      -0.7781021958085853,
+      1.0350176522140981
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "m2v_cfg1",
+    "metric": "dreamsim",
+    "camera_on_minus_off": 0.004054449498653412,
+    "paired_case_bootstrap95": [
+      0.0020486683269936436,
+      0.006108452973913559
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "m2v_cfg1",
+    "metric": "lpips_alex",
+    "camera_on_minus_off": 0.009620101517257649,
+    "paired_case_bootstrap95": [
+      0.004603015254549523,
+      0.015614407511396294
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "m2v_cfg1",
+    "metric": "psnr_db",
+    "camera_on_minus_off": -0.17700542404618058,
+    "paired_case_bootstrap95": [
+      -0.3207917118751109,
+      -0.05028839535276663
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "m2v_cfg1",
+    "metric": "ssim",
+    "camera_on_minus_off": -0.003502905025571032,
+    "paired_case_bootstrap95": [
+      -0.00819261998316371,
+      0.0007106573089734159
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "m2v_cfg2",
+    "metric": "dreamsim",
+    "camera_on_minus_off": -0.0004388754006842492,
+    "paired_case_bootstrap95": [
+      -0.002318211151680476,
+      0.0016001647403857235
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "m2v_cfg2",
+    "metric": "lpips_alex",
+    "camera_on_minus_off": 0.005689716472824985,
+    "paired_case_bootstrap95": [
+      0.0028794487167477477,
+      0.00869284264722901
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "m2v_cfg2",
+    "metric": "psnr_db",
+    "camera_on_minus_off": 0.1783122803683571,
+    "paired_case_bootstrap95": [
+      0.0602265311448785,
+      0.30057772599825267
+    ]
+  },
+  {
+    "model": "directional_video10",
+    "variant": "m2v_cfg2",
+    "metric": "ssim",
+    "camera_on_minus_off": 0.009817476449927809,
+    "paired_case_bootstrap95": [
+      0.006352360005066355,
+      0.013273076879017994
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "v2m_cfg2",
+    "metric": "mpjpe_cm",
+    "camera_on_minus_off": 6.418741357998109,
+    "paired_case_bootstrap95": [
+      4.062185286032691,
+      9.083552088745883
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "v2m_cfg2",
+    "metric": "pa_mpjpe_cm",
+    "camera_on_minus_off": 3.9309719930658757,
+    "paired_case_bootstrap95": [
+      2.847236437375754,
+      5.102655232522833
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "v2m_cfg2",
+    "metric": "root_ade_cm",
+    "camera_on_minus_off": 6.2944174626133815,
+    "paired_case_bootstrap95": [
+      3.8345079195462692,
+      9.071283999397616
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "v2m_cfg2",
+    "metric": "acceleration_error_m_s2",
+    "camera_on_minus_off": 0.1263634931348579,
+    "paired_case_bootstrap95": [
+      0.034727364693256754,
+      0.23435708643658687
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "v2m_cfg2",
+    "metric": "skate_cm_s",
+    "camera_on_minus_off": 0.06051316437586932,
+    "paired_case_bootstrap95": [
+      -1.5728092729441927,
+      1.5223804392366547
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "v2m_text_cfg2",
+    "metric": "mpjpe_cm",
+    "camera_on_minus_off": 6.921105892200705,
+    "paired_case_bootstrap95": [
+      4.604117463631424,
+      9.5907928697555
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "v2m_text_cfg2",
+    "metric": "pa_mpjpe_cm",
+    "camera_on_minus_off": 3.9448564390362097,
+    "paired_case_bootstrap95": [
+      2.8489234332632103,
+      5.156101475654031
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "v2m_text_cfg2",
+    "metric": "root_ade_cm",
+    "camera_on_minus_off": 7.063622678249654,
+    "paired_case_bootstrap95": [
+      4.681388481493882,
+      9.78280880390076
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "v2m_text_cfg2",
+    "metric": "acceleration_error_m_s2",
+    "camera_on_minus_off": 0.21002531235276814,
+    "paired_case_bootstrap95": [
+      0.03628006841147869,
+      0.45434964125529964
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "v2m_text_cfg2",
+    "metric": "skate_cm_s",
+    "camera_on_minus_off": -0.023695795049130077,
+    "paired_case_bootstrap95": [
+      -0.9507572277068672,
+      0.7840663696390004
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "m2v_cfg1",
+    "metric": "dreamsim",
+    "camera_on_minus_off": 0.005037184437395821,
+    "paired_case_bootstrap95": [
+      0.0028958728248384634,
+      0.0072946431836716724
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "m2v_cfg1",
+    "metric": "lpips_alex",
+    "camera_on_minus_off": 0.010883413098627885,
+    "paired_case_bootstrap95": [
+      0.0057008603038019,
+      0.01722262811332521
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "m2v_cfg1",
+    "metric": "psnr_db",
+    "camera_on_minus_off": -0.23902616226617174,
+    "paired_case_bootstrap95": [
+      -0.43794151062207026,
+      -0.06789707674736739
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "m2v_cfg1",
+    "metric": "ssim",
+    "camera_on_minus_off": -0.005151377267208593,
+    "paired_case_bootstrap95": [
+      -0.01099320869333167,
+      -9.496983549526914e-05
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "m2v_cfg2",
+    "metric": "dreamsim",
+    "camera_on_minus_off": -0.0002552179068746701,
+    "paired_case_bootstrap95": [
+      -0.002440120139434724,
+      0.0019248179173175716
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "m2v_cfg2",
+    "metric": "lpips_alex",
+    "camera_on_minus_off": 0.005144103735733445,
+    "paired_case_bootstrap95": [
+      0.0012867886976635713,
+      0.009104256949003815
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "m2v_cfg2",
+    "metric": "psnr_db",
+    "camera_on_minus_off": 0.1579217679903541,
+    "paired_case_bootstrap95": [
+      -0.0011872219682579834,
+      0.33310198699224713
+    ]
+  },
+  {
+    "model": "bidirectional_video10",
+    "variant": "m2v_cfg2",
+    "metric": "ssim",
+    "camera_on_minus_off": 0.00991478802400156,
+    "paired_case_bootstrap95": [
+      0.0050186206103508095,
+      0.015134864853325573
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "v2m_cfg2",
+    "metric": "mpjpe_cm",
+    "camera_on_minus_off": 0.6593571870889462,
+    "paired_case_bootstrap95": [
+      -0.27507622070400645,
+      1.5620293272134491
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "v2m_cfg2",
+    "metric": "pa_mpjpe_cm",
+    "camera_on_minus_off": 0.3904792562598576,
+    "paired_case_bootstrap95": [
+      0.11427582551246405,
+      0.6596196727900915
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "v2m_cfg2",
+    "metric": "root_ade_cm",
+    "camera_on_minus_off": 0.7031215249862469,
+    "paired_case_bootstrap95": [
+      -0.24584284281804106,
+      1.6146478256289387
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "v2m_cfg2",
+    "metric": "acceleration_error_m_s2",
+    "camera_on_minus_off": 0.060817297600524525,
+    "paired_case_bootstrap95": [
+      0.035365400639113406,
+      0.08625994925059272
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "v2m_cfg2",
+    "metric": "skate_cm_s",
+    "camera_on_minus_off": 0.14328486482862016,
+    "paired_case_bootstrap95": [
+      -0.6470420698858272,
+      1.095346147260091
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "v2m_text_cfg2",
+    "metric": "mpjpe_cm",
+    "camera_on_minus_off": 0.5799866110925943,
+    "paired_case_bootstrap95": [
+      -0.17552758947434555,
+      1.3182602267922228
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "v2m_text_cfg2",
+    "metric": "pa_mpjpe_cm",
+    "camera_on_minus_off": 0.4849815709454041,
+    "paired_case_bootstrap95": [
+      0.24116130887817877,
+      0.7282568596958752
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "v2m_text_cfg2",
+    "metric": "root_ade_cm",
+    "camera_on_minus_off": 0.5869165876171958,
+    "paired_case_bootstrap95": [
+      -0.16185285772760988,
+      1.313259749883182
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "v2m_text_cfg2",
+    "metric": "acceleration_error_m_s2",
+    "camera_on_minus_off": 0.06160027360622312,
+    "paired_case_bootstrap95": [
+      0.04123029892634548,
+      0.08189841016182597
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "v2m_text_cfg2",
+    "metric": "skate_cm_s",
+    "camera_on_minus_off": -0.054407757247837495,
+    "paired_case_bootstrap95": [
+      -0.830557608491623,
+      0.6496526695079574
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "m2v_cfg1",
+    "metric": "dreamsim",
+    "camera_on_minus_off": 0.0030944887286340687,
+    "paired_case_bootstrap95": [
+      0.0012643630590132425,
+      0.00486956248846902
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "m2v_cfg1",
+    "metric": "lpips_alex",
+    "camera_on_minus_off": 0.005989715272091776,
+    "paired_case_bootstrap95": [
+      0.001879494829267861,
+      0.01053971593952292
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "m2v_cfg1",
+    "metric": "psnr_db",
+    "camera_on_minus_off": -0.09486371712505555,
+    "paired_case_bootstrap95": [
+      -0.21097631048358656,
+      0.018474823058071087
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "m2v_cfg1",
+    "metric": "ssim",
+    "camera_on_minus_off": -0.001151518295016225,
+    "paired_case_bootstrap95": [
+      -0.005173387264334394,
+      0.0026815312642367965
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "m2v_cfg2",
+    "metric": "dreamsim",
+    "camera_on_minus_off": 0.0007603143302487655,
+    "paired_case_bootstrap95": [
+      -0.0019170321537260438,
+      0.003524687974123467
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "m2v_cfg2",
+    "metric": "lpips_alex",
+    "camera_on_minus_off": 0.004619194860783286,
+    "paired_case_bootstrap95": [
+      0.0008033140422318589,
+      0.0085862507341534
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "m2v_cfg2",
+    "metric": "psnr_db",
+    "camera_on_minus_off": 0.08240347009309605,
+    "paired_case_bootstrap95": [
+      -0.05796145565213133,
+      0.21604673792149015
+    ]
+  },
+  {
+    "model": "directional_video1",
+    "variant": "m2v_cfg2",
+    "metric": "ssim",
+    "camera_on_minus_off": 0.009315697631488236,
+    "paired_case_bootstrap95": [
+      0.005005795837209461,
+      0.013440301631983939
+    ]
+  }
+]
