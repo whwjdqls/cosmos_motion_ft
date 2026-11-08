@@ -1,5 +1,126 @@
 # Shared Agent Context
 
+## sep-2 exact80k evaluation and100k preservation (2026-11-08)
+
+- Exact80k fixed71 matrix published at https://app.notion.com/p/412d2a44f44b80a596efe81457114ea2:
+  available15/21 settings,1065 outputs;37 numeric rows and17 fresh-download
+  attachment SHA checks pass. Other-node sections preserved; no model/CFG
+  selected. D/videoW10 exact80k was pruned: only cached nativeCFG1 M2V is usable;
+  six requested settings remain pending, never relabel100k/110k as80k.
+- Current text condition matches sep-1: caption enters motion expert ONLY,
+  generator native V2M captions stay empty, same text in both CFG branches.
+  This differs from the older both-specialist text evaluation. All training
+  remains NoText. New batch71 vs native cached32 packing is recorded.
+- Both native426/N−1 FVD (matching sep-1) and additional global71/population
+  I3D/CD-FVD are reported separately. Portable71 inputs/captions match; different
+  text-cache files require selected71 embedding parity before pooled retrieval.
+- All THREE sep-2 exact100k checkpoints are now preserved and SHA/full-state
+  verified in cosmos_storage/preserved_milestones/phase3_100k_20261108. These
+  are node-local retained hardlinks outside pruning, not shared backups or
+  independent copies. The watcher completed; do not treat its PID as live.
+- Read nymeria_baselines/SEP2_80K_FIXED71_20261108.md and
+  migration/PHASE3_100K_PRESERVED_SEP2_20261108.md. Evaluation GPU4 released;
+  trainers/source snapshots were left unchanged. Never kill the production B
+  controller merely because it lives in an older evaluation operation.
+
+## Directional 70k CFG sweep complete (2026-11-07)
+
+- User selected directional/video-weight10 step70000 EMA. Evaluated 15 V2M
+  and14 M2V settings on the exact71 windows/seeds, empty captions, UniPC35,
+  motion shift3/video shift10, batches64/71. No cohort resampling.
+- Best tested by declared primary metrics: V2M whole-bridge-off CFG2.5,
+  MPJPE18.001958cm; M2V whole-bridge-off CFG1.1, DreamSim0.138729.
+  V2M2.5 vs2 paired MPJPE CI includes0; whole-off2 has better acceleration
+  error/TMR FID. M2V1.1 vs bestcross1.5 DreamSim CI also includes0.
+  Exploratory fixed71 tuning, not an independent/global optimum claim.
+- Full quantitative tables, plot, six fixed videos and two evidence ZIPs
+  published as a NEW top toggle on devugged MMdiT, earlier results preserved:
+  https://app.notion.com/p/410d2a44f44b8098b1b7c7af42d2353b . All85 table
+  rows match; all9 attachments fresh-download size/SHA verified.
+- Operation cosmos_storage/operations/eval_directional70k_cfg_sweep_20261107T092224Z
+  has COMPLETE.json, full arrays/features/metrics, guidance/native acceptance,
+  source manifests and publication/download receipts. GPU4 released;
+  all three trainers continue unchanged,382 frozen source hashes verified.
+- Details: nymeria_baselines/DIRECTIONAL70K_CFG_SWEEP_20261107.md.
+  Production B controller remains in the OLD EMA evaluation operation;
+  never terminate it or broadly kill all processes matching evaluation paths.
+
+## Matching latest M2V fixed71 EMA CFG2 complete (2026-11-07)
+
+- User requested M2V to match the latest V2M/text evaluation. Same pinned EMA
+  B60000, D/video10-70000, fresh D/video1-40000; exact71 windows/seeds,
+  213 generated clips, no skipped cases. Full clean283-D motion, supplied
+  shape, one initial image, no captions; native UniPC35/video shift10,
+  all-seven-whole-bridges-disabled CFG2. Batch64/71/71 respectively.
+- PSNR/SSIM/LPIPS/DreamSim/I3D-FVD/VideoMAE CD-FVD:
+  B18.435320/.563804/.269510/.159872/327.612078/315.485667;
+  D10 18.607550/.567669/.267646/.159007/336.092539/323.091724;
+  D1 18.350652/.560034/.273314/.160690/333.829863/321.261816.
+  Different training ages; no matched-step or causal weight comparison.
+- GT video features freshly computed once and match old canonical71 exactly
+  for both evaluators (maxdiff0), reused identically for all models; heavy
+  evaluators loaded once. Same lossless pixels/future frames1-96, original
+  FP32 feature definitions and71-clip population-covariance FVD. Native CFG1,
+  DreamSim batch parity and all213 initial-latent preservation checks pass.
+- New top M2V toggle on devugged MMdiT preserves all earlier V2M/text results:
+  https://app.notion.com/p/410d2a44f44b8098b1b7c7af42d2353b . All22 table
+  rows exact;6 videos +1 evidence ZIP fresh-download size/SHA verified.
+- Operation cosmos_storage/operations/eval_latest_m2v_ema_fixed71_cfg2_20261107T083008Z
+  has COMPLETE.json, per-case/horizon metrics, latent/pixel SHA manifests,
+  all features and publication receipts. GPU4 released, trainers unchanged.
+  Details: nymeria_baselines/LATEST_M2V_EMA_FIXED71_CFG2_20261107.md.
+
+## Latest V2M with and without text, fixed71 EMA CFG2 complete (2026-11-07)
+
+- Newest complete checkpoints at selection: B60000, D/video10-70000,
+  fresh D/video1-40000. Exact previous71 windows/seeds,426 motion predictions,
+  EMA,35-step UniPC/shift3, whole-seven-bridges-disabled CFG2 reference.
+- Video+text is an explicit inference-only caption intervention into BOTH
+  frozen specialists; same caption in the reference. All live Phase3 training
+  remains caption-free. Native CFG1/blank-intervention bit-exact parity and
+  actual caption delivery/effect checks pass. Batch64 for five combinations,
+  batch71 for D/video1 with text; no skipped windows or GPU resampling.
+- MPJPE cm video/text: B27.37547/19.79250, D10 18.46537/14.99788,
+  D1 17.27264/12.72125. Different checkpoint ages; no matched-step claim.
+- Published a NEW top toggle at devugged MMdiT, preserving previous results:
+  https://app.notion.com/p/410d2a44f44b8098b1b7c7af42d2353b . All40 table
+  rows read back exactly;18 videos and3 evidence ZIPs downloaded/SHA verified.
+- Operation cosmos_storage/operations/eval_latest_v2m_text_ema_fixed71_cfg2_20261107T074917Z
+  has COMPLETE.json and publication/verification evidence. GPU4 released;
+  all three trainers continue unchanged. Two CPU report-only bugs were fixed;
+  generated motions and semantic scores were preserved.
+- Reproduction/protocol: nymeria_baselines/LATEST_V2M_TEXT_EMA_FIXED71_CFG2_20261107.md.
+
+## Latest EMA fixed71 CFG2 evaluation complete (2026-11-07)
+
+- All426 predictions and metrics complete: B53491, D60000, fresh Dvideo1-20000;
+  EMA bridge weights, same exact71 windows/seed order, empty captions,35-step
+  native UniPC, whole-seven-bridges-disabled CFG2 for V2M+M2V. Mixed ages.
+- Published full tables,12 fixed videos and16.5MB evidence ZIP in
+  https://app.notion.com/p/410d2a44f44b8098b1b7c7af42d2353b ;28 table rows
+  readback-exact and all13 files download/SHA verified; old10k content preserved.
+- Operation cosmos_storage/operations/eval_latest_ema_fixed71_cfg2_20261107T014607Z.
+  Canonical I3D grouping restores GT features exactly; no samples resampled.
+- User authorized a brief B full-state save/restart to get current EMA. B's
+  live controller is this operation/checkpoint_bidirectional.py, not the old
+  after50k retry. Same native fingerprint, optimizer/RNG/cursor and W&B name.
+  Native run/launch/status.json is authoritative for PID. All three train;
+  temporary eval GPUs1/3 released. Detailed metrics/repro:   nymeria_baselines/LATEST_EMA_FIXED71_CFG2_20261107.md.
+
+
+## W&B names follow the current sep-1 convention (2026-11-07)
+
+- User requested renaming the three active sep-2 runs using sep-1's descriptive
+  format: [node] P3 MMDiT direction | task percentages | videoW | EMA decay,
+  exact start step and fresh/continued | NoText | LocalAttn BF16 | T97 GBS32.
+- sep-2 uses V2M40/M2V40/J20; old B/D EMA starts50017/50819 and video10;
+  fresh D video1 starts0. Same IDs/history/config; display-name metadata only.
+- Read migration/WANDB_RUN_NAMES_SEP2_20261107.md and node-local operations/
+  WANDB_DISPLAY_NAMES.json. Each run has wandb_display_name.txt. On logger
+  restart pass that name via --name; current immutable loggers do not read
+  override files automatically. Never revert to directory basenames.
+
+
 ## sep-2 strict20k resume and whole-bridge CFG2 evaluation (2026-11-06)
 
 - Both fresh caption-free40/40/20 joint runs stopped around06:51UTC;
