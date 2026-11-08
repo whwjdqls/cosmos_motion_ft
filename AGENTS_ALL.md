@@ -136,6 +136,38 @@
   Live processes use immutable per-run launch/source_snapshot code.
 - See migration/FOUNDRY_PHASE3_NO_CAPTION_20261105.md for outputs and evidence.
 
+## sep-2 strict20k resume and whole-bridge CFG2 evaluation (2026-11-06)
+
+- Both fresh caption-free40/40/20 joint runs stopped around06:51UTC;
+  directional explicitly loggedSIGHUP, bidirectional had no model/OOM trace.
+  Full20k state and validation were complete; unsaved tails20590/20930 repeat.
+  Strict resume retained359-file snapshots,98 bridge/Adam states,two-rank RNG,
+  draw640000, acceptance and native fingerprints. No model/recipe migration.
+- Current GPUs: bidirectional0/4 (GPU3 occupied), directional1/7. At07:44UTC
+  verification they reached20340/20330 with finite updates and same original
+  W&B p3-d47749076808b4bfecc2 / p3-79f9ba1f501245ec7b18. Inspect live logs.
+  Same global32=2x16/accum1, no captions, native losses/video10, LoRA/EMA off.
+- Operation cosmos_storage/operations/phase3_no_text_resume20k_20261106T072751Z
+  and pointer operations/phase3_mmdit_no_text_current_ops.txt have audit,
+  strict-reload, running/W&B and publication receipts. Existing20k validation
+  was reused without generating predictions. Do not auto-resume stopped old
+  captioned/50-50 jobs or blindly rerun stale20k recovery commands.
+- External operation wrappers protect live agent/workers/logger fromSIGHUP;
+  native TERM/INT/QUIT and training SIGUSR1 handlers remain. Repository shared
+  launcher now snapshots equivalent scripts/phase3_{agent,worker}_entry.py
+  for future launches. Live jobs keep immutable original sources; Git updates
+  do not patch or restart them. Preserve other nodes' site/EMA/recipe changes.
+- Separate fixed71 CFG2 evaluation of these joint models'10k weights is
+  complete:284 predictions,12 videos+ZIP, all13 remote downloadSHA checks passed.
+  It uses batch64 and WHOLE bridges disabled in the reference, including their
+  within-modality updates. It does NOT use sep-1 no-joint/batch32 or edge-only
+  target-query masking. All model captions empty; retrieval text scores only.
+  FVD pools71 descriptors with population covariance, distinct from periodic426.
+- Reports/docs: motion_expert_phase3_edge_image_joint/SEP2_RESUME20K_HANGUP_20261106.md
+  and nymeria_baselines/MMDIT_JOINT10K_FIXED71_BRIDGE_OFF_CFG2_20261106.md.
+  Training: https://app.notion.com/p/40fd2a44f44b814fb925c3d86c250284 .
+  Evaluation: https://app.notion.com/p/410d2a44f44b8098b1b7c7af42d2353b .
+
 ## Optional Phase3 EMA hardened and validation selection added (2026-11-06)
 
 - User requested optional EMA in the current Phase3 setting. Existing
