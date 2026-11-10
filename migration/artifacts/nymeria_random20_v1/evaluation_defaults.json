@@ -1,0 +1,26 @@
+{
+  "schema": "phase3_evaluation_defaults_v1",
+  "m2v": {
+    "guidance": 1.1,
+    "reference": "whole_bridge_disabled"
+  },
+  "v2m": {
+    "guidance": 1.5,
+    "reference": "whole_bridge_disabled"
+  },
+  "video_text_v2m": {
+    "guidance": 1.5,
+    "reference": "whole_bridge_disabled",
+    "text_route": "motion_expert_only_same_text_both_branches"
+  },
+  "steps": 35,
+  "motion_shift": 3.0,
+  "video_shift": 10.0,
+  "weights": "ema",
+  "generator_captions": "empty",
+  "evidence": "sep1 directional W1 EMA150k fixed71 CFG sweep, selected before random20 results; M2V1.1 best DreamSim/PSNR/SSIM, V2M1.5 lower jerk/acceleration than2 with similar positional error; no universal metric winner",
+  "evidence_path": "/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_all_fixed71_20261109T000922Z/summary.json",
+  "evidence_report": "https://app.notion.com/p/binne/devugged-MMdiT-410d2a44f44b8098b1b7c7af42d2353b",
+  "evidence_checkpoint_step": 150000,
+  "applies_to": "future offline ablation sampling/evaluation; does not rewrite immutable live training validation"
+}

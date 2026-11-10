@@ -1,5 +1,137 @@
 # Shared Agent Context
 
+## Random20 benchmark and directional W1 EMA200k evaluation ACTIVE (2026-11-10)
+
+- User explicitly chooses RANDOM20 per recording, without replacement, for all
+  future ablations across sep-1/sep-2/Yonsei. Exact1420 physical windows,71 test
+  recordings,20 each; selection seed20261110, SHA256-rank draw, no forced anchors.
+  Authoritative portable manifest/CSV/captions/seeds and parent eligibility keys:
+  migration/artifacts/nymeria_random20_v1/. Verify with verify_selection.py.
+- Manifest SHA25647288f230f6b21835f30d5874641b24b0129ab669f99e2f0d03cb1dcf5ced2df.
+  Shared verified metadata: /mnt/sep-50tb/jinhyung.kim/cosmos/cosmos_models/evaluation/nymeria_random20_v1/.
+  Yonsei archive: https://drive.google.com/file/d/150K2s5UhFJtB3M75uawXoV1z6wFIGPI-/view
+  Read-only Drive listing and remote archive size/MD5/SHA256 match local.
+- User now requests fixed future offline CFG defaults: M2V1.1; V2M1.5 and
+  video+text→motion1.5; whole-seven-bridge-disabled reference. Explicit selection
+  from directional W1 EMA150k/fixed71 sweep before new subset results. M2V1.1
+  favors image metrics, motion1.5 favors jerk/acceleration; no universal winner.
+  evaluation_defaults.json records policy. This supersedes prior CFG deferral,
+  not the user's separate deferral of choosing a model. Training captions and
+  immutable periodic fixed71 training validation are unchanged.
+- Operation /mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_dirw1_200k_random20_20261110.
+  Directional W1 EMA200k checkpoint pinned; SHA c180e9d595b4971158177574c96bb22816ae93e400a6869e39d767a01ea77bf5.
+  Four owned guards reserve initially empty GPUs4/5/6/7; controller1596296;
+  worker PIDs1596446,1596449,1596452,1596455. Existing camera
+  trainer411844/411845 on2/3 untouched. No other user's GPU process shared/stopped.
+- Finite355-case shard per GPU,64-case prepare/sample/score chunks. Three tasks:
+  M2V CFG1.1, V2M CFG1.5, video+text CFG1.5 (motion expert only);4260 predictions.
+  Native UniPC35,shifts3/10,T97/20FPS/256px,supplied shape; batches32M2V/64V2M,
+  decode4, logged OOM backoff. Frozen per-run sources and exact EMA tensor load.
+- All four workers passed CFG1/native bit equality in both modes. Every prepared
+  motion is checked against the original full-test motion cache. New metadata,
+  per-frame scores/I3D features and TMR embeddings are retained for rescoring.
+  aggregate.py recomputes global1420-case FID/FVD/retrieval, not shard averages.
+- Portable worker/global scorer now live in nymeria_baselines/random20_eval/.
+  Other nodes must use their own source snapshots/path maps and the frozen
+  random20 manifest/defaults. Only recent MMDiT100k variants are in the next queue;
+  the user explicitly excludes older FiLM/image-joint checkpoints.
+- Read RUNNING.json, shards/*/status.json and ERROR.json before any restart.
+  COMPLETE.json requires all4 workers, global output audit and full aggregation;
+  launch/input preparation are not evaluation completion. Owned guards release
+  after workers exit. Exact100k preservation watcher remains independent.
+
+
+## Latest all-variant fixed71 evaluation COMPLETE, sep-1 (2026-11-09)
+
+- Operation `/mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_latest_all_fixed71_20261109T000922Z`.
+  All four latest-at-selection EMA checkpoints scored: bidirectional W1 camera30k,
+  directional W1/150k, directional W10/190k, stopped bidirectional W10/150k.
+- M2V CFG1/1.1/1.5/2; V2M and video+text CFG1.5/2. Same71 cases/seeds,
+  native35 steps.32 settings/2272 outputs:2130 fresh,142 verified native reuse.
+  Text goes only to the frozen motion expert at inference; training stays empty.
+  Camera uses private noise/no GT camera, conditional camera solver readout.
+- AUDIT.json passes every output, including497 fresh auxiliary camera arrays.
+  QUALITATIVE_AUDIT.json passes9 videos,97 frames/20FPS;9 contact sheets and
+  guidance figure. Metrics include matched TMR, UPE/LPE/sJPE, DreamSim/nativeFVD.
+- Published23 attachments and all tables in a separate latest-checkpoint section:
+  https://app.notion.com/p/binne/devugged-MMdiT-410d2a44f44b8098b1b7c7af42d2353b
+  COMPLETE.json points to REPORT_PUBLISHED.md; PUBLISHED.json records success.
+  Keep separate from matched80k. No model or default guidance selected.
+- GPUs5/6 evaluation workers and guards exited/released. GPU_RELEASED.json verifies
+  the original identities of all six training ranks are unchanged. No training
+  stopped or resumed. Exact100k preservation watcher remains independent.
+- Initial reporting lacked two reused per-case JSON copies. Those were imported
+  from exact native sources and IDs/order/means verified; no samples or scores
+  changed. RESOLVED_REPORT_ISSUE.json and REUSED_PER_CASE_VERIFIED.json explain
+  the historical traceback in build_report.log. Current COMPLETE/PUBLISHED prevail.
+- Scope completed here is all four retained sep-1 variants; no direct claim for
+  sep-2. Details migration/FOUNDRY_PHASE3_LATEST_ALL_FIXED71_20261109.md.
+
+## Public directional W1 no-camera EMA100k demo handoff COMPLETE (2026-11-09)
+
+- User explicitly authorizes Drive upload and anyone-with-link reader access.
+  Model sep1_dir5050_w1_EMA0 exact100k, not latest/raw-only or camera variant.
+- Folder https://drive.google.com/drive/folders/1d16BDPRcmyJJHP5d5SofLFuLYzOVvvo-
+  EMA inference https://drive.google.com/file/d/1Inau9dZN5Lfl9cdlAlCv6C1PbIxEqoM-/view
+  Full original100k https://drive.google.com/file/d/15JfopTKtxCGSbYgiEo1jUS_rRsQXwtqV/view
+- Compact939800605-byte export has exact98 EMA tensors; top-level bridge slot
+  also contains EMA for inference compatibility. No optimizer/RNG; do not resume
+  from it. Original3759187999-byte checkpoint remains byte-for-byte unchanged.
+- Full local SHA verified, actual seven bridges strict CPU load, remote all-file
+  size/MD5 matches, anyone reader/unlisted ACL readback, and anonymous HTTP206
+  first1024-byte matches for both model files and README passed. No GPU test.
+- Includes matching frozen Python sources, normalization vectors, README and
+  demo_motion.py. Frozen P1/P2/base/framework/codec assets remain separately
+  required; their sharing permissions were not changed. Training untouched.
+- Operation `/mnt/local/jinhyung.kim/cosmos/operations/upload_phase3_directional_w1_nocamera_100k_ema_20261108T234953Z`; COMPLETE.json and PUBLIC_ACCESS_VERIFIED.json establish
+  completion. Details migration/PHASE3_DIRECTIONAL_W1_NOCAMERA_100K_EMA_DRIVE_20261109.md.
+
+## All retained sep-1 Phase3 exact100k preservation armed (2026-11-08)
+
+- User requires exact100k preservation for ALL retained runs. All three older
+  sep-1 independent copies have freshly reverified full SHA256/linkcount1/size.
+  New bidirectionalW1 camera run has not reached100k; its immutable trainer's
+  exact100k save/rotation exemption was checked and a detached copy watcher armed.
+- Operation `/mnt/local/jinhyung.kim/cosmos/operations/preserve_all_phase3_100k_sep1_20261108T234158Z`;
+  tmux `phase3_100k_sep1_all_20261108`, CPU-only/no GPU visibility, poll30s.
+  STATUS.json reports3saved/1waiting; its COMPLETE.json requires all4, not just3.
+  Archive ACTIVE_WATCHER.json points here; older archive COMPLETE.json is a
+  historical completion for the original three. Do not restart the old watcher.
+- Fourth independent backup will appear under phase3_milestones_100k_20261108/
+  sep1_bidir5050_w1_camera_nocamloss_EMA0/step_000100000.pt after exact100k is
+  atomically published. Preserve full raw/EMA/AdamW/scheduler/two-rank RNG/cursor,
+  hashes and immutable source/contract metadata. No live trainer changes.
+- Sep-2 agent's Final Variations section at23:36UTC reports protected C4–C6 and
+  armed copy watchers for all3 active camera variants (local/global/cross-only).
+  No direct remote filesystem claim. Deleted sep-2 duplicate is excluded.
+  See migration/FOUNDRY_PHASE3_100K_PRESERVE_20261108.md.
+
+## sep-1 temporal bidirectional camera replacement COMPLETE (2026-11-08)
+
+- User authorizes fresh temporal-local bidirectional camera prediction/no camera
+  loss, videoW1/EMA0.999 from step0, V2M50/M2V50/joint0/no captions,
+  global32=2x16 on GPUs2/3. Replacement verified BEFORE stopping old W10.
+- Operation `/mnt/local/jinhyung.kim/cosmos/operations/phase3_camera_bidir_local_wv1_ema_20261108T092816Z`.
+  Existing camera package now accepts bidirectional while preserving default
+  directional recipes.15 CPU tests, two-rank/microbatch16 native/camera preflight,
+  finite batched camera-from-noise sampling and fresh4→reload6 probes passed.
+ 428 immutable source snapshot files verified. No extra Phase3 LoRA.
+- New stable ID `sep1_bidir5050_w1_camera_nocamloss_EMA0`; ranks411844/411845,
+  W&B `p3-7016123cbd2bf81fe768`, jungbinc-upenn/cosmos-motion-ft. Local50/remote50
+  verified before old stop. New140 recorded at completed handover; verify live.
+- Old bidirectionalW10 stopped at150000. SIGUSR1 was deferred by in-flight
+  raw/EMA validation. Full150k raw/EMA/AdamW/scheduler/two-rank RNG/draw4800000
+  independently copied and SHA verified BEFORE identity-checked owned old ranks
+ 354543/354544 received SIGKILL. No optimizer updates since saved150k; old150k
+  validation cancelled/incomplete. Old terminal status explicitly records method.
+- Protected independent full150k at operation/preserved_old_bidirectional_w10/
+  step_000150000.pt, SHA acdc4eab84508507b32877209b4cb3d73f41397624737e2812dbe4826b8f2f38.
+  RUNNING_VERIFIED/SAVED_STATE_VERIFIED_BEFORE_TERMINATION/COMPLETE/PRESERVED
+  receipts establish cutover. Do not duplicate launch or auto-resume old W10.
+- DirectionalW10 GPUs4/7 and directionalW1 GPUs0/1 remain untouched; GPUs5/6
+  are another researcher's jobs. Details:
+  migration/FOUNDRY_PHASE3_CAMERA_BIDIR_LOCAL_WV1_EMA_20261108.md.
+
 ## sep-2 directional no-joint camera replacements COMPLETE (2026-11-08)
 
 - User requests two FRESH directional/EMA0.999/videoW1/no-joint/camera-prediction

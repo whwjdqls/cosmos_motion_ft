@@ -9,7 +9,7 @@ from .policy import configure, TASKS
 
 class ExperimentTests(unittest.TestCase):
     def tearDown(self):
-        configure('temporal_local')
+        configure('temporal_local', 'directional')
 
     def test_recipes_only_differ_in_scope_and_identity(self):
         local=copy.deepcopy(configure('temporal_local'))
@@ -40,6 +40,30 @@ class ExperimentTests(unittest.TestCase):
         configure('temporal_local')
         configure_checkpoint(payload)
         self.assertEqual(RECIPE['bridge_attention_scope'],'global')
+
+    def test_bidirectional_local_recipe_checkpoint_and_mask(self):
+        from .policy import configure_checkpoint
+        directional=copy.deepcopy(configure('temporal_local', 'directional'))
+        bidirectional=copy.deepcopy(configure('temporal_local', 'bidirectional'))
+        self.assertEqual({k for k in directional if directional[k]!=bidirectional[k]},
+                         {'experiment','conditioning_attention'})
+        payload={'scheduler':{'recipe':bidirectional}}
+        configure('global', 'directional')
+        configure_checkpoint(payload)
+        self.assertEqual(RECIPE['bridge_attention_scope'], 'temporal_local')
+        self.assertEqual(RECIPE['conditioning_attention'], 'bidirectional')
+        for mode in ['video2motion', 'motimg2video']:
+            meta=bridge_meta(mode, 'cpu')
+            mask=bridge.temporally_local_attention_mask(meta, 'bidirectional')
+            self.assertTrue(torch.equal(mask, mask.T))
+            self.assertTrue(mask[64, 1602])  # latent1 and motion1
+            self.assertTrue(mask[1602, 64])
+            self.assertFalse(mask[64, 1606])  # motion5 belongs to latent2
+            self.assertFalse(mask[0, 64])
+            self.assertFalse(mask[1600, :1600].any())
+
+    def test_invalid_attention_is_rejected(self):
+        with self.assertRaises(ValueError):configure('temporal_local', 'unknown')
 
     def test_global_math_and_gradients_match_explicit_dense_reference(self):
         meta=bridge.BridgeMeta('motimg2video',torch.tensor([0,1,2]),torch.tensor([1,0,0],dtype=torch.bool),

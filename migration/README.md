@@ -1,5 +1,7 @@
 # Server Migration
 
+- [Random20 benchmark and defaults](NYMERIA_RANDOM20_V1_20261110.md): frozen1420-window manifest/CSV, cross-node handoff, and the portable `nymeria_baselines/random20_eval/` worker/global scorer.
+
 ## Yonsei Scratch2 retention refresh (2026-11-08)
 
 [Access-time refresh and training-cache identity checks](SCRATCH2_RETENTION_20261108.md)

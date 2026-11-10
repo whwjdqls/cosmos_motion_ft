@@ -10,16 +10,17 @@ def main():
     parser=argparse.ArgumentParser(add_help=False)
     parser.add_argument('--camera-cache',type=Path,required=True)
     parser.add_argument('--attention-scope',choices=SCOPES,required=True)
+    parser.add_argument('--conditioning-attention',choices=('directional','bidirectional'),default='directional')
     options,rest=parser.parse_known_args()
     if not options.camera_cache.resolve().is_relative_to('/mnt/local') or not (options.camera_cache/'index.json').is_file():
         raise ValueError('Need the complete existing node-local camera cache')
     os.environ['PHASE3_CAMERA_PREDICTION_CACHE']=str(options.camera_cache)
     os.environ['PHASE3_CAMERA_ATTENTION_SCOPE']=options.attention_scope
-    configure()
+    configure(options.attention_scope, options.conditioning_attention)
     from .validation import install
     install()
     names={x.split('=',1)[0] for x in rest}
-    for key,value in [('conditioning-attention','directional'),('bridge-parameterization','mmdit'),
+    for key,value in [('conditioning-attention',options.conditioning_attention),('bridge-parameterization','mmdit'),
                       ('bridge-attention-backend','grouped'),('bridge-precision','bf16_bridge'),
                       ('ema-decay','0.999'),('validation-weights','ema'),('validation-every','10000'),
                       ('validation-batch-size','32'),('validation-decode-batch-size','4')]:

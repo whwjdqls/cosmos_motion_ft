@@ -1,4 +1,10 @@
-# Directional camera prediction, two tasks, video weight 1
+# Camera prediction, two tasks, video weight 1
+
+Conditioning is directional by default for compatibility with existing runs.
+Use `--conditioning-attention bidirectional --attention-scope temporal_local`
+for temporally local bidirectional bridges. Checkpoint loading restores both
+the saved direction policy and temporal scope. The package name is retained
+for existing checkpoint/source contracts.
 
 Fresh Phase 3 MMDiT bridges from the standard frozen Phase 1 video-I/O EMA200k
 and Phase 2 200k specialists. Production samples V2M50% / M2V50% / joint0%,
