@@ -1,5 +1,46 @@
 # Shared Agent Context
 
+## Recent MMDiT EMA100k random20 queue ACTIVE (2026-11-10)
+
+- User explicitly narrows scope to the FOUR recent sep-1 MMDiT variants. Older
+  FiLM/image-joint prototypes are excluded. Git publication happened BEFORE the
+  100k queue: master b2a678d3d3b05b9de1b7faecc34166b6ae16c423, verified remote
+  tree equals reviewed local tree. CLI lacked HTTPS credentials; connected
+  GitHub Git-object API published without force. Original local commits remain
+  on foundry/sep1-pre-api-publication-20261110; master tracks the published SHA.
+- Portable worker/scorer: nymeria_baselines/random20_eval/. Latest additions
+  allow an explicit native policy_module/sample_module; sep-2 cross-only MUST
+  use its own camera_cross_only policy and sample, from its own frozen snapshot.
+  These repo changes do not mutate any running evaluator's frozen driver copy.
+- Directional W1 EMA200k random20 completed: all4260 outputs/3tasks/1420windows,
+  native parity, global metrics and complete output audit passed. Its result is
+  separate from the matched100k comparison. Operation
+  /mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_dirw1_200k_random20_20261110.
+- New queue: /mnt/local/jinhyung.kim/cosmos/operations/eval_sep1_mmdit100k_random20_20261110. Manager2216862,
+  GPUs4/5/6/7, one model per GPU, virtual shards0..3 sequentially per model.
+  All four full preserved100k files SHA-reverified before launch; all contain
+  EMA, including camera milestone now independently saved. Preservation watcher
+  COMPLETE.json reports4/4, no waiting. Do not restart that completed watcher.
+- Queue models: directionalW1/EMA0(GPU4), directionalW10/lateEMA50043(GPU5),
+  bidirectionalW10/lateEMA50143(GPU6), bidirectionalW1+camera/noCamLoss/EMA0(GPU7).
+  M2V CFG1.1, V2M and video+text1.5; shared random20 manifest SHA
+  47288f230f6b21835f30d5874641b24b0129ab669f99e2f0d03cb1dcf5ced2df.
+  4models x3tasks x1420 =17040 predictions. Cameras start from private noise,
+  never GT camera; CFG scales target only, camera uses conditional readout.
+- Completed200k input bundles are reused after ID/seed/caption/stat/hash checks.
+  No VAE input re-encode and no input copies needed. All new model outputs remain
+  independent. Four original protected milestone files retain linkcount1.
+- Read MODEL_PLANS/RUNNING.json, per-model shards/*/status.json and ERROR.json,
+  MANAGER_ERROR.json before action. No training process stopped or shared.
+  Snapshot driver_source is copied from published b2a678d. Native source/EMA
+  checks run per model/shard. Full queue COMPLETE requires all16 shards and
+  global1420-case metrics/audit per model. Guards release after GPU jobs exit.
+- User requests details/results on Final Variations:
+  https://app.notion.com/p/binne/Final-Variations-412d2a44f44b80a2936aca27f96ac016
+  Preserve sep-2 sections; do not claim remote-node completion. See
+  migration/RECENT_MMDIT_100K_RANDOM20_20261110.md.
+
+
 ## Random20 benchmark and directional W1 EMA200k evaluation ACTIVE (2026-11-10)
 
 - User explicitly chooses RANDOM20 per recording, without replacement, for all

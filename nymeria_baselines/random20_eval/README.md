@@ -63,3 +63,21 @@ features, motion embeddings and physical scores are retained for later rescoring
 Labels must distinguish raw/EMA, checkpoint step, node, camera prediction,
 direction, video weight and EMA start. This queue covers recent MMDiT models;
 older FiLM/image-joint prototypes are excluded at the user's request.
+
+## Checkpoints with additional bridge topology
+
+For sep-2's cross-only variant, the run record must set BOTH:
+
+```json
+{
+  "policy_module": "motion_expert_phase3_edge_camera_cross_only.policy",
+  "sample_module": "motion_expert_phase3_edge_camera_cross_only.sample"
+}
+```
+
+They are imported from that checkpoint's own frozen snapshot. Its policy
+restores cross-only topology; its sampler applies the correct attention context.
+The worker rejects a cross-only checkpoint without these explicit fields.
+Standard temporal-local/global camera checkpoints use the native camera-nojoint
+sampler by default. Implementation hashes are checked where the contract pins
+them. Never substitute another variant's snapshot to make a checkpoint load.

@@ -1,6 +1,6 @@
 """Finite sharded random20 input preparation, native sampling and reusable scoring."""
 from pathlib import Path
-import argparse,gc,hashlib,json,os,sys,time
+import argparse,gc,hashlib,importlib,json,os,sys,time
 import numpy as np
 import torch
 parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('shard',type=int);parser.add_argument('--operation',type=Path,required=True);ARGS=parser.parse_args()
@@ -37,6 +37,10 @@ def main():
  assert sha(SNAP/'motion_expert_joint_attention/modality_bridge.py')==training['shared_bridge'];assert sha(SNAP/'scripts/phase3_performance.py')==training['execution_policy']
  if 'image_joint_model_sha256' in training:assert sha(SNAP/'motion_expert_phase3_edge_image_joint/model.py')==training['image_joint_model_sha256']
  RECIPE.clear();RECIPE.update(payload['scheduler']['recipe']);assert RECIPE['tasks'].get('joint',0)==0 and all(x=='empty' for x in RECIPE['caption_policy'].values())
+ if RUN.get('policy_module'):importlib.import_module(RUN['policy_module']).configure_checkpoint(payload)
+ if any(token in str(RECIPE.get('experiment','')) for token in ('cross_only','crossonly')) and not (RUN.get('policy_module') and RUN.get('sample_module')):raise ValueError('Cross-only checkpoints require their own policy_module and sample_module')
+ for field,package in [('image_joint_implementation','motion_expert_phase3_edge_image_joint'),('camera_prediction_implementation','motion_expert_phase3_edge_image_joint_camera'),('camera_directional_nojoint_implementation','motion_expert_phase3_edge_camera_directional_nojoint'),('camera_cross_only_implementation','motion_expert_phase3_edge_camera_cross_only'),('camera_crossonly_implementation','motion_expert_phase3_edge_camera_cross_only')]:
+  for name,h in training.get(field,{}).items():assert sha(SNAP/package/name)==h
  old_plan=read(P['source_old_plan']);config,_,asset_identity=read_configuration(old_plan['validation_config']);expected_assets=RECIPE['validation']['assets'];ignored={'config','cases'} if P.get('allow_asset_path_relocation',False) else set();assert {k:v for k,v in asset_identity.items() if k not in ignored}=={k:v for k,v in expected_assets.items() if k not in ignored}
  atomic_json(OUT/'configuration.json',dict(checkpoint_step=STEP,weights='ema',checkpoint_sha256=P['checkpoint_sha256'],manifest_sha256=P['manifest_sha256'],native_metric_assets=asset_identity,runner_sha256=sha(__file__),gpu=os.environ['CUDA_VISIBLE_DEVICES'],training_fingerprint=payload['fingerprint']))
  import config as native_config
@@ -71,10 +75,7 @@ def main():
    else:
     from motion_expert_phase3_edge_image_joint.model import EdgePhase3
    from motion_expert_phase3_edge_joint.adapters import load_trainable_state
-   if RUN.get('camera'):
-    from motion_expert_phase3_edge_camera_directional_nojoint.sample import sample
-   else:
-    from motion_expert_phase3_edge_joint.sample import sample
+   sample=importlib.import_module(RUN.get('sample_module','motion_expert_phase3_edge_camera_directional_nojoint.sample' if RUN.get('camera') else 'motion_expert_phase3_edge_joint.sample')).sample
    model=EdgePhase3(RUN['phase1'],RUN['phase2'],device='cuda',activation_checkpointing=False);assert model.provenance['phase2_contract']==contract and model.provenance['phase1_metadata_sha256']==payload['sources']['phase1_metadata_sha256'];load_trainable_state(model,payload,weights='ema');model.requires_grad_(False).eval()
    for k,v in model.bridges.state_dict().items():torch.testing.assert_close(v.detach().cpu(),payload['ema']['state']['bridges'][k],rtol=0,atol=0)
    versions={n:p._version for n,p in model.bridges.named_parameters()};text_scope=MotionTextScope(model.motion);original_pack=camera_module.pack_predictions if RUN.get('camera') else model.edge.pack_video
