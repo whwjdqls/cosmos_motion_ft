@@ -45,7 +45,10 @@ for task in P['tasks']:
     assert z['ids'].tolist()==[r['id'] for r in rows]
     for i,row in enumerate(rows):per_case[row['id']]=dict(native[i],**extra[i],uuid=row['uuid']);features[row['id']]=tuple(z[k][i].copy() for k in ('pred','gt','text'))
  assert set(per_case)==set(ids) and set(features)==set(ids)
- ordered=[per_case[k] for k in ids];keys=[k for k in ordered[0] if k not in ('id','uuid','seed')];values={k:float(np.mean([r[k] for r in ordered])) for k in keys}
+ ordered=[per_case[k] for k in ids]
+ for row in ordered:
+  if 'upe_m' in row:row.update(upe_cm=row['upe_m']*100.,lpe_cm=row['lpe_m']*100.)
+ keys=[k for k in ordered[0] if k not in ('id','uuid','seed')];values={k:float(np.mean([r[k] for r in ordered])) for k in keys}
  if task['mode']=='motimg2video':
   a,b=[np.concatenate([features[k][i] for k in ids]) for i in (0,1)];values.update(fvd=frechet(a,b),gt_self_fvd=frechet(a,a),fvd_segments=len(a));np.savez(R/(task['id']+'_features.npz'),ids=np.array(ids),gt=a,pred=b)
  else:
