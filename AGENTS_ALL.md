@@ -1,5 +1,75 @@
 # Shared Agent Context
 
+## sep-2 temporal-local cross-only camera Phase3 (2026-11-08)
+
+- User requested fresh cross-only counterpart of directional temporal-local
+  camera run: V2M50/M2V50/J0, no captions, camera prediction/loss0, videoW1,
+  EMA0.999 from0, global32=2x16/accum1, same frozen Phase1/2, fresh200k.
+- Isolated package motion_expert_phase3_edge_camera_cross_only retains all
+  seven MMDiT projections/norms/gates and234,938,382 trainable parameters.
+  Only cross-modality keys inside matching Wan groups are allowed; clean
+  queries receive exact zero residuals. Native self-attention is unchanged.
+- Actual2rank/micro16 preflight, native camera sampling and4→6 full-state
+  reload passed; fresh production started23:30UTC on previously empty GPUs2/4.
+  W&B p3-0b54e17752808987cb55. The two existing camera runs remain on3/5,1/7.
+  Operation phase3_camera_cross_only_20261108/COMPLETE.json is authoritative
+  for finite production/source/recipe/remote verification; inspect failures.
+- Exact100k has its own independent-copy watcher under preserved_milestones/
+  phase3_camera_cross_only_100k_20261108 (registry cross_only_local). Existing
+  two-run watcher unchanged. No shared transfer. Six CPU tests passed.
+- Use this package's saved source, policy.configure_checkpoint and sample
+  wrapper for resume/evaluation; generic joint-attention loading is wrong.
+  See migration/PHASE3_CAMERA_CROSS_ONLY_SEP2_20261108.md.
+
+## sep-2 duplicate bidirectional camera run CANCELLED (2026-11-08)
+
+- User requested immediate stop and deletion after W&B confirmed the same
+  training configuration is already running on sep-1. Sep-2 run
+  p3-48abfc4c04cf999c28aa is stopped; its W&B run and production/probe
+  checkpoints are deleted (11.28 GB). Do not resume this duplicate.
+- GPUs0/6 no longer contain this trainer. The two directional camera runs
+  continue on3/5 and1/7. Their exact100k protection remains active via watcher
+  PID1360307; verify WATCHER.json/start identity. The watcher registry now has
+  only directional_local and directional_global.
+- Operation CANCELLED_DUPLICATE.json and HANDOVER.md supersede the older
+  bidirectional running/completion notes below. Frozen Phase1/2 checkpoints,
+  sep-1 training, and the older joint/W10 recovery checkpoint are untouched.
+
+## sep-2 bidirectional camera replacement COMPLETE;100k watcher ACTIVE (2026-11-08)
+
+- User requests fresh bidirectional temporal-local camera counterpart to the
+  directional run:50/50/no joint, videoW1, EMA0.999, no captions, no camera loss,
+  GBS32=2x16/no accumulation. Old bidirectional joint/videoW10 was checkpointed
+  stopped104482 after user changed to stop-first and asked for a quick handoff.
+- Operation cosmos_storage/operations/phase3_camera_bidir_nojoint_replace_20261108.
+  OLD_RUN_PRESERVED.json verifies raw/EMA/AdamW/two-rankRNG/cursor and SHA.
+  New bidirectional model is NOW training on0/6, agent3400259; W&B
+  p3-48abfc4c04cf999c28aa. GPU6 became available again at13:17UTC, allowing the
+  already approved original pair. The earlier0+3 question is obsolete; noGPU3
+  sharing was needed. No foreign process was changed. Old104482 stays stopped.
+- Earlier1GiB reservation was insufficient when GPU6's other job grew139GB;
+  additional20GiB held GPU0 while placement was blocked. Both reservation
+  processes1337503/1405628 are now exited; do not restart them. replace_now.py
+  completed full2rank/micro16 native+camera preflight,4→6 strict reload, finite
+  production and remote W&B checks. COMPLETE.json and
+  RUNNING_AND_100K_RETENTION_VERIFIED.json are authoritative.434 source files
+  verified; recipe differs from directional-local only identity/attention.
+  Initial handover.py is unused. Never signal old rank PIDs again.
+- Two directional camera jobs remain untouched on3/5 and1/7. New bidirectional
+  isolated package motion_expert_phase3_edge_camera_bidir_nojoint is ready;
+  nine policy/mask tests +native prepare smoke and actual GPU gates pass.
+- Exact100k preservation for all THREE camera jobs is armed via CPU watcher
+  PID1265412, protected_milestones equivalent root is
+  cosmos_storage/preserved_milestones/phase3_camera_nojoint_100k_20261108.
+  Registry, WATCHER.json/status.json are authoritative. Independent fsynced
+  copy +SHA +raw/EMA/optimizer/RNG/cursor +frozen-source checks; two tests pass.
+  None of these fresh runs has reached100k yet. Native trainers retain100k too.
+  No shared transfer. Branch codex/sep2-bidir-camera-nojoint-and-100k-preserve-20261108.
+- Validation jointly denoises camera from private Gaussian noise in BOTH V2M
+  and M2V, feeding updated camera to the next step. No GT camera is used at test
+  time. Current periodic validation saves/scores motion or video only; generated
+  camera trajectories are not saved or assigned camera accuracy metrics.
+
 ## sep-2 directional no-joint camera replacements COMPLETE (2026-11-08)
 
 - User requests two FRESH directional/EMA0.999/videoW1/no-joint/camera-prediction
