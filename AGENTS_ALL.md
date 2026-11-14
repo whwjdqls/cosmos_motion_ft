@@ -1,5 +1,33 @@
 # Shared Agent Context
 
+## sep-2 listed MMDiT EMA100k random20 queue ACTIVE (2026-11-10)
+
+- User requested wait30min then commit/merge/pull and evaluate only models in
+  Final Variations; sharing our training GPUs explicitly authorized. Wait ended
+  01:33:44UTC.652c340 committed local camera/cross-only/preservation work;
+  b3ddd34 merged origin/master d194609. All19+3 focused checks passed.
+  Local master has these commits; no remote push is claimed.
+- Operation cosmos_storage/operations/eval_sep2_mmdit100k_random20_20261110.
+  Manager2845512 and report follower2917951; verify live PID/start identities.
+  First four100k models: bidirectional/J20/W10 onGPU1, directional/J20/W10 on2,
+  directional/J20/W1 on3, directional-local/camera/noCamLoss/W1 on4. Their exact
+  EMA/source and native CFG1 parity checks passed; first64M2V/model are saved.
+  Camera-global and cross-only wait for their protected100k files, then queue.
+- Same1420 random20 windows and frozen CFG defaults as sep-1: M2V1.1,
+  V2M/video+text1.5, whole-bridge-off reference,35UniPC, shifts10/3, provided
+  shape. Generator text empty; explicit text only enters frozen motion expert.
+  All native video inputs freshly encoded once in native_inputs; do NOT use
+  old cached latents or CPU common_inputs intermediates. All1420 motion/shape
+  inputs passed native/cache parity. No NAS copy or training mutation.
+- Saved training_tasks explicitly permit the three listed40/40/20 MMDiT
+  models. Worker/aggregate driver frozen8369d59. Four355 virtual shards/model,
+  batches32M2V/64V2M/decode4. Per-model COMPLETE requires4260 outputs/global
+  metrics/AUDIT; root COMPLETE requires all6, including pending milestones.
+  Inspect RUNNING/MANAGER_ERROR and model shard ERROR before retrying.
+- Reporter updates local combined report/CSV; Notion has protocol/progress
+  only until results are explicitly published. Preserve sep-1 content. See
+  migration/SEP2_MMDIT_100K_RANDOM20_20261110.md and operation HANDOVER.md.
+
 ## Recent MMDiT EMA100k random20 queue ACTIVE (2026-11-10)
 
 - User explicitly narrows scope to the FOUR recent sep-1 MMDiT variants. Older
