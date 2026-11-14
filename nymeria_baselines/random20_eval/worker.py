@@ -146,7 +146,9 @@ def main():
     values.update(extra_motion_metrics(records,folder,contract,[]));result={'v2m':values}
    atomic_json(folder/'summary.json',result);atomic_json(folder/'COMPLETE.json',dict(windows=len(records),checkpoint_step=STEP,weights='ema',task=task['id'],manifest_sha256=P['manifest_sha256']))
   assert all(p._version==versions[n] for n,p in model.bridges.named_parameters());atomic_json(chunk/'COMPLETE.json',dict(windows=len(records),tasks=3,weights_unchanged=True));progress('chunk_complete',chunk=chunk_index,complete=start+len(records),total=len(selected))
- assert len(all_records)==355;text_scope.close();atomic_json(OUT/'COMPLETE.json',dict(windows=355,tasks=3,predictions=1065,checkpoint_step=STEP,manifest_sha256=P['manifest_sha256']));progress('complete',windows=355)
+ assert len(all_records)==355
+ if text_scope is not None:text_scope.close()
+ atomic_json(OUT/'COMPLETE.json',dict(windows=355,tasks=3,predictions=1065,checkpoint_step=STEP,manifest_sha256=P['manifest_sha256']));progress('complete',windows=355)
 
 if __name__=='__main__':
  try:main()
