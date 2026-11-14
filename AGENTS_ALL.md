@@ -1,5 +1,274 @@
 # Shared Agent Context
 
+## sep-2 Naeive W1 EMA200k full test COMPLETE/PUBLISHED (2026-11-14)
+
+- Operation eval_naeive_wv1_EMA200k_fulltest_20261113 completed all11677 unique
+  windows/71 recordings across4 tasks:46708 fresh predictions, global audit passed.
+- Final Variations now has full tables plus metricsCSV, report, AUDIT and explicit
+  cached-text-alias JSON attachments. NOTION_ALLCOMPLETE.json and
+  NOTION_fulltest_PUBLISHED.json confirm publication; status complete_published.
+- M2V CFG1: PSNR18.336774,SSIM.542629,LPIPS.298548,DreamSim.172095,FVD77.996580.
+  V2M/T2M/TI2M MPJPE29.962385/44.810249/43.219268cm. Native UniPC30/shift10,
+  native powerEMA, no Phase3 bridge. Six cached aliases are not fresh encodings.
+- Compared with directional-camera W1 EMA200k fulltest: ordered IDs and all70062
+  GT I3D400 feature vectors are bit-identical. That model uses bridgeCFG1.1 and
+  UniPC35, FVD41.238070. Same scoring cohort does not imply matched sampling or
+  training budget: Naeive M2V25%, Phase3 M2V50%. Do not attribute the gap to one
+  factor without a controlled diagnostic or resample completed evaluations.
+- This supersedes earlier pending Naeive progress notes below. Bidir no-camera
+  training, inference-camera100k random20 and post200k queue remain separate;
+  inspect their current status rather than treating them as finished.
+
+## sep-2 AFTER bidirectional EMA200k full eval + C2M-only FiLM50k ARMED (2026-11-14)
+
+- User requests after current bidir W1 base finishes200k: full test and trajectory
+  FiLM on top. Confirmed freeze base/train onlyFiLM50k, then narrowed to100%C2M.
+- Durable coordinator133482/start67406864 at operations/
+  after_bidir200k_fulltest_c2m_trajfilm_20261114 waits final200k+validation+state,
+  pins EMA200k/SHA, starts independent eval and gated train children. No current
+  jobs stopped/resources reserved. Check status/errors/PID identity.
+- Full unchanged no-camera base11677 windows, M2V1.1/V2M+VT2M1.5 wholebridge CFG,
+  native35/shift10,3, batches32/64, empty0/1/3, globalGT metrics/outbox to Notion.
+- New package motion_expert_phase3_edge_mmdit_trajfilm_only sealed source_bundle;
+  frozen EMA200k base+P1/P2; only7 FiLM/56 tensors/15663872 params,50k new updates,
+  GBS32=2x16/accum1,LR2e-4/warmup1000/cos50k,EMA.999,100%camera2motion.
+- No video/captions/native camera tokens. Empty-GEN bridges are bypassed; C2M
+  conditions frozen motion specialist via18D trajectory/noise FiLM, NOT learned
+  bidirectional video bridges. Document this architecture limitation accurately.
+- Exact original fixed71 camera-only EMA previews/metrics at0/every5k + W&B.
+  Launch2/4 only when empty/leases acquired; real two-rank preflight/recovery
+  gates production in a fresh interpreter. GPU acceptance deferred, NOT passed.
+- Cache metadata differs cddae42 vs32f8, but all112503 rows and1284 motion/neutral
+  arrays proved identical/shared inodes. Strict pairing receipt required; actual
+  base cache used. Seven CPU tests+deferred import passed, controller armed.
+- See migration/AFTER_BIDIR200K_FULLTEST_C2M_TRAJFILM_SEP2_20261114.md; Notion queue
+  published Final Variations. Future full metrics need audit/publication receipt.
+
+
+## sep-2 status/retrieval-tail repair (2026-11-14 01:28UTC)
+
+- Bidir no-camera W1 EMA training2/4 ~154400/latest150k,2.02s/update (~25.6h).
+  Camera-at-inference EMA100k random20 still running sharedGPU2:419/1420 fully
+  scored,1321/4260 generated, shard0 complete/shard1 active. No fresh errors.
+- Naeive W1 fulltest0/1/3 had stopped at final26/27-case chunks in first3 shards
+  because per-chunk R32 requiresN>=32.23356 outputs preserved;5760 windows scored.
+- Fixed local per-chunk retrieval wrapper, explicitly unavailable onlyN<32; no
+  fake candidates/scores, no dropped cases. Final global R32 evaluator unchanged.
+  Six tests passed incl small26/27 and unchanged original64-case results.
+- Manager4164143 restarted from framework root, only empty coordinated0/1/3.
+  Finished outputs/chunks reused; other shards3/4/5 pending. Check actual status
+  and fresh errors/tail completion; do not resample. See TAIL_RETRIEVAL_FIX_VERIFIED
+  and preserved-prediction identity inventory in Naeive eval operation.
+- Notion queue updated; final metrics remain pending COMPLETE/AUDIT/publication.
+
+
+## sep-2 no-camera-trained EMA100k + inference camera random20 STARTED (2026-11-13)
+
+- User requests additional camera prediction at inference, preserved bidir W1
+  EMA100k, exact1420 random20. Not a camera-trained checkpoint, no training changes.
+- Operation eval_bidir_EMA100k_inference_camera_random20_20261113; isolated
+  camera_inference model/packer/sampler reuse frozen Phase1 EMA domain2 camera
+  heads,96x64 state (9 meaningfuldims), independent noise seed131071+caseSeed.
+  Same groupedBF16 temporal-local bidir bridges. No GT camera/direct camera-motion
+  edges. Whole-bridge CFG1.1/1.5 unchanged; camera velocity conditioned-only.
+- Controller3608675/worker3608684 on GPU2, coordinated sharing with exact owned
+  trainer2819291 under prior user authorization to evaluate on training GPUs.
+  Refuses other resident PIDs; no trainer lock/process modifications. Batch16/32.
+- Five CPU checks passed. Model loaded; camera-OFF exact saved-baseline reproduction
+  must pass before camera-ON CFG1 parity and production. Check fresh receipts/errors.
+- GPU_START_VERIFIED passed: camera-OFF32M2V/64V2M outputs match saved baseline
+  bitwise (max0); camera-ON CFG1/EMA checks passed, first32M2V+camera outputs saved.
+- Original M2V/V2M/VT2M quant+GT and on-minus-off comparison queued to Notion Final
+  Variations; camera arrays saved, no camera accuracy/training claim. Queue
+  published; final metrics need full AUDIT/COMPLETE and connected publication.
+  See migration/BIDIR_EMA100K_INFERENCE_CAMERA_RANDOM20_SEP2_20261113.md.
+
+
+## sep-2 Naeive W1 EMA200k full-test STARTED (2026-11-13)
+
+- New user request full-test evaluation, native W1 final200k DCP, NOT older W10.
+  Operation eval_naeive_wv1_EMA200k_fulltest_20261113; five CPU checks passed.
+-11677 unique physical windows/71 recordings, same frozen full cohort/seeds as
+  directional camera. Four supported tasks M2V/V2M/T2M/TI2M =>46708 fresh outputs.
+  Native UniPC30/shift10/CFG1, native powerEMA; no Phase3 bridges/camera tasks.
+- Controller3386746, current workers3386758/3386828/3386843 on empty0/1/3,
+  six virtual shards, batches32M2V/64motion/decode4 +OOM backoff. Training2/4 untouched.
+- Native W1 frozen training source plus separate matched frozen metric snapshot.
+  Actual EMA action/LoRA tensor parity passed on initial load. Native observed
+  prefix tolerance1e-4 (roundtrip ~1.44e-6), retain returned prefix, no GT overwrite.
+  Initial path/Phase3-prefix-guard errors archived/resolved; check fresh ERROR.
+- GPU_START_VERIFIED passed: all3 workers first64 cases across4 tasks (768
+  fresh predictions) finite/provenance/prefix verified; M2V scoring advancing.
+- Metric protocol same native I3D/DreamSim/Body23/TMR/measuredGT/global aggregation.
+  Six explicit cached text aliases staged with provenance; no fake exact encoding.
+- Notion queue published Final Variations; full metrics pending COMPLETE/AUDIT
+  and connected publication, not automatically uploaded by an expired chat cell.
+  See migration/NAEIVE_W1_200K_FULLTEST_SEP2_20261113.md and operation/HANDOVER.md.
+
+
+## sep-2 final full-test metrics COMPLETE/PUBLISHED (2026-11-13 21:42UTC)
+
+- Directional camera/local/W1 EMA200k full11677/35031 predictions all scored,
+  global audit passed. Notion full tables+precisionCSV+six-aliasJSON published to
+  Final Variations. NOTION_fulltest_PUBLISHED.json/NOTION_ALLCOMPLETE.json saved
+  in eval_directional_camera_wv1_EMA200k_full_random20_20261111. No eval GPU jobs.
+- M2V PSNR19.49827 SSIM.583282 LPIPS.250422 DreamSim.143735 FVD41.23807;
+  V2M MPJPE16.02509cm FID.01992249; VT2M MPJPE13.42219 FID.01566455.
+  Report/audit disclose six existing cached aliases, not fresh exact raw vectors.
+- Bidir local/no-camera/W1 EMA continues2/4,148460,latest140k, recent4.91s/update
+  (~70h left), GPU2 shared by4 foreign jiye jobs. Training is alive; do not
+  terminate foreign processes. NaeiveW1 already finished200k/final validation.
+- Bidir exact100k random20 COMPLETE/PUBLISHED. Unintended140k eval cancelled,
+  DO_NOT_RESUME. Original other stopped runs stay stopped. Both100k preserved.
+
+
+## sep-2 full-test text aliases resolved; 140k cancelled (2026-11-13)
+
+- User clarified requested bidirectional EMA100k, NOT140k. Unintended140k controller
+  and both workers STOPPED; operation DO_NOT_RESUME, Notion queue cancelled.
+  Exact100k checkpoint independently preserved and random20 COMPLETE/PUBLISHED.
+- Six missing directional-camera EMA200k fulltest raw caption keys each have one
+  existing4096-D variant in local matched cache:4 append period,2 collapse spaces.
+  Explicit six-entry aliases + per-vector/source hashes in operation
+  eval_directional_camera_wv1_EMA200k_full_random20_20261111/TEXT_LOOKUP_ALIASES.json.
+- This reuses cached ALIAS vectors, NOT newly encoded exact raw strings. Sep-1
+  local JSON/checksum parity not directly verified; independently checked local
+  six candidates. Original generation captions/predictions/cache unchanged.
+-33 known/null+mixed+six vectors bitwise checks passed; unknown keys still fail.
+  Atomic READY unblocked controller2995691; worker1359869 onGPU3 reached scoring,
+  shards2/3 pending, GPU5 occupied. All35031 predictions already exist; no resampling.
+- Final report/audit/ZIP disclose policy and attach aliases; publish fulltest only
+  when complete. Notion policy+alias JSON attachment already saved. See migration/
+  DIRECTIONAL_CAMERA_W1_FULLTEST_CACHED_ALIASES_SEP2_20261113.md.
+
+
+## sep-2 bidirectional/no-camera/W1 EMA140k random20 STARTED (2026-11-13)
+
+- New user request: latest saved EMA140k, identical1420 frozen random20 windows,
+  all3 tasks, CFG1.1/1.5 whole-bridge-off, batches32/64/decode4.
+- Operation eval_bidirectional_nocamera_wv1_EMA140k_random20_20261113; detached
+  manager1195498, workers1196105/1196240 on empty coordinated0/3.
+  Training on2/4 continues. Check current status/PID identities/native acceptance.
+- Four preflight checks passed incl actual140k full state and policy restore.
+  Inputs reused; outputs newly generated at140k. Exact local checkpoint pinned.
+- Notion queue published; final metrics require COMPLETE/AUDIT and connected
+  publication with receipt. No durable chat publisher is assumed.
+- Prior bidirectional100k random20 COMPLETE and PUBLISHED; both exact100k training
+  milestones independently preserved. NaeiveW1 finished200k final validation.
+- Directional camera EMA200k full11677 sampled;11293 completely scored, waiting
+  six missing exactLLM2Vec vectors, no GPU sampling active for that operation.
+  Random20 complete/published. Do not resample or drop missing-caption windows.
+
+
+## sep-2 bidirectional/no-camera/W1 exact100k random20 QUEUED (2026-11-12)
+
+- User requests current bidirectional local/no-camera/W1 at exact100k on the
+  existing frozen1420 random20 windows, metrics to Final Variations. Training
+  continues. Operation cosmos_storage/operations/eval_bidirectional_nocamera_wv1_EMA100k_random20_20261112.
+- Controller2607547 waits independent preserved100k VERIFIED+SHA and full own
+  raw/EMA/AdamW/scheduler/two-rank RNG/cursor contract. Pins EMA100k. Existing
+  preservation watcher2802225 remains active; do not duplicate it.
+- M2V CFG1.1, V2M and video+text1.5, whole-bridge-off reference, native35 steps,
+  shifts10/3, supplied shape/no camera, generator text empty. Exact own frozen
+  no-camera policy restored and hashed. Batches32/64/decode4, four355-case
+  shards/up to two empty GPUs; respects current full-test leases/foreign jobs.
+- Four CPU tests passed incl actual80k state and wrong-policy rejection.
+  Native input bundles and all random20 text/evaluator assets already local.
+  New samples at100k, global metrics/measuredGT, no subset reselection.
+- Queue entry published to Notion. Completion writes NOTION_OUTBOX.json;
+  publish through connected tools when active. No local Notion token/durable
+  chat-cell uploader; do not claim publication before a saved receipt.
+  See migration/BIDIRECTIONAL_NOCAMERA_W1_100K_RANDOM20_SEP2_20261112.md.
+
+
+## sep-2 directional camera EMA200k random20 COMPLETE/full-test ACTIVE (2026-11-12)
+
+- Directional temporal-local/camera/W1 finished200k; final validation passed.
+  Exact final raw/EMA state preserved/checksummed locally by queued controller.
+- random20 all1420 windows/4260 predictions/AUDIT passed and full numeric model/
+  measuredGT tables+CSV published to Final Variations. Receipt
+  NOTION_random20_PUBLISHED.json. M2V PSNR19.38020/SSIM.57838/LPIPS.25284/
+  DreamSim.14349/FVD67.26310; V2M MPJPE16.84985cm/FID.0249494;
+  video+text MPJPE14.05516cm/FID.0207773. Exact EMA200k; not matched100k.
+- Full11677 pass is running onGPU5 (GPU3 remains foreign VLLM). Existing subset
+  outputs are reused. Missing six exactLLM2Vec vectors still affect only motion
+  scoring chunks; generation proceeds, no fake embeddings/caption replacement.
+- Operation eval_directional_camera_wv1_EMA200k_full_random20_20261111; inspect
+  status/shards/ERROR and permanent COMPLETE vs sampling-only receipts.
+  Prior connected publisher cell101 expired; local evaluation is independent.
+  Publish final fulltest report via connection once COMPLETE/AUDIT pass; do not
+  claim current publisher active from stale heartbeat. No local Notion token.
+- Bidir/no-camera/W1 on2/4 ~68k and NaeiveW1 on6/7 ~93k remain healthy.
+  Both independent100k copy watchers are alive; checkpoints not yet at100k.
+  Do not duplicate either watcher. Other stopped trainers stay stopped.
+
+
+## sep-2 directional-camera/W1 EMA200k final evaluation QUEUED (2026-11-11)
+
+- User requests full11677 unique physical windows and frozen1420 random20 on3/5
+  after current directional temporal-local camera/W1 run completes200k. Detached
+  controller waits final checkpoint/validation/exit; no trainer mutations.
+  Operation cosmos_storage/operations/eval_directional_camera_wv1_EMA200k_full_random20_20261111.
+- Random20 first, then full reusing identical subset output NPZs (no resampling).
+  M2V32/motion64/decode4, native35 steps, whole-bridge CFG1.1/1.5, shifts10/3,
+  supplied shape, no GT camera. Explicit text only for video+text inference.
+  GPU5 starts when empty; GPU3 waits for other researcher's VLLM to leave.
+- Six full-test TMR captions absent from original cache. User asked for updated
+  cache/authorized encoder. Sampling still covers every window; affected motion
+  scoring waits without fabricated vectors; resume scoring after validated
+  supplement, no regeneration. Random20 unaffected. See MISSING_TEXT_CAPTIONS.
+- Five CPU tests passed. Actual GPU/nativeCFG1 acceptance runs only after200k.
+  Global metrics and measuredGT motion reference are computed separately per
+  population. Connected Notion publisher cell101, unique receipts; inspect
+  heartbeat/re-arm if session expires. Local controller remains durable.
+- Both requested exact100k protections VERIFIED/armed: existing bidirectional
+  no-camera watcher plus native rotation exemption; new NaeiveW1 permanent5k
+  milestones plus independent DCP copy/SHA watcher. No trainer restart.
+  See migration/DIRECTIONAL_CAMERA_W1_200K_FULL_RANDOM20_SEP2_20261111.md.
+
+
+## sep-2 Naeive adaptation videoW1 fresh run VERIFIED (2026-11-10)
+
+- User requests same Naeive adaptation with video weight1 on idle GPUs. New run
+  naeive_adaptation_x0_wv1_edge_T97_gbs32_lora_4tasks_200k_sep2_20261110 on6/7,
+  native action-stream LoRA16/alpha32, four equal tasks, batch32=2x16/accum1,
+  one image prefix, same motion reconstruction/physical losses and native EMA.
+- Official Edge base/fresh optimizer/EMA,200k horizon. Only saved motion-contract
+  difference is video_loss_scale10→1. Old200k is not used for initialization.
+  Original loss source hashes retained; nine CPU tests and config parity passed.
+- Operation cosmos_storage/operations/naeive_adaptation_x0_wv1_20261110. Source
+  snapshot424 files; actual production uses that snapshot, guarded emptyGPU
+  launcher, hangup-safe agent. Read status/VERIFICATION_FAILED/COMPLETE, logs,
+  rank0/1 four-task audits and remote W&B. Do not infer verification from spawn.
+- COMPLETE.json verifies step99, all4 task gradients on both ranks, actual1x
+  video loss and4 initial EMA videos uploaded. W&B cosmos3_camera/d6z7q2gi,
+  display sep2_naive4task_w1_x0_EMA. Production agent2852517/ranks2852772/2852773.
+- Existing bidirectional/no-camera on2/4, directional/local/camera on3/5 and
+  cross-only100k evaluation on1 continue untouched. No shared transfer.
+  See migration/NAEIVE_WV1_SEP2_20261110.md.
+
+
+## sep-2 bidirectional W1/no-camera replacement COMPLETE (2026-11-10)
+
+- User requests fresh temporal-local bidirectional/no-camera/videoW1/EMA0.999,
+  V2M50/M2V50/no joint/no captions, GBS32=2x16/accum1, same frozen P1/P2.
+- New isolated package motion_expert_phase3_edge_mmdit_bidir_wv1; two CPU tests
+  passed. Operation cosmos_storage/operations/phase3_bidir_no_camera_wv1_replace_20261110.
+  GPUs2/4 initially overlap only the owned cross-only ranks. Native two-rank
+  preflight and fresh4/reload6 gates precede production; manager stops global
+  and cross-only originals only AFTER finite production >=30 and source/recipe/
+  full-state/remote W&B verification. Local directional/camera on3/5 untouched.
+- COMPLETE.json now verifies finite production step30,425 source files/native
+  gates/fresh4-reload6, remote W&B p3-c0d0cecdf7475e3c7881. New training on2/4.
+  Old global stopped134959 and cross-only stopped116015; full raw/EMA/AdamW/
+  scheduler/two-rank RNG/cursor recovery checkpoints SHA-verified in preserved/.
+  Do not resume those stopped jobs. Read operation status/FAILED/REPLACEMENT_HEALTHY/COMPLETE and live process
+  identities before action. Existing100k evaluation is independent; do not stop
+  its worker onGPU1. No foreign processes touched, no checkpoint deletion.
+- Exact100k retention and independent-copy watcher armed under preserved_milestones/
+  phase3_bidir_nocamera_wv1_100k_20261110. See migration/PHASE3_BIDIR_NOCAMERA_WV1_SEP2_20261110.md.
+
+
 ## sep-2 listed MMDiT EMA100k random20 queue ACTIVE (2026-11-10)
 
 - User requested wait30min then commit/merge/pull and evaluate only models in

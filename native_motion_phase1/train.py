@@ -47,7 +47,8 @@ def main():
         if objective != OBJECTIVE:
             raise ValueError(objective)
         contract.update(schema=2, motion_objective=OBJECTIVE, motion_prediction="direct clean x0",
-                        motion_weights=MOTION_WEIGHTS, motion_loss_scale=1., video_loss_scale=10.,
+                        motion_weights=MOTION_WEIGHTS, motion_loss_scale=1.,
+                        video_loss_scale=float(config.model.config.rectified_flow_training_config.loss_scale),
                         training_noise="shared native WAVER shift3; independent_action_schedule=False",
                         sampling="native UniPC; x0 motion converted with actual integration sigma",
                         reconstruction_loss_sha256=sha256(Path(__file__).resolve().parents[1] / "motion_expert_t2m_edge/losses.py"),

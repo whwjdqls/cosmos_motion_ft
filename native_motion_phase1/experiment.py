@@ -1,5 +1,6 @@
 """Reuse native Phase-1 LoRA/loss/EMA machinery with motion in the action stream."""
 import copy
+import math
 import os
 from hydra.core.config_store import ConfigStore
 from torch.utils.data import DistributedSampler
@@ -19,6 +20,10 @@ if _objective == "x0_reconstruction_shared_waver_v1":
     recipe.model.motion_mean_path = os.environ["MOTION_STATS_MEAN"]
     recipe.model.motion_std_path = os.environ["MOTION_STATS_STD"]
     recipe.model.config.rectified_flow_training_config.action_loss_weight = 0.
+    video_scale = float(os.environ.get("MOTIONP1_VIDEO_LOSS_SCALE", "10"))
+    if not math.isfinite(video_scale) or video_scale <= 0:
+        raise ValueError("MOTIONP1_VIDEO_LOSS_SCALE must be finite and positive")
+    recipe.model.config.rectified_flow_training_config.loss_scale = video_scale
 elif _objective != "native_velocity":
     raise ValueError(f"Unknown motion objective: {_objective}")
 recipe.dataloader_train.dataloaders = {
