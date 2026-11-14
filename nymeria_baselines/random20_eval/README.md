@@ -34,6 +34,9 @@ The operation directory contains `plan.json`, a byte-identical `manifest.json`,
 
 - `run`: `canonical_id`, `step`, `camera`, `run_dir`, `snapshot`, `phase1`, `phase2`,
   `path_map`; preserve each checkpoint's architecture/source history.
+  Listed sep-2 joint-trained models must additionally pin `training_tasks`
+  exactly to their saved40/40/20 mix. Without this field the historical50/50
+  guard remains. This changes checkpoint eligibility only, not evaluation tasks.
 - `checkpoint`, `checkpoint_sha256`, `manifest`, `manifest_sha256`, `nymeria_root`,
   `native_rows`, `shards:4`, `sampling_batch:{motimg2video:32,video2motion:64}`,
   `decode_batch:4`, and three `tasks` dictionaries (`id`, `mode`, `guidance`, `text`).

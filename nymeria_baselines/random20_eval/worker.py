@@ -36,7 +36,9 @@ def main():
  for name,h in training['implementation'].items():assert sha(SNAP/'motion_expert_phase3_edge_joint'/name)==h
  assert sha(SNAP/'motion_expert_joint_attention/modality_bridge.py')==training['shared_bridge'];assert sha(SNAP/'scripts/phase3_performance.py')==training['execution_policy']
  if 'image_joint_model_sha256' in training:assert sha(SNAP/'motion_expert_phase3_edge_image_joint/model.py')==training['image_joint_model_sha256']
- RECIPE.clear();RECIPE.update(payload['scheduler']['recipe']);assert RECIPE['tasks'].get('joint',0)==0 and all(x=='empty' for x in RECIPE['caption_policy'].values())
+ RECIPE.clear();RECIPE.update(payload['scheduler']['recipe'])
+ from protocol import check_training_recipe
+ check_training_recipe(RECIPE,RUN)
  if RUN.get('policy_module'):importlib.import_module(RUN['policy_module']).configure_checkpoint(payload)
  if any(token in str(RECIPE.get('experiment','')) for token in ('cross_only','crossonly')) and not (RUN.get('policy_module') and RUN.get('sample_module')):raise ValueError('Cross-only checkpoints require their own policy_module and sample_module')
  for field,package in [('image_joint_implementation','motion_expert_phase3_edge_image_joint'),('camera_prediction_implementation','motion_expert_phase3_edge_image_joint_camera'),('camera_directional_nojoint_implementation','motion_expert_phase3_edge_camera_directional_nojoint'),('camera_cross_only_implementation','motion_expert_phase3_edge_camera_cross_only'),('camera_crossonly_implementation','motion_expert_phase3_edge_camera_cross_only')]:
