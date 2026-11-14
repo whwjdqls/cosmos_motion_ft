@@ -70,6 +70,7 @@ def prepare_trainer(probe_updates=0):
             for mode in ['video2motion','motimg2video']:
                 result=sample(model,mode=mode,caption=['POISON']*2,seed=[700+rank*2,701+rank*2],steps=2,return_all=True,**values)
                 assert result['camera'].shape==(2,96,64)
+                assert all(bool(torch.isfinite(v).all()) for v in result.values())
                 if mode=='motimg2video':torch.testing.assert_close(result['video'][:,:,0],values['video'][:,:,0],rtol=0,atol=0)
                 audits.append(dict(task=mode,batch=2,steps=2,camera_from_private_noise=True,finite=all(bool(torch.isfinite(v).all()) for v in result.values())))
         reports=train.all_objects(audits,world)
@@ -89,7 +90,7 @@ def main():
     args,rest=parser.parse_known_args()
     if args.probe_updates<0:raise ValueError('Invalid probe count')
     configure()
-    if '--conditioning-attention' not in rest:rest+=['--conditioning-attention','directional']
+    if '--conditioning-attention' not in rest:rest+=['--conditioning-attention',RECIPE['conditioning_attention']]
     if '--clean-motion-timestep' not in rest:rest+=['--clean-motion-timestep','zero']
     train=prepare_trainer(args.probe_updates)
     sys.argv=[sys.argv[0],*rest]
