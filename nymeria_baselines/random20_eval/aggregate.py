@@ -69,7 +69,7 @@ text=['# MMDiT EMA checkpoint — Nymeria random20 v1','',f'Manifest SHA256: `{P
 for task in P['tasks']:
  v=summaries[task['id']];cells=[f"{v[k]:.5f}" if k in v else '—' for k in ('mpjpe_cm','upe_cm','lpe_cm','sjpe','fid','dreamsim','fvd')];text.append('| '+task['id']+' | '+str(task['guidance'])+' | '+' | '.join(cells)+' |')
 text+=['','Full metrics: `metrics.csv`; cohort-level summaries: `summary.json`; recording-block95% intervals: `recording_bootstrap_intervals.json`. These intervals describe recording variation on this fixed subset, not training-seed variation.','', 'This is the random20 benchmark; its distribution scores must not be pooled or directly equated with previous fixed71/full-test metrics. No model is selected by this report.']
-(R/'report.md').write_text('\n'.join(text)+'\n');save(R/'SOURCE_MANIFEST_FINAL.json',{f.name:hashlib.sha256(f.read_bytes()).hexdigest() for f in R.glob('*.py')})
+(R/'report.md').write_text('\n'.join(text)+'\n');save(R/'SOURCE_MANIFEST_FINAL.json',{f.name:hashlib.sha256(f.read_bytes()).hexdigest() for f in Path(__file__).resolve().parent.glob('*.py')})
 with zipfile.ZipFile(R/'quantitative_evidence.zip','w',zipfile.ZIP_DEFLATED) as z:
  for name in ['plan.json','manifest.json','summary.json','metrics.csv','recording_bootstrap_intervals.json','AUDIT.json','SOURCE_MANIFEST_FINAL.json','report.md']+[t['id']+'_per_case.json' for t in P['tasks']]:z.write(R/name,name)
 print(json.dumps(dict(complete=True,windows=1420,predictions=4260,tasks=3,manifest_sha256=P['manifest_sha256'])),flush=True)
