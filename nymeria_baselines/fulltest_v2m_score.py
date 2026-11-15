@@ -51,6 +51,11 @@ def main(a):
    else:
     with np.load(a.out/'models'/a.model/'predictions'/(r['id']+'.npz')) as z:
      joints,rot,rest=z['joints'].copy(),z['rotations'].copy(),z['neutral23'].copy()
+   # The common benchmark stores/scorers use FP32 joint positions. Some native
+   # decoders return FP64; canonicalize at this boundary, as the original
+   # full-test prediction writer does, before physics and leaf completion.
+   # Do not compare unrounded FP64 positions to the adapter's FP32 output.
+   joints=np.asarray(joints,dtype=np.float32)
    value=measure(joints,gt,skate)
    full,shape=complete_body(joints,rot,rest,template)
    assert np.array_equal(full[:,KEEP],joints)

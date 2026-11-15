@@ -1,5 +1,110 @@
 # Shared Agent Context
 
+## User-requested19-case exclusion and measured-camera GA-MPJPE (2026-11-16)
+
+- User authorized removing exactly19 UEM extreme prediction cases from metrics.
+  New matched subset removes the same19 IDs from all3 models and GT:11892
+  annotation cases,11658 physical windows,71 recordings. Original11911 report
+  and prediction files remain intact. Predicate max(abs(UEM global joints))>10m,
+  not the different15-case mean-MPJPE threshold. Selection is labeled post-hoc.
+- Operation child exclude19_20261116 has all-model COMPLETE and Notion readback.
+  All physical/recording-balanced metrics reaggregated; FID and R@1/2/3 actually
+  recomputed from retained embeddings. R32 uses11872 cases/20 dropped per seed,
+  3seeds. Matched GT R@3=91.5263percent,FID/errors0; skating14.0433cm/s,
+  penetration1.0474cm. DA3 MPJPEcm/whole-clip PAcm: EgoEgo37.6190/16.8652,
+  EgoAllo35.3416/15.5442,UEM34.6736/15.3947. All native metrics in all_metrics.csv.
+  Exclusion/cohort/embedding/retrieval integrity audit passed independently.
+- Filtered Notion heading419d2a44f44b810d9db1d58ade618d11 on Ablations page
+  40dd2a44f44b8080aad3cda6b5fea7c8; raw full-cohort table is preserved above it.
+- User additionally requested sequence-global GA-MPJPE with MEASURED GT cameras
+  for all3 models. Existing eval_motion_recon.joint_metrics PA already fits ONE
+  scale+proper rotation+translation over the entire T97*23 joint point cloud;
+  it is not per-frame PA. Independent float64 recomputation for all11911 cases
+  confirms equivalence. Measured-camera GA-MPJPEcm: EgoEgo11.8597,EgoAllo9.4395,
+  UEM8.9396,GT~0. Max per-case FP64/legacy difference1.32e-6m on model outputs.
+- GA child gt_camera_ga_mpjpe_20261116 has COMPLETE and fresh Notion readback;
+  heading419d2a44f44b81458d79c38ee255ad48. One scalar scale/R/t is saved per
+  entire clip, with per-case errors, source hashes and synthetic tests protecting
+  global-fit semantics and forbidding reflections. Measured-camera cohort uses
+  all11911; the DA3-specific19-case exclusion is not applied to that report.
+- No inference, model/checkpoint, stats, normalization or original data changed
+  for these two follow-ups. Code: da3_exclude19.py and sequence_ga_mpjpe.py.
+  Details: nymeria_baselines/DA3_CAMERA_TO_MOTION_20261116.md.
+
+## DA3 full-test scoring complete and UEM instability audit (2026-11-16)
+
+- All3 baseline models now generated/scored11911 cases/71 recordings; operation
+  da3_c2m_fulltest_20261116 has root COMPLETE=complete_verified and fresh Notion
+  readback on the DA3 section below. No case was removed or prediction replaced.
+- DA3+train-prior mean MPJPEcm/whole-clip PAcm/R@3percent: EgoEgo37.7057/
+  16.9094/28.2818; EgoAllo35.4706/15.5892/23.9163. GT0/~0/91.7031.
+- UEM raw mean MPJPE2938113.1159cm is dominated by19 cases with absolute joint
+  positions>10m (15 have per-case MPJPE>10m). Median case MPJPE30.8900cm,
+  PA15.4775cm,R@3=32.2917; all11911 retained. Median EgoEgo34.4266cm,
+  EgoAllo32.0350cm,GT0. robust_case_distribution.json stores distributions.
+- Worst native singleton replay also explodes (5.0375e8m vs batch5.6163e8m).
+  Native instability is confirmed for that case; its magnitude differs, so
+  exact catastrophic means are numerically unstable. Initial batch acceptance
+  does not prove whole-cohort parity. Extreme inputs include40–100-training-std
+  horizontal camera jumps, an association rather than proven sole cause.
+- UEM scoring initially failed an exact FP64-vs-FP32 identity assertion. Shared
+  fulltest_v2m_score now casts joint positions to standard FP32 BEFORE physics
+  and leaf completion, matching the original writer; strict identity remains.
+  All11911 casts audited, max component-relative rounding5.961e-8. Existing Ege/
+  EgoAllo FP32 values and raw predictions are unchanged. uem_score_fix.exit_code0
+  supersedes historical failed-worker exit1; old logs remain for provenance.
+- No training, checkpoint, sampler, normalization, camera scale or placement
+  changed. Missing gravity/initial height still use the documented train-only
+  prior. Full details: nymeria_baselines/DA3_CAMERA_TO_MOTION_20261116.md.
+
+## DA3 camera-to-motion full-test evaluation (2026-11-16)
+
+- Downloaded Drive folder1VUosa1zGJ3K8x37uOG9i0d4VuN_ZKpmt via authorized
+  gggdrive. Fourteen parts/archive SHA256 and all23377 payload files verified;
+  contains11677 physical trajectories per estimator (DA3 and Phase1). This
+  experiment evaluates DA3 only, retaining all11911 annotation cases/71 records.
+- Operation: /scratch2/whwjdqls99/cosmos/operations/da3_c2m_fulltest_20261116.
+  Raw export remains unchanged; conditions/ stores separate native EgoEgo9D,
+  UEM18D and EgoAllo Z-up/relative-pose inputs joined by(uuid,start).
+- DA3 is already metric but lacks gravity/floor/initial height. No test-GT
+  alignment or scale fit is used. Explicit equal-record578-training-record
+  orientation/height prior (initial height1.519727m) supplies the unobserved
+  gauge. Report this assumption with every DA3/ measured-camera comparison.
+- Six geometry tests passed. Independent measured-camera adapter parity on
+  all71 recordings: camera9 max8.35e-7; common joints max2.39e-7m. Native
+  full-step singleton replay and actual batch128 acceptance precede production.
+  Native seeds/samplers/checkpoints/shapes/evaluator statistics are unchanged.
+- Retained job2622174/node58 has2PRO6000/16CPU; both GPUs passed CUDA kernels.
+  tmux da3_c2m_eval_20261116 runs EgoEgo, UEM trajectory, then EgoAllo, with
+  shared full-metric scoring after each. LAUNCH.json and actual rank receipts
+  supersede this launch note; PREPARED.json does not mean evaluation completed.
+- Final EgoAllo200k initially private to minsu1206 now has an ACL granting this
+  account read access; actual header read succeeded. No substitute checkpoint.
+- All3 native singleton checks passed, plus actual batch128 checks for Ege/UEM.
+  EgoAllo needs Python3.12+: isolated dependencies plus Cosmos Python3.13/
+  Torch2.10cu128 fixed the initial missing-package/Python3.10 mismatch without
+  changing any original environment. One measured-camera replay versus saved
+  EgoAllo2.7.1cu126/4090 predictions differed mean0.002241cm,max0.012164cm.
+  EGOALLO_FRAMEWORK_PARITY.json and NATIVE_DEPENDENCIES_VERIFIED.json are saved.
+- Updated assignment: full EgoEgo generation finished11911 cases; scoring
+  precedes a wrapper-only relaunch (same allocation, cached predictions retained)
+  to tmux da3_c2m_resume_20261116. UEM runs on2PRO6000/node58. Previously idle
+  job2650574/node57 (1PRO6000/8CPU) now runs all11911 EgoAllo cases in parallel,
+  tmux da3_egoallo_eval_20261116. The main controller waits for its score receipt
+  and avoids duplicate EgoAllo work. Actual progress/COMPLETE receipts supersede
+  this setup snapshot. No original srun allocation or training was canceled.
+- First full DA3 result (EgoEgo) scored/readback-verified for all11911:
+  MPJPE37.7057cm,PA16.9094cm,Root ADE34.3703cm,UPE36.7200cm,LPE39.2389cm,
+  sJPE.362085,FID.202993,R@3=28.2818±.1436percent. Measured-camera reference
+  MPJPE17.4109cm,PA11.8597cm; GT position/sJPE/FID0,R@3=91.7031±.1399.
+  Differences include the unknown initial gravity/height prior, not just DA3
+  relative camera error. UEM/EgoAllo still in progress at this snapshot.
+- Notion additive DA3 section is published/readback-verified on Ablations
+  40dd2a44f44b8080aad3cda6b5fea7c8, heading419d2a44f44b811f8a8be1403e0081ea.
+  Pending rows are explicit; worker updates results after each complete model.
+  Root COMPLETE.json requires all3 scored models and Notion readback. Details:
+  nymeria_baselines/DA3_CAMERA_TO_MOTION_20261116.md. No training was changed.
+
 ## GitHub merge and Scratch2 access refresh completed (2026-11-08)
 
 - Local application/evaluation work committed as e8df43e, then GitHub master
