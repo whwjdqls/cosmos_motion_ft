@@ -1,5 +1,36 @@
 # Shared Agent Context
 
+## All saved FULL-test reconstruction GA-MPJPE report (2026-11-16)
+
+- User requested GA for all other saved reconstruction evaluations, explicitly
+  full-test only, NOT random20. Central report is now published/readback-verified
+  on Ablations heading419d2a44f44b8168be4bd04940f960e8 (page40dd2a44...).
+- Operation ga_all_fulltest_20261116 has25 local rows (GT/input/cohort/joint-set
+  variants included) and18 published Foundry rows (including3 GT references).
+  Original8 Phase3/UEM ablations, final555800 UEM3conditions, measured-camera
+  Ege/EgoAllo, DA3 raw/exclude19, and Common16 ReViV/UEM comparisons included.
+- Common23 PA was already sequence-global Sim3. Reaggregated ALL per-case cached
+  errors, verified source completion/hashes/case order and independent3-clip
+  float64 checks per local run. Separate prior GT-camera report checked all
+  11911 clips/model. No re-inference, statistics or model changes.
+- ReViV's per-frame PA is NOT GA. Used its explicitly computed GA_SIM from the
+  verified source/config under Common16: ReViV16.3515cm; do not confuse with
+  per-frame PA11.5971cm or rank directly against Body23 results.
+- Foundry full-test prediction arrays are not mounted locally. Its completed
+  FULL11677 published whole-clip PA values were fetched from Final Variations
+  and labeled separately as reported GA-equivalent values, NOT independently
+  recomputed on Yonsei. Original source heading/table IDs retained. No GT value
+  fabricated when source physical metrics are absent. Random20/fixed71 FiLM50k
+  monitoring, generation-only T2M/TI2M and camera-pose-only tables excluded.
+- Examples GAcm: P3original10.6707,fourtask11.6754,hiddenFilm12.9681,
+  floor18Film18.3360; finalUEM video18.3626,trajectory8.9396,both7.7479; GT~0.
+  All rows, cohorts and verification: nymeria_baselines/GA_FULL_TEST_RECON_20261116.md.
+- Git request: created main because remote only had master, committed local
+  evaluation work7ce660a, merged latest origin/masteraa24a71 as69534fb preserving
+  both AGENTS sections, then pushed main. Six geometry tests, GA self-tests and
+  syntax checks for69 merged Python files passed. Remote default remains master;
+  main is the user-requested publication branch. Follow-up GA report is separate.
+
 ## User-requested19-case exclusion and measured-camera GA-MPJPE (2026-11-16)
 
 - User authorized removing exactly19 UEM extreme prediction cases from metrics.
