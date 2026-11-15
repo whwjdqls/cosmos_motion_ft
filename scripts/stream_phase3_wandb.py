@@ -23,6 +23,13 @@ import threading
 import time
 
 
+def variant_tag(value):
+    """Keep full variant identity in config; bound only W&B's 64-char tag."""
+    if len(value) <= 64:
+        return value
+    return value[:47] + "-" + hashlib.sha256(value.encode()).hexdigest()[:16]
+
+
 def atomic_json(path, value):
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
@@ -123,7 +130,7 @@ def main():
         group=args.group,
         id=run_id,
         name=args.name,
-        tags=["phase3", "edge", "fourtask", args.variant, "jsonl-sidecar"],
+        tags=["phase3", "edge", "fourtask", variant_tag(args.variant), "jsonl-sidecar"],
         job_type="training-metrics",
         config=configuration,
         dir=str(args.state_dir),

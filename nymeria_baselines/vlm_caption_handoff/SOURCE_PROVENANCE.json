@@ -1,0 +1,11 @@
+{
+  "exact_accepted_source_SHA256": {
+    "modality_cfg.py": "3dcbc56acb4360ae8b33813f14338c66644a5295d6bbd2e2401deb81bb56fd26",
+    "motion_text.py": "bda0d40a0ae1d8c6835762bc0b0d51ac4dfa06f5bb984f29314f7623d3c1060e",
+    "Q40_prompt.txt": "392d3e3082ccb7805280b959703271fc1089602c27853df6cdf0b65f3554d688",
+    "accepted_native_full1420_report": "2774fae008d874aa61b59e63dc7ffb903a2df7aa7a9b07f490f8aa105c9bd009"
+  },
+  "inference_only": true,
+  "native_full1420_production_completed": true,
+  "new_GPU_acceptance_not_claimed_by_copying_source": true
+}

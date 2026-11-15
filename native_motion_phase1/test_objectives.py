@@ -55,6 +55,11 @@ class ObjectiveTests(unittest.TestCase):
         self.assertEqual(int(pred.grad.count_nonzero()), 0)
 
     def test_native_video_loss_and_gradient_unchanged(self):
+        for video_scale in (1., 10.):
+            with self.subTest(video_scale=video_scale):
+                self._assert_native_video_loss_and_gradient(video_scale)
+
+    def _assert_native_video_loss_and_gradient(self, video_scale):
         pred, target, masks, mean, std = fixture()
         masks[:] = 1
         model = MotionX0Model.__new__(MotionX0Model)
@@ -63,7 +68,7 @@ class ObjectiveTests(unittest.TestCase):
         model.tensor_kwargs_fp32 = dict(device="cpu", dtype=torch.float32)
         model.config = NS(vision_gen=True, action_gen=True, sound_gen=False, lidar_state_ch=None,
             rectified_flow_training_config=NS(normalize_loss_by_active=False, image_loss_scale=None,
-                loss_scale=10., action_loss_weight=0., sample_level_loss_averaging=False))
+                loss_scale=video_scale, action_loss_weight=0., sample_level_loss_averaging=False))
         model.rectified_flow_video = NS(train_time_weight=lambda t, kwargs: torch.ones_like(t))
         model.rectified_flow_action = model.rectified_flow_video
         model._get_load_balancing_loss_meshes = lambda: (None, None)
@@ -78,7 +83,7 @@ class ObjectiveTests(unittest.TestCase):
                                      vt_target_vision=vt, vt_target_action=list(target))
         ts = torch.tensor([[100.], [750.]])
         actual, _ = model._compute_losses(dict(preds_action=list(pred), preds_vision=vp), packed, noised, ts, False)
-        expected = 10. * compute_flow_matching_loss(vp, vt, vm, ts, True,
+        expected = video_scale * compute_flow_matching_loss(vp, vt, vm, ts, True,
             model.rectified_flow_video, model.tensor_kwargs_fp32)[0]
         torch.testing.assert_close(actual, expected, rtol=0, atol=0)
         grads = torch.autograd.grad(actual, vp, retain_graph=True)

@@ -23,3 +23,36 @@ Copying used a new temporary file, checksum verification/fsync and atomic rename
 The completed watcher had no GPU visibility and did not modify training.
 No shared storage has been written. Preserve this directory during cleanup;
 it is outside all trainer checkpoint rotation folders.
+
+## All retained sep-1 variants: additional camera run armed (2026-11-08)
+
+User reiterates preserving exact100k for ALL runs. The original three files
+above remain independent copies; the new CPU-only watcher recomputed their
+full-file SHA256 and checked linkcount1/size against PRESERVED receipts.
+
+The new fourth retained run, `sep1_bidir5050_w1_camera_nocamloss_EMA0`, has not
+reached100k. Its immutable live trainer already saves every10k and explicitly
+exempts `step_000100000.pt` from rotation. An independent verified copy is now
+armed for:
+
+`/mnt/local/jinhyung.kim/cosmos/checkpoints/phase3_milestones_100k_20261108/sep1_bidir5050_w1_camera_nocamloss_EMA0/step_000100000.pt`.
+
+Controller operation:
+`/mnt/local/jinhyung.kim/cosmos/operations/preserve_all_phase3_100k_sep1_20261108T234158Z`.
+Tmux session `phase3_100k_sep1_all_20261108`, CUDA_VISIBLE_DEVICES empty,
+threads1, polling only the four registered local milestone paths every30s.
+STATUS.json records3 reverified saved/1waiting; COMPLETE.json is produced only
+when all4 are preserved. The archive's older COMPLETE.json covers only the
+original three; ACTIVE_WATCHER.json points to the new all-run controller.
+
+The watcher reuses the proven exact100k preservation routine, with a separate
+controller status directory, exclusive archive lock, source/copy SHA comparison,
+fsync/atomic rename, full recovery-state/fingerprint checks and copied immutable
+source/contract metadata. It never restarts, signals or modifies a trainer.
+
+Sep-2 is managed by its own agent. Final Variations was updated there at23:36UTC:
+old joint baselines C4–C6 have protected100k; active directional temporal-local,
+directional global, and cross-only local camera runs each have armed CPU
+preservation watchers plus native100k rotation exemptions. These are remote
+agent reports, not direct sep-1 filesystem verification. The deleted sep-2
+bidirectional camera duplicate is outside retained runs and must not resume.

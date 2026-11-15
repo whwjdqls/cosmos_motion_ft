@@ -51,6 +51,13 @@ padding channels are excluded before decoding and loss computation. Motion is
 conditioning only in motion→video, so that task has no motion loss. Video keeps
 native velocity prediction and its loss scale10.
 
+For the fresh video-weight-one ablation, set `MOTIONP1_VIDEO_LOSS_SCALE=1`.
+The default remains10. This changes only the native video-loss multiplier;
+motion reconstruction and physical weights remain unchanged. The resolved scale
+is recorded in `motion_contract.json`, so a weight-one run cannot resume a
+weight-ten run under the same identity. Start from the official Edge base with
+a fresh optimizer and a distinct run name.
+
 Training noise is unchanged: native video WAVER, resolution shift3, with
 `independent_action_schedule=False`. Motion therefore reuses the video's sigma;
 the configured action logit-normal distribution is inactive. The interpolation

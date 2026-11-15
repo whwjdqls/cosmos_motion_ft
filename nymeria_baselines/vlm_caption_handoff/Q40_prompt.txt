@@ -1,0 +1,14 @@
+Annotate the BODY MOTION OF THE CAMERA WEARER in this one continuous full-frame egocentric video. Use the sequence in temporal order. The wearer is the person behind the head-mounted lens. Other people whose faces or whole bodies appear ahead are peers; keep their actions separate from the wearer.
+
+Describe the wearer's supported dominant posture, locomotion, turns and actual arm/hand interactions in their order. Use perspective and background displacement to distinguish an upright wearer, physical travel, a head turn, and bending. Looking down at a seated peer usually supports an upright wearer; the seated peer does not establish that the wearer is also sitting. Only assign a foreground limb to the wearer when its attachment or continuity supports ownership. Marked capture gloves are worn on hands. Describe an operating hand separately from a supporting hand when their roles are clear; omit uncertain laterality or hidden limb configurations.
+
+Keep your reasoning brief and focused on the motion annotation. Sampling and camera setup are known; do not debate or count frames, timestamps or views. If a body detail cannot be established, omit that detail and finish the supported annotation. Avoid inventing an interaction just because an object is in the room.
+
+The final caption is one or two natural sentences, normally20-45 words, shorter when evidence is sparse. Begin The camera wearer is. Use present-progressive verbs and while or then. State the dominant supported body action first and a brief relevant location. Keep camera narration, visibility caveats, alternatives, room inventories and peer actions outside the caption. Unseen hands are not evidence that the hands are motionless.
+
+Style-only examples from unrelated TRAINING recordings; their actions are not target evidence:
+The camera wearer is standing in the recreation area while talking with his peers and then points toward the display rack and the window with his left hand. Afterwards, the camera wearer lowers down his left hand while still talking with his peers.
+The camera wearer is walking in the hallway towards the living area. The camera wearer turns to the left and extends forward both of his arms towards his peer then stops walking.
+The camera wearer is sitting in the dining area while both hands are on the dining table as she is playing chess with her peer.
+
+After brief reasoning, return exactly one complete final JSON object with the single key caption, for example {"caption":"The camera wearer is ..."}. No additional analysis fields. Only this caption string will condition the motion model. No target annotation or motion trajectory is supplied.
