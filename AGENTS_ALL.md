@@ -1,5 +1,29 @@
 # Shared Agent Context
 
+## Yonsei winning generated-caption random20 handoff (2026-11-15)
+
+- Completed caption/CFG study selects unchanged Q40 Qwen3.8-27B captions,
+  videoCFG1.5/textCFG0.5, native directionalW1/no-camera EMA200k, supplied shape.
+  Full1420 windows/71 recordings; MPJPE14.627242cm versus video16.125472 and
+  fixedGTtext1 13.073182. The remaining GT gap and all-ten/actualGT metrics are
+  preserved. This repeatedly inspected benchmark is development, not held-out.
+- nymeria_baselines/vlm_caption_handoff exports the exact caption strings bound
+  to accepted winning prediction receipts, frozen cases/prompt and VLM revision;
+  includes deterministic ZIP/checksums and a stdlib verifier. The two inference
+  guidance/text adapters are byte-identical accepted copies; no training edits.
+- Canonical captions were A100/B4. Q77 and fresh nativePRO/B1 recaptions are
+  different experiments. TextCFG0.5 changes inference, not the caption strings.
+  Shape stays supplied in every branch; generator text stays empty.
+- The launcher checkout /home/minsu1206/cosmos_motion_ft keeps its no-push
+  protections. Publication uses a separate integration checkout. Original shared
+  training sources and frozen evaluations are not mutated by this handoff.
+- User delegates Google Drive upload to whwjdqls99. Shared prepared operation:
+  /scratch2/minsu1206/cosmos/operations/random20_best_caption_handoff_20261115.
+  Run upload_with_whw.sh from that login; its final downloaded-content check
+  writes drive_receipt/DRIVE_UPLOAD_VERIFIED.json. Preparation is not upload.
+  No credential copying or Drive ACL change. See
+  migration/RANDOM20_BEST_GENERATED_CAPTIONS_20261115.md for paths and hashes.
+
 ## sep-2 Naeive W1 EMA200k full test COMPLETE/PUBLISHED (2026-11-14)
 
 - Operation eval_naeive_wv1_EMA200k_fulltest_20261113 completed all11677 unique
