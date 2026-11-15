@@ -1,5 +1,7 @@
 # Server Migration
 
+- [Winning generated captions for random20](RANDOM20_BEST_GENERATED_CAPTIONS_20261115.md): exact1420-caption handoff, prompt, selected independent video/text CFG, all-ten/GT results and verified-upload procedure for the Drive-owning account.
+
 - [Random20 benchmark and defaults](NYMERIA_RANDOM20_V1_20261110.md): frozen1420-window manifest/CSV, cross-node handoff, and the portable `nymeria_baselines/random20_eval/` worker/global scorer.
 
 ## Yonsei Scratch2 retention refresh (2026-11-08)
